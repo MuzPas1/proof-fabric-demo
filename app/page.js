@@ -163,7 +163,7 @@ export default function App() {
     }
   }
 
-  // Verify Proof
+  // Verify Proof - Compares against LIVE transaction data
   const handleVerifyProof = async () => {
     if (!feaIdVerify.trim()) {
       setVerifyResult({ success: false, message: 'Please enter a FEA ID' })
@@ -174,19 +174,29 @@ export default function App() {
     setVerifyResult(null)
     
     try {
-      // Fetch proof
-      const { data: proof, error: fetchError } = await supabase
+      // Step 1: Fetch proof using fea_id
+      const { data: proof, error: fetchProofError } = await supabase
         .from('proofs')
         .select('*')
         .eq('fea_id', feaIdVerify.trim())
         .single()
       
-      if (fetchError) throw new Error('FEA not found')
+      if (fetchProofError) throw new Error('FEA not found')
       
-      // Recompute hash
-      const hashInput = `${proof.user_id}|${proof.amount}|${proof.transaction_created_at}`
+      // Step 2: Extract transaction_id and fetch LIVE transaction data
+      const { data: transaction, error: fetchTxError } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('id', proof.transaction_id)
+        .single()
+      
+      if (fetchTxError) throw new Error('Transaction not found - may have been deleted')
+      
+      // Step 3: Recompute hash using CURRENT transaction values
+      const hashInput = `${transaction.user_id}|${transaction.amount}|${transaction.created_at}`
       const computedHash = await sha256(hashInput)
       
+      // Step 4: Compare with stored hash in proofs table
       const isValid = computedHash === proof.hash
       
       setVerifyResult({
@@ -194,12 +204,19 @@ export default function App() {
         isValid,
         feaId: proof.fea_id,
         transactionId: proof.transaction_id,
-        userId: proof.user_id,
-        amount: proof.amount,
-        createdAt: proof.transaction_created_at,
+        // Show LIVE transaction data
+        userId: transaction.user_id,
+        amount: transaction.amount,
+        createdAt: transaction.created_at,
+        // Show stored proof data for comparison
+        storedUserId: proof.user_id,
+        storedAmount: proof.amount,
+        storedCreatedAt: proof.transaction_created_at,
         storedHash: proof.hash,
         computedHash,
-        issuer: proof.issuer
+        issuer: proof.issuer,
+        // Flag if data was tampered
+        dataTampered: !isValid
       })
     } catch (error) {
       console.error('Error verifying proof:', error)
@@ -671,14 +688,14 @@ export default function App() {
                       {verifyResult.isValid ? (
                         <>
                           <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-3" />
-                          <p className="text-3xl font-bold text-green-400">✅ FEA Verified</p>
+                          <p className="text-3xl font-bold text-green-400">✅ Transaction Verified</p>
                           <p className="text-green-300 mt-1">Ready for RBI audit</p>
                         </>
                       ) : (
                         <>
                           <XCircle className="h-16 w-16 text-red-500 mx-auto mb-3" />
                           <p className="text-3xl font-bold text-red-400">❌ FEA Invalid</p>
-                          <p className="text-red-300 mt-1">Hash mismatch detected</p>
+                          <p className="text-red-300 mt-1">Data has been tampered</p>
                         </>
                       )}
                     </div>
@@ -691,17 +708,38 @@ export default function App() {
                         <span className="text-blue-400 font-mono">{verifyResult.feaId}</span>
                         <span className="text-slate-400">Transaction ID:</span>
                         <span className="text-slate-300 font-mono text-xs">{verifyResult.transactionId}</span>
-                        <span className="text-slate-400">User ID:</span>
-                        <span className="text-slate-300">{verifyResult.userId}</span>
-                        <span className="text-slate-400">Amount:</span>
-                        <span className="text-slate-300">₹{verifyResult.amount}</span>
                         <span className="text-slate-400">Issuer:</span>
                         <span className="text-slate-300">{verifyResult.issuer}</span>
                       </div>
+                      
+                      {/* Live Transaction Data */}
                       <div className="mt-3 pt-3 border-t border-slate-700">
-                        <p className="text-slate-400 text-sm">Stored Hash:</p>
+                        <p className="text-slate-400 text-sm font-semibold mb-2">Live Transaction Data:</p>
+                        <div className="grid grid-cols-2 gap-2 text-sm bg-slate-900/50 p-3 rounded">
+                          <span className="text-slate-400">User ID:</span>
+                          <span className={verifyResult.isValid ? 'text-slate-300' : 'text-red-400'}>{verifyResult.userId}</span>
+                          <span className="text-slate-400">Amount:</span>
+                          <span className={verifyResult.isValid ? 'text-slate-300' : 'text-red-400'}>₹{verifyResult.amount}</span>
+                        </div>
+                      </div>
+                      
+                      {/* Original Proof Data - Only show if tampered */}
+                      {!verifyResult.isValid && (
+                        <div className="mt-3 pt-3 border-t border-slate-700">
+                          <p className="text-yellow-400 text-sm font-semibold mb-2">Original Proof Data (at time of FEA creation):</p>
+                          <div className="grid grid-cols-2 gap-2 text-sm bg-yellow-900/20 p-3 rounded border border-yellow-700/50">
+                            <span className="text-slate-400">User ID:</span>
+                            <span className="text-yellow-300">{verifyResult.storedUserId}</span>
+                            <span className="text-slate-400">Amount:</span>
+                            <span className="text-yellow-300">₹{verifyResult.storedAmount}</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="mt-3 pt-3 border-t border-slate-700">
+                        <p className="text-slate-400 text-sm">Stored Hash (from FEA):</p>
                         <p className="text-slate-300 font-mono text-xs break-all">{verifyResult.storedHash}</p>
-                        <p className="text-slate-400 text-sm mt-2">Computed Hash:</p>
+                        <p className="text-slate-400 text-sm mt-2">Computed Hash (from live data):</p>
                         <p className={`font-mono text-xs break-all ${verifyResult.isValid ? 'text-green-400' : 'text-red-400'}`}>
                           {verifyResult.computedHash}
                         </p>
