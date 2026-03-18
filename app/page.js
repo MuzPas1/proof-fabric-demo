@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { v4 as uuidv4 } from 'uuid'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Shield, FileCheck, Download, PlusCircle, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { Shield, FileCheck, Download, PlusCircle, CheckCircle2, XCircle, Loader2, Zap, X } from 'lucide-react'
 
 // SHA256 hash function
 async function sha256(message) {
@@ -22,6 +22,11 @@ async function sha256(message) {
 // Generate random FEA ID
 function generateFeaId() {
   return 'FEA-' + uuidv4().substring(0, 8).toUpperCase()
+}
+
+// Generate random amount between 100-500
+function generateRandomAmount() {
+  return Math.floor(Math.random() * 401) + 100
 }
 
 export default function App() {
@@ -47,6 +52,12 @@ export default function App() {
   const [feaIdExport, setFeaIdExport] = useState('')
   const [exportLoading, setExportLoading] = useState(false)
   const [exportResult, setExportResult] = useState(null)
+
+  // Full Flow State
+  const [fullFlowLoading, setFullFlowLoading] = useState(false)
+  const [fullFlowStep, setFullFlowStep] = useState(0) // 0=idle, 1=create, 2=generate, 3=verify
+  const [fullFlowResult, setFullFlowResult] = useState(null)
+  const [fullFlowTime, setFullFlowTime] = useState(0)
 
   // Create Transaction
   const handleCreateTransaction = async () => {
@@ -199,8 +210,10 @@ export default function App() {
   }
 
   // Export FEA
-  const handleExportFea = async () => {
-    if (!feaIdExport.trim()) {
+  const handleExportFea = async (feaIdToExport = null) => {
+    const targetFeaId = feaIdToExport || feaIdExport.trim()
+    
+    if (!targetFeaId) {
       setExportResult({ success: false, message: 'Please enter a FEA ID' })
       return
     }
@@ -213,7 +226,7 @@ export default function App() {
       const { data: proof, error: fetchError } = await supabase
         .from('proofs')
         .select('*')
-        .eq('fea_id', feaIdExport.trim())
+        .eq('fea_id', targetFeaId)
         .single()
       
       if (fetchError) throw new Error('FEA not found')
@@ -256,8 +269,184 @@ export default function App() {
     }
   }
 
+  // Full Proof Flow - One Click Demo
+  const handleFullProofFlow = async () => {
+    const startTime = Date.now()
+    setFullFlowLoading(true)
+    setFullFlowResult(null)
+    setFullFlowStep(1)
+    
+    try {
+      // Step 1: Create Transaction
+      const txId = uuidv4()
+      const created_at = new Date().toISOString()
+      const randomAmount = generateRandomAmount()
+      
+      const { data: tx, error: txErr } = await supabase
+        .from('transactions')
+        .insert([{
+          id: txId,
+          user_id: 'demo_user',
+          amount: randomAmount,
+          created_at
+        }])
+        .select()
+        .single()
+      
+      if (txErr) throw new Error('Failed to create transaction: ' + txErr.message)
+      
+      setFullFlowStep(2)
+      
+      // Step 2: Generate FEA
+      const hashInput = `${tx.user_id}|${tx.amount}|${tx.created_at}`
+      const hash = await sha256(hashInput)
+      const fea_id = generateFeaId()
+      
+      const { data: proof, error: proofErr } = await supabase
+        .from('proofs')
+        .insert([{
+          id: uuidv4(),
+          fea_id,
+          transaction_id: tx.id,
+          user_id: tx.user_id,
+          amount: tx.amount,
+          transaction_created_at: tx.created_at,
+          hash,
+          proof_status: 'VERIFIED',
+          issuer: 'Proof Fabric Protocol v0.1',
+          created_at: new Date().toISOString()
+        }])
+        .select()
+        .single()
+      
+      if (proofErr) throw new Error('Failed to generate FEA: ' + proofErr.message)
+      
+      setFullFlowStep(3)
+      
+      // Step 3: Verify
+      const recomputedHash = await sha256(`${proof.user_id}|${proof.amount}|${proof.transaction_created_at}`)
+      const isValid = recomputedHash === proof.hash
+      
+      if (!isValid) throw new Error('Verification failed - hash mismatch')
+      
+      const endTime = Date.now()
+      const elapsedSeconds = ((endTime - startTime) / 1000).toFixed(1)
+      
+      setFullFlowTime(elapsedSeconds)
+      setFullFlowResult({
+        success: true,
+        transactionId: tx.id,
+        feaId: fea_id,
+        amount: randomAmount,
+        hash
+      })
+      
+    } catch (error) {
+      console.error('Full flow error:', error)
+      setFullFlowResult({
+        success: false,
+        message: error.message || 'Full proof flow failed'
+      })
+    } finally {
+      setFullFlowLoading(false)
+      setFullFlowStep(0)
+    }
+  }
+
+  // Close full flow modal
+  const closeFullFlowModal = () => {
+    setFullFlowResult(null)
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+      {/* Full Flow Result Modal */}
+      {fullFlowResult && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full shadow-2xl">
+            {fullFlowResult.success ? (
+              <div className="p-8">
+                <button 
+                  onClick={closeFullFlowModal}
+                  className="absolute top-4 right-4 text-slate-400 hover:text-white"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+                
+                <div className="text-center mb-6">
+                  <CheckCircle2 className="h-20 w-20 text-green-500 mx-auto mb-4" />
+                  <h2 className="text-2xl font-bold text-green-400 mb-2">
+                    ✅ Transaction Verified — Ready for RBI audit
+                  </h2>
+                  <p className="text-slate-400">
+                    No raw data shared. Cryptographic proof validated.
+                  </p>
+                </div>
+                
+                <div className="bg-slate-800 rounded-lg p-4 space-y-3 mb-6">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Transaction ID:</span>
+                    <span className="text-slate-200 font-mono text-sm">{fullFlowResult.transactionId.substring(0, 18)}...</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">FEA ID:</span>
+                    <span className="text-blue-400 font-bold font-mono">{fullFlowResult.feaId}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Amount:</span>
+                    <span className="text-slate-200">₹{fullFlowResult.amount}</span>
+                  </div>
+                </div>
+                
+                <div className="text-center mb-6">
+                  <p className="text-yellow-400 font-medium">
+                    ⚡ Audit time: {fullFlowTime} Seconds
+                  </p>
+                  <p className="text-slate-500 text-sm">(vs weeks in legacy systems)</p>
+                </div>
+                
+                <div className="flex gap-3">
+                  <Button 
+                    onClick={() => handleExportFea(fullFlowResult.feaId)}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                    disabled={exportLoading}
+                  >
+                    {exportLoading ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Exporting...</>
+                    ) : (
+                      <><Download className="h-4 w-4 mr-2" /> Export FEA</>
+                    )}
+                  </Button>
+                  <Button 
+                    onClick={closeFullFlowModal}
+                    variant="outline"
+                    className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-800"
+                  >
+                    Close
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-8">
+                <div className="text-center mb-6">
+                  <XCircle className="h-20 w-20 text-red-500 mx-auto mb-4" />
+                  <h2 className="text-2xl font-bold text-red-400 mb-2">
+                    ❌ Flow Failed
+                  </h2>
+                  <p className="text-slate-400">{fullFlowResult.message}</p>
+                </div>
+                <Button 
+                  onClick={closeFullFlowModal}
+                  className="w-full bg-slate-700 hover:bg-slate-600 text-white"
+                >
+                  Close
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-sm">
         <div className="container mx-auto px-4 py-6">
@@ -273,6 +462,37 @@ export default function App() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
+        {/* Full Proof Flow Button */}
+        <div className="w-full max-w-3xl mx-auto mb-8">
+          <Button 
+            onClick={handleFullProofFlow}
+            disabled={fullFlowLoading}
+            className="w-full py-6 text-lg font-bold bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 hover:from-blue-700 hover:via-blue-600 hover:to-cyan-600 text-white shadow-lg shadow-blue-500/30 border-0 transition-all duration-300 hover:shadow-blue-500/50 hover:scale-[1.02]"
+          >
+            {fullFlowLoading ? (
+              <div className="flex items-center justify-center gap-3">
+                <Loader2 className="h-6 w-6 animate-spin" />
+                <span>Processing Full Proof Flow…</span>
+                <div className="flex gap-1 ml-2">
+                  <span className={`px-2 py-1 rounded text-xs ${fullFlowStep >= 1 ? 'bg-green-500' : 'bg-slate-600'}`}>Create</span>
+                  <span className="text-slate-400">→</span>
+                  <span className={`px-2 py-1 rounded text-xs ${fullFlowStep >= 2 ? 'bg-green-500' : 'bg-slate-600'}`}>Generate</span>
+                  <span className="text-slate-400">→</span>
+                  <span className={`px-2 py-1 rounded text-xs ${fullFlowStep >= 3 ? 'bg-green-500' : 'bg-slate-600'}`}>Verify</span>
+                </div>
+              </div>
+            ) : (
+              <>
+                <Zap className="h-6 w-6 mr-3" />
+                Run Full Proof Flow
+              </>
+            )}
+          </Button>
+          <p className="text-center text-slate-500 text-sm mt-2">
+            One-click demo: Creates transaction → Generates FEA → Verifies proof
+          </p>
+        </div>
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-3xl mx-auto">
           <TabsList className="grid w-full grid-cols-4 bg-slate-900/50 border border-slate-800">
             <TabsTrigger value="create" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
@@ -452,7 +672,7 @@ export default function App() {
                         <>
                           <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-3" />
                           <p className="text-3xl font-bold text-green-400">✅ FEA Verified</p>
-                          <p className="text-green-300 mt-1">Hash integrity confirmed</p>
+                          <p className="text-green-300 mt-1">Ready for RBI audit</p>
                         </>
                       ) : (
                         <>
@@ -514,7 +734,7 @@ export default function App() {
                   />
                 </div>
                 <Button 
-                  onClick={handleExportFea} 
+                  onClick={() => handleExportFea()}
                   disabled={exportLoading}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                 >
