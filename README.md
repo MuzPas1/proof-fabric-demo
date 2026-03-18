@@ -1,6 +1,6 @@
 # Proof Fabric Protocol — RBI Sandbox Demo
 
-A minimal, professional web app for generating and verifying Financial Evidence Artifacts (FEA) using cryptographic proofs.
+A minimal, professional web app for generating and verifying Financial Evidence Artifacts (FEA) using cryptographic proofs. 
 
 ## Features
 
