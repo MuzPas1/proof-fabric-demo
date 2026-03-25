@@ -1,0 +1,64 @@
+{
+  "timestamp": "2026-03-25T02:07:53.950404+00:00",
+  "base_url": "https://fea-verify-engine.preview.emergentagent.com",
+  "total_tests": 11,
+  "passed_tests": 11,
+  "success_rate": "100.0%",
+  "test_details": [
+    {
+      "test": "API Health Check",
+      "success": true,
+      "details": ""
+    },
+    {
+      "test": "Get Config & API Key",
+      "success": true,
+      "details": "API Key: pfp_test_e7716c0732e..."
+    },
+    {
+      "test": "Public Key Registry",
+      "success": true,
+      "details": "Found 1 keys"
+    },
+    {
+      "test": "API Key Authentication",
+      "success": true,
+      "details": "401 returned for missing key"
+    },
+    {
+      "test": "FEA Generation",
+      "success": true,
+      "details": "FEA ID: e0e49299-c2ba-4ec8-a6a3-57c2b20c64c5"
+    },
+    {
+      "test": "FEA Idempotency (Same Payload)",
+      "success": true,
+      "details": "Same FEA returned"
+    },
+    {
+      "test": "FEA Idempotency (Different Payload)",
+      "success": true,
+      "details": "Conflict detected correctly"
+    },
+    {
+      "test": "FEA Verification (Valid)",
+      "success": true,
+      "details": "Signature verified"
+    },
+    {
+      "test": "FEA Verification (Invalid)",
+      "success": true,
+      "details": "Invalid signature detected"
+    },
+    {
+      "test": "Public Verification (Valid)",
+      "success": true,
+      "details": "Signature valid: True"
+    },
+    {
+      "test": "Public Verification (Not Found)",
+      "success": true,
+      "details": "404 returned correctly"
+    }
+  ]
+}
