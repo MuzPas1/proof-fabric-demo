@@ -1,0 +1,124 @@
+{
+  "project_name": "Proof Fabric Protocol (PFP) Developer Console",
+  "design_philosophy": {
+    "theme": "dark",
+    "archetype": "Cyberpunk Terminal / Technical Brutalism",
+    "core_principles": [
+      "Data over decoration",
+      "High contrast for readability",
+      "Monospace is king",
+      "Functionality is the aesthetic"
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "heading": "Space Grotesk, sans-serif",
+      "body": "IBM Plex Sans, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-3xl font-bold tracking-tight",
+      "h2": "text-xl font-semibold tracking-tight",
+      "h3": "text-lg font-medium",
+      "body": "text-sm leading-relaxed",
+      "code": "text-xs font-mono"
+    },
+    "weights": {
+      "heading": "700",
+      "body": "400",
+      "bold": "600"
+    }
+  },
+  "colors": {
+    "background": "#050505",
+    "surface": "#09090b",
+    "surface_highlight": "#18181b",
+    "border": "#27272a",
+    "text": {
+      "primary": "#fafafa",
+      "secondary": "#a1a1aa",
+      "muted": "#52525b",
+      "inverse": "#09090b"
+    },
+    "accents": {
+      "primary": "#22c55e",
+      "primary_glow": "rgba(34, 197, 94, 0.2)",
+      "destructive": "#ef4444",
+      "warning": "#eab308",
+      "info": "#3b82f6",
+      "terminal_cursor": "#22c55e"
+    }
+  },
+  "layout": {
+    "container": "max-w-6xl mx-auto px-6 py-12",
+    "grid_system": "grid grid-cols-1 md:grid-cols-12 gap-6",
+    "spacing": {
+      "section_gap": "gap-12",
+      "component_gap": "gap-6",
+      "internal_padding": "p-6"
+    }
+  },
+  "components": {
+    "cards": {
+      "style": "bg-[#09090b] border border-zinc-800 rounded-sm",
+      "header_style": "border-b border-zinc-800 p-4 bg-zinc-900/50",
+      "hover": "hover:border-zinc-700 transition-colors duration-200"
+    },
+    "buttons": {
+      "primary": "bg-white text-black hover:bg-zinc-200 rounded-sm px-4 py-2 font-medium transition-all text-sm uppercase tracking-wider",
+      "secondary": "bg-transparent border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white rounded-sm px-4 py-2 transition-all text-sm uppercase tracking-wider",
+      "ghost": "text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-sm px-3 py-1.5 transition-all text-sm"
+    },
+    "inputs": {
+      "style": "bg-black border border-zinc-800 rounded-sm px-3 py-2 text-sm text-white focus:border-green-500 focus:ring-1 focus:ring-green-500/20 placeholder:text-zinc-600 font-mono transition-all",
+      "label": "text-xs font-mono text-zinc-400 uppercase tracking-widest mb-2 block"
+    },
+    "tabs": {
+      "list": "bg-zinc-900/50 p-1 border border-zinc-800 rounded-md inline-flex",
+      "trigger": "data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-zinc-400 px-4 py-2 rounded-sm text-sm font-medium transition-all"
+    },
+    "json_viewer": {
+      "container": "bg-[#050505] border border-zinc-800 rounded-sm p-4 overflow-x-auto max-h-[500px] font-mono text-xs",
+      "key": "text-blue-400",
+      "string": "text-green-400",
+      "number": "text-orange-400",
+      "boolean": "text-purple-400",
+      "null": "text-gray-500"
+    }
+  },
+  "visual_enhancers": {
+    "scanlines": "pointer-events-none fixed inset-0 z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%] bg-repeat opacity-10",
+    "glow_effects": "shadow-[0_0_15px_rgba(34,197,94,0.1)]",
+    "borders": "border-r border-b border-white/5"
+  },
+  "accessibility": {
+    "contrast_check": "Ensure all text is at least 4.5:1 against background. Use #a1a1aa for lowest contrast text, never darker.",
+    "focus_states": "outline-none ring-1 ring-green-500 ring-offset-1 ring-offset-black"
+  },
+  "assets": {
+    "icons": "lucide-react",
+    "images": {
+       "success_bg": "https://images.unsplash.com/photo-1759956445479-ab537a9b2f12?crop=entropy&cs=srgb&fm=jpg&q=85"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Install required fonts: Space Grotesk, IBM Plex Sans, JetBrains Mono via Google Fonts.",
+    "Install 'lucide-react' for icons.",
+    "Override default shadcn radius to '0.125rem' (2px) or '0px' for that sharp terminal look.",
+    "Use the 'json_viewer' styles for the Request/Response panels.",
+    "Do not use gradients for backgrounds. Use solid deep blacks.",
+    "Ensure the 'Generate FEA', 'Verify FEA', and 'Public Verify' views are distinct but share the same layout structure.",
+    "Use 'sonner' for toast notifications with a dark, bordered style."
+  ],
+  "universal_guidelines": [
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy",
+    "You MUST NOT apply universal transition. Eg: transition: all.",
+    "You MUST NOT center align the app container, ie do not add .App { text-align: center; } in the css file.",
+    "Every interaction needs micro-animations - hover states, transitions, entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Components MUST use named exports (export const ComponentName = ...)",
+    "Pages MUST use default exports (export default function PageName() {...})"
+  ]
+}
