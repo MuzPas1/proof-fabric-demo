@@ -1,12 +1,11 @@
 """FEA generation service.
 
 SIGNING MODEL (v2):
-1. Build FEA structure (without fea_hash)
-2. Canonicalize JSON
-3. Compute SHA-256 → fea_hash
-4. Add fea_hash into FEA structure
-5. Canonicalize FINAL structure (including fea_hash)
-6. Sign the final canonical JSON directly using Ed25519
+1. Build FEA structure (with signature_version, without fea_hash)
+2. Canonicalize and compute SHA-256 → fea_hash
+3. Add fea_hash to structure
+4. Canonicalize FULL structure (including fea_hash and signature_version)
+5. Sign the canonical JSON directly (pure base64, no prefix)
 """
 import os
 import uuid
@@ -20,13 +19,14 @@ from models.fea import (
 )
 from crypto.canonicalize import canonicalize_to_json, normalize_timestamp
 from crypto.hashing import compute_sha256, hash_metadata
-from crypto.signing import sign_message, get_public_key_id
+from crypto.signing import sign_message, get_public_key_id, SIGNATURE_VERSION_V2
 
 
 def build_fea_structure(request: GenerateFEARequest) -> Dict[str, Any]:
     """
-    Build the canonical FEA structure (Section 3) from input request.
+    Build the canonical FEA structure from input request.
     Returns structure WITHOUT fea_hash (added later).
+    Includes signature_version field.
     """
     issuer_id = os.environ.get('ISSUER_ID', 'pfp-issuer-001')
     public_key_id = get_public_key_id()
@@ -34,9 +34,10 @@ def build_fea_structure(request: GenerateFEARequest) -> Dict[str, Any]:
     # Normalize timestamp
     normalized_ts = normalize_timestamp(request.timestamp)
 
-    # Build FEA structure
+    # Build FEA structure with signature_version
     fea_dict = {
         "fea_version": "1.0",
+        "signature_version": SIGNATURE_VERSION_V2,  # Explicit version field
         "issuer_id": issuer_id,
         "public_key_id": public_key_id,
         "transaction_summary": {
@@ -62,11 +63,7 @@ def compute_fea_hash(fea_structure: Dict[str, Any]) -> str:
     """
     Compute the FEA hash from the canonical FEA structure.
     The hash is computed on the structure WITHOUT the fea_hash field.
-    
-    Used for:
-    - Integrity verification
-    - Idempotency checking
-    - Indexing
+    (signature_version IS included in the hash)
     """
     # Ensure fea_hash is not in the structure when computing
     structure_copy = {k: v for k, v in fea_structure.items() if k != 'fea_hash'}
@@ -78,16 +75,16 @@ def generate_fea(request: GenerateFEARequest) -> Tuple[FEAResponse, FEADocument]
     """
     Generate a Financial Evidence Artifact from the request.
     
-    SIGNING MODEL (v2):
-    1. Build FEA structure (without fea_hash)
+    SIGNING FLOW:
+    1. Build FEA structure (with signature_version, without fea_hash)
     2. Canonicalize and compute SHA-256 → fea_hash
     3. Add fea_hash to structure
-    4. Canonicalize FULL structure (with fea_hash)
-    5. Sign the canonical JSON directly (Ed25519 message signing)
+    4. Canonicalize FULL structure
+    5. Sign canonical JSON directly (pure base64 output)
     
     Returns both the response and the document to store.
     """
-    # Step 1: Build FEA structure (without fea_hash)
+    # Step 1: Build FEA structure (with signature_version, without fea_hash)
     fea_structure = build_fea_structure(request)
 
     # Step 2: Compute SHA-256 hash on structure (without fea_hash)
@@ -96,10 +93,10 @@ def generate_fea(request: GenerateFEARequest) -> Tuple[FEAResponse, FEADocument]
     # Step 3: Add fea_hash to structure
     fea_structure["fea_hash"] = fea_hash
 
-    # Step 4: Canonicalize FULL structure (including fea_hash)
+    # Step 4: Canonicalize FULL structure (including fea_hash and signature_version)
     final_canonical_json = canonicalize_to_json(fea_structure)
 
-    # Step 5: Sign the canonical JSON directly (v2 model)
+    # Step 5: Sign the canonical JSON directly (PURE base64, no prefix)
     signature = sign_message(final_canonical_json)
 
     # Generate FEA ID

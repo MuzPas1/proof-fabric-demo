@@ -10,8 +10,7 @@ from models.fea import (
     VerifyFEAResponse
 )
 from services.fea_service import generate_fea, get_canonical_payload_hash
-from services.verification_service import verify_fea_public, get_verification_details
-from crypto.signing import is_v2_signature
+from services.verification_service import verify_fea_public, get_signature_version
 from routes.auth import verify_api_key
 
 router = APIRouter(prefix="/fea", tags=["FEA"])
@@ -94,11 +93,8 @@ async def verify_fea_endpoint(request: VerifyFEARequest):
     """
     valid, reason = verify_fea_public(request.fea_payload, request.signature)
 
-    # Detect signature version for response
-    sig_version = "v2" if is_v2_signature(request.signature) else "v1"
-
     return VerifyFEAResponse(
         valid=valid,
-        reason=reason if reason else f"Signature verified ({sig_version})",
+        reason=reason,
         verified_at=datetime.now(timezone.utc).isoformat()
     )
