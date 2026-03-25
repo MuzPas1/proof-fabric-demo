@@ -1,24 +1,28 @@
 """Ed25519 signing and verification.
 
 SIGNING MODEL (v2):
-- Ed25519 signs the canonical JSON message DIRECTLY
-- Signature is pure base64 (no prefix)
-- Version is stored in FEA structure as "signature_version" field
+- Ed25519 signs the canonical JSON message with DOMAIN PREFIX
+- Domain prefix: "PFP_V2::" prevents cross-protocol attacks
+- Signature is pure base64 (no prefix in output)
 """
 import base64
 import os
 import hashlib
+import hmac
 from typing import Tuple, Optional
 from nacl.signing import SigningKey, VerifyKey
 from nacl.exceptions import BadSignatureError
 
 
 # Signature versions
-SIGNATURE_VERSION_V2 = "v2"  # Message-signed (correct Ed25519 usage)
+SIGNATURE_VERSION_V2 = "v2"  # Message-signed with domain prefix
 SIGNATURE_VERSION_V1 = "v1"  # Hash-signed (legacy)
 
 # Legacy prefix (for backward compatibility only)
 LEGACY_V2_PREFIX = "v2:"
+
+# Domain separator for cross-protocol attack prevention
+DOMAIN_PREFIX_V2 = "PFP_V2::"
 
 
 def get_private_key() -> bytes:
@@ -32,9 +36,7 @@ def get_private_key() -> bytes:
 def get_signing_key() -> SigningKey:
     """Get Ed25519 signing key from environment."""
     seed = get_private_key()
-    # Ed25519 seed is 32 bytes
     if len(seed) == 64:
-        # Full keypair provided, extract seed (first 32 bytes)
         seed = seed[:32]
     return SigningKey(seed)
 
@@ -48,35 +50,32 @@ def get_public_key() -> bytes:
 def get_public_key_id() -> str:
     """Generate a stable public key ID from the public key."""
     public_key = get_public_key()
-    # Use first 8 bytes of SHA-256 hash as ID
     key_hash = hashlib.sha256(public_key).hexdigest()[:16]
     return f"key_{key_hash}"
 
 
 def sign_message(message: str) -> str:
     """
-    Sign a message directly using Ed25519.
+    Sign a message directly using Ed25519 with domain prefix.
+    
+    SECURITY: Message is prefixed with "PFP_V2::" to prevent
+    cross-protocol signature reuse attacks.
     
     Input: canonical JSON string (UTF-8)
-    Output: pure base64-encoded signature (NO prefix)
-    
-    This is the cryptographically correct way to use Ed25519.
+    Output: pure base64-encoded signature
     """
     signing_key = get_signing_key()
-    message_bytes = message.encode('utf-8')
+    # Add domain prefix for cross-protocol attack prevention
+    prefixed_message = DOMAIN_PREFIX_V2 + message
+    message_bytes = prefixed_message.encode('utf-8')
     signed = signing_key.sign(message_bytes)
-    # Return PURE base64 signature - no prefix
     return base64.b64encode(signed.signature).decode('utf-8')
 
 
 def sign_hash(hash_hex: str) -> str:
     """
     LEGACY (v1): Sign a hash using Ed25519.
-    
-    Input: hex-encoded SHA-256 hash
-    Output: base64-encoded signature
-    
-    DEPRECATED: Use sign_message() for new FEAs.
+    No domain prefix for backward compatibility.
     """
     signing_key = get_signing_key()
     hash_bytes = bytes.fromhex(hash_hex)
@@ -85,48 +84,26 @@ def sign_hash(hash_hex: str) -> str:
 
 
 def normalize_signature(signature: str) -> str:
-    """
-    Normalize signature by stripping legacy prefix if present.
-    Returns pure base64 signature.
-    """
+    """Normalize signature by stripping legacy prefix if present."""
     if signature.startswith(LEGACY_V2_PREFIX):
         return signature[len(LEGACY_V2_PREFIX):]
     return signature
 
 
-def detect_signature_version(signature: str, fea_payload: dict) -> str:
-    """
-    Detect signature version from FEA payload or signature format.
-    
-    Priority:
-    1. signature_version field in payload (explicit)
-    2. Legacy v2: prefix in signature
-    3. Default to v1 (hash-signed)
-    """
-    # Check explicit version field first
-    if 'signature_version' in fea_payload:
-        return fea_payload['signature_version']
-    
-    # Check for legacy prefix
-    if signature.startswith(LEGACY_V2_PREFIX):
-        return SIGNATURE_VERSION_V2
-    
-    # Default to v1 (legacy hash-signed)
-    return SIGNATURE_VERSION_V1
+def constant_time_compare(a: str, b: str) -> bool:
+    """Constant-time string comparison to prevent timing attacks."""
+    return hmac.compare_digest(a.encode('utf-8'), b.encode('utf-8'))
 
 
 def verify_signature_v2(message: str, signature_b64: str, public_key_bytes: bytes) -> Tuple[bool, Optional[str]]:
     """
-    Verify a v2 signature (message-signed).
-    
-    Input:
-    - message: canonical JSON string
-    - signature_b64: pure base64-encoded signature
-    - public_key_bytes: raw public key bytes
+    Verify a v2 signature (message-signed with domain prefix).
     """
     try:
         verify_key = VerifyKey(public_key_bytes)
-        message_bytes = message.encode('utf-8')
+        # Add domain prefix (must match signing)
+        prefixed_message = DOMAIN_PREFIX_V2 + message
+        message_bytes = prefixed_message.encode('utf-8')
         signature_bytes = base64.b64decode(signature_b64)
         verify_key.verify(message_bytes, signature_bytes)
         return True, None
@@ -139,11 +116,7 @@ def verify_signature_v2(message: str, signature_b64: str, public_key_bytes: byte
 def verify_signature_v1(hash_hex: str, signature_b64: str, public_key_bytes: bytes) -> Tuple[bool, Optional[str]]:
     """
     Verify a v1 signature (hash-signed) - LEGACY.
-    
-    Input:
-    - hash_hex: hex-encoded SHA-256 hash
-    - signature_b64: base64-encoded signature
-    - public_key_bytes: raw public key bytes
+    No domain prefix for backward compatibility.
     """
     try:
         verify_key = VerifyKey(public_key_bytes)
@@ -166,21 +139,12 @@ def verify_signature(
 ) -> Tuple[bool, Optional[str]]:
     """
     Verify signature based on version.
-    
-    Input:
-    - canonical_message: full canonical JSON of fea_payload
-    - fea_hash: the fea_hash field value (for v1 verification)
-    - signature: signature string (may have legacy prefix)
-    - public_key_bytes: raw public key bytes
-    - signature_version: "v1" or "v2"
     """
-    # Normalize signature (strip legacy prefix if present)
     raw_sig = normalize_signature(signature)
     
     if signature_version == SIGNATURE_VERSION_V2:
         return verify_signature_v2(canonical_message, raw_sig, public_key_bytes)
     else:
-        # v1 legacy: verify against hash
         return verify_signature_v1(fea_hash, raw_sig, public_key_bytes)
 
 

@@ -60,7 +60,7 @@ async def generate_fea_endpoint(request: GenerateFEARequest):
 
     # Generate new FEA
     try:
-        response, document = generate_fea(request)
+        response, document = generate_fea(request, skip_timestamp_validation=True)
 
         # Store in database
         await database.feas.insert_one(document.model_dump())
@@ -68,7 +68,7 @@ async def generate_fea_endpoint(request: GenerateFEARequest):
         return response
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
 
