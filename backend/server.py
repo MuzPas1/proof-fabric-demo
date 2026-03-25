@@ -5,7 +5,6 @@ Production-grade API for cryptographically verifiable Financial Evidence Artifac
 import sys
 from pathlib import Path
 
-# Add backend to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
 from fastapi import FastAPI, Request
@@ -20,11 +19,9 @@ import os
 import logging
 from datetime import datetime, timezone
 
-# Load environment
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -46,11 +43,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add rate limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -59,12 +54,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Import routes after app creation to avoid circular imports
 from routes.fea_routes import router as fea_router
 from routes.public_routes import router as public_router
 from routes.auth import generate_test_api_key, get_test_api_key
 
-# Include routers with /api prefix
 app.include_router(fea_router, prefix="/api")
 app.include_router(public_router, prefix="/api")
 
@@ -76,18 +69,54 @@ async def startup_event():
     test_key = generate_test_api_key()
     logger.info(f"Test API Key generated: {test_key}")
     
-    # Initialize key registry
+    # Initialize persistent key registry
     from services.key_service import initialize_key_registry
     try:
-        initialize_key_registry()
-        logger.info("Key registry initialized")
+        await initialize_key_registry(db)
+        logger.info("Persistent key registry initialized")
     except Exception as e:
-        logger.warning(f"Key registry initialization skipped: {e}")
+        logger.warning(f"Key registry initialization warning: {e}")
     
-    # Create indexes
+    # Create indexes for FEAs
     await db.feas.create_index("fea_id", unique=True)
     await db.feas.create_index("idempotency_key")
-    logger.info("Database indexes created")
+    
+    # Create compound index for replay protection (transaction_id + timestamp)
+    # Must deduplicate existing data first to avoid index creation failure
+    try:
+        await db.feas.create_index([
+            ("fea_payload.transaction_summary.transaction_id", 1),
+            ("fea_payload.transaction_summary.timestamp", 1)
+        ], unique=True)
+    except Exception as e:
+        logger.warning(f"Replay protection index creation failed (likely existing duplicates): {e}")
+        # Deduplicate: keep the earliest document per (transaction_id, timestamp)
+        pipeline = [
+            {"$group": {
+                "_id": {
+                    "txn_id": "$fea_payload.transaction_summary.transaction_id",
+                    "ts": "$fea_payload.transaction_summary.timestamp"
+                },
+                "keep_id": {"$first": "$_id"},
+                "all_ids": {"$push": "$_id"},
+                "count": {"$sum": 1}
+            }},
+            {"$match": {"count": {"$gt": 1}}}
+        ]
+        async for group in db.feas.aggregate(pipeline):
+            ids_to_remove = [oid for oid in group["all_ids"] if oid != group["keep_id"]]
+            if ids_to_remove:
+                await db.feas.delete_many({"_id": {"$in": ids_to_remove}})
+                logger.info(f"Removed {len(ids_to_remove)} duplicate(s) for txn {group['_id']}")
+        
+        # Retry index creation after dedup
+        await db.feas.create_index([
+            ("fea_payload.transaction_summary.transaction_id", 1),
+            ("fea_payload.transaction_summary.timestamp", 1)
+        ], unique=True)
+        logger.info("Replay protection index created after deduplication")
+    
+    logger.info("Database indexes created (including replay protection)")
 
 
 @app.on_event("shutdown")

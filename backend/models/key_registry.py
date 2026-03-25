@@ -1,6 +1,6 @@
 """Key registry models."""
 from pydantic import BaseModel, ConfigDict
-from typing import Optional
+from typing import Optional, Literal
 
 
 class PublicKeyInfo(BaseModel):
@@ -11,9 +11,12 @@ class PublicKeyInfo(BaseModel):
     public_key: str  # Base64 encoded
     algorithm: str = "Ed25519"
     created_at: str
-    is_active: bool = True
+    status: Literal["active", "retired"] = "active"
 
 
 class KeyRegistryResponse(BaseModel):
     """Response from key registry endpoint."""
     keys: list[PublicKeyInfo]
+    total: int = 0
+    active_count: int = 0
+    retired_count: int = 0

@@ -2,8 +2,8 @@
 from fastapi import APIRouter, HTTPException, status
 
 from models.fea import PublicVerifyResponse
-from services.verification_service import verify_fea_public
-from services.key_service import get_all_public_keys
+from services.verification_service import verify_fea_with_registry
+from services.key_service import get_all_keys
 from models.key_registry import KeyRegistryResponse
 
 router = APIRouter(prefix="/public", tags=["Public"])
@@ -14,16 +14,9 @@ async def public_verify_fea(fea_id: str):
     """
     Public verification of an FEA by ID.
     No authentication required.
-
-    Returns clean structure:
-    - fea_payload: the signed data
-    - signature: pure base64 signature
-    - signature_version: metadata
-    - signature_valid: verification result
     """
     from server import db
 
-    # Find FEA by ID
     fea_doc = await db.feas.find_one({"fea_id": fea_id}, {"_id": 0})
 
     if not fea_doc:
@@ -32,16 +25,13 @@ async def public_verify_fea(fea_id: str):
             detail=f"FEA not found: {fea_id}"
         )
 
-    # Get signature version (handle legacy documents)
     sig_version = fea_doc.get("signature_version", "v1")
-    
-    # For legacy documents, check if signature_version is in payload
     fea_payload = fea_doc["fea_payload"]
+    
     if "signature_version" in fea_payload and sig_version == "v1":
         sig_version = fea_payload["signature_version"]
 
-    # Verify the signature
-    valid, reason, detected_version = verify_fea_public(
+    valid, reason, detected_version = await verify_fea_with_registry(
         fea_payload,
         fea_doc["signature"],
         sig_version
@@ -63,6 +53,18 @@ async def get_key_registry():
     """
     Get all public keys in the registry.
     No authentication required.
+    
+    Returns both active and retired keys to support
+    verification of historical FEAs.
     """
-    keys = get_all_public_keys()
-    return KeyRegistryResponse(keys=keys)
+    keys = await get_all_keys()
+    
+    active_count = sum(1 for k in keys if k.status == "active")
+    retired_count = sum(1 for k in keys if k.status == "retired")
+    
+    return KeyRegistryResponse(
+        keys=keys,
+        total=len(keys),
+        active_count=active_count,
+        retired_count=retired_count
+    )

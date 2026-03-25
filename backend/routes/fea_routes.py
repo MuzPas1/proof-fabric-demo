@@ -8,42 +8,51 @@ from models.fea import (
     VerifyFEARequest,
     VerifyFEAResponse
 )
-from services.fea_service import generate_fea, get_canonical_payload_hash
-from services.verification_service import verify_fea_public
+from services.fea_service import generate_fea, get_canonical_payload_hash, get_transaction_payload_hash
+from services.verification_service import verify_fea_with_registry
 from routes.auth import verify_api_key
 
 router = APIRouter(prefix="/fea", tags=["FEA"])
 
 
-@router.post("/generate", response_model=FEAResponse, dependencies=[Depends(verify_api_key)])
-async def generate_fea_endpoint(request: GenerateFEARequest):
+async def check_replay_protection(db, transaction_id: str, timestamp: str, request: GenerateFEARequest) -> FEAResponse | None:
     """
-    Generate a Financial Evidence Artifact.
-
-    RESPONSE STRUCTURE (clean separation):
-    - fea_payload: the signed data (ONLY this is signed)
-    - signature: pure base64 Ed25519 signature
-    - signature_version: metadata (NOT signed)
-    - created_at: metadata (NOT signed)
-
-    Idempotency:
-    - Same idempotency_key + same payload = same FEA returned
-    - Same idempotency_key + different payload = 409 CONFLICT
+    Check for transaction replay based on (transaction_id + timestamp).
+    
+    Returns:
+    - None: No existing transaction, proceed with generation
+    - FEAResponse: Existing FEA with same payload (return it)
+    
+    Raises:
+    - HTTPException 409: Replay attack detected (same transaction, different payload)
     """
-    from server import db as database
-
-    # Check idempotency
-    existing = await database.feas.find_one(
-        {"idempotency_key": request.idempotency_key},
+    from crypto.canonicalize import normalize_timestamp
+    
+    normalized_ts = normalize_timestamp(timestamp)
+    
+    # Check for existing transaction with same (transaction_id, timestamp)
+    existing = await db.feas.find_one(
+        {
+            "fea_payload.transaction_summary.transaction_id": transaction_id,
+            "fea_payload.transaction_summary.timestamp": normalized_ts
+        },
         {"_id": 0}
     )
-
+    
     if existing:
-        # Compute current payload hash
-        current_hash = get_canonical_payload_hash(request)
-
-        if existing["canonical_payload_hash"] == current_hash:
-            # Same payload, return existing FEA
+        # Transaction exists - check if transaction payload matches (excluding idempotency_key)
+        current_txn_hash = get_transaction_payload_hash(request)
+        stored_txn_hash = existing.get("transaction_payload_hash", "")
+        
+        # Backward compat: old docs may not have transaction_payload_hash
+        if not stored_txn_hash:
+            # Fall back to canonical_payload_hash comparison (includes idem key)
+            current_hash = get_canonical_payload_hash(request)
+            stored_txn_hash = existing["canonical_payload_hash"]
+            current_txn_hash = current_hash
+        
+        if stored_txn_hash == current_txn_hash:
+            # Same transaction payload - return existing FEA
             return FEAResponse(
                 fea_id=existing["fea_id"],
                 fea_payload=existing["fea_payload"],
@@ -53,10 +62,64 @@ async def generate_fea_endpoint(request: GenerateFEARequest):
                 created_at=existing["created_at"]
             )
         else:
+            # Different payload - replay attack detected
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Transaction replay detected with conflicting data"
+            )
+    
+    return None
+
+
+@router.post("/generate", response_model=FEAResponse, dependencies=[Depends(verify_api_key)])
+async def generate_fea_endpoint(request: GenerateFEARequest):
+    """
+    Generate a Financial Evidence Artifact.
+
+    REPLAY PROTECTION (dual layer):
+    1. Idempotency key: Same key + same payload = same FEA
+    2. Transaction uniqueness: (transaction_id + timestamp) must be globally unique
+
+    If duplicate transaction detected:
+    - Same payload → return existing FEA
+    - Different payload → 409 CONFLICT (replay attack)
+    """
+    from server import db as database
+
+    # Layer 1: Check idempotency key
+    existing_by_idem = await database.feas.find_one(
+        {"idempotency_key": request.idempotency_key},
+        {"_id": 0}
+    )
+
+    if existing_by_idem:
+        current_hash = get_canonical_payload_hash(request)
+        
+        if existing_by_idem["canonical_payload_hash"] == current_hash:
+            return FEAResponse(
+                fea_id=existing_by_idem["fea_id"],
+                fea_payload=existing_by_idem["fea_payload"],
+                signature=existing_by_idem["signature"],
+                signature_version=existing_by_idem.get("signature_version", "v1"),
+                public_key_id=existing_by_idem["public_key_id"],
+                created_at=existing_by_idem["created_at"]
+            )
+        else:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Idempotency key already used with different payload"
             )
+
+    # Layer 2: Check transaction replay (transaction_id + timestamp)
+    existing_by_txn = await check_replay_protection(
+        database,
+        request.transaction_id,
+        request.timestamp,
+        request
+    )
+    
+    if existing_by_txn:
+        return existing_by_txn
 
     # Generate new FEA
     try:
@@ -77,22 +140,11 @@ async def generate_fea_endpoint(request: GenerateFEARequest):
 async def verify_fea_endpoint(request: VerifyFEARequest):
     """
     Verify an FEA payload and signature.
-
-    ACCEPTS BOTH FORMATS:
-    - New: fea_payload + signature + signature_version (external)
-    - Legacy: fea_payload (with signature_version inside) + signature
-
-    VERIFICATION PROTOCOL:
-    1. Detect signature_version (external > payload field > prefix > v1)
-    2. Clean payload (remove legacy signature_version if present)
-    3. Recompute fea_hash for integrity check
-    4. Canonicalize cleaned fea_payload
-    5. Verify Ed25519 signature based on version
     """
-    valid, reason, sig_version = verify_fea_public(
+    valid, reason, sig_version = await verify_fea_with_registry(
         request.fea_payload,
         request.signature,
-        request.signature_version  # External version (new format)
+        request.signature_version
     )
 
     return VerifyFEAResponse(

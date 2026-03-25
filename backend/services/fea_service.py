@@ -120,7 +120,7 @@ def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = 
     created_at = datetime.now(timezone.utc).isoformat()
     signature_version = SIGNATURE_VERSION_V2
 
-    # Compute idempotency hash
+    # Compute idempotency hash (includes idempotency_key)
     canonical_input = canonicalize_to_json({
         "idempotency_key": request.idempotency_key,
         "transaction_id": request.transaction_id,
@@ -132,6 +132,18 @@ def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = 
         "metadata": request.metadata
     })
     canonical_payload_hash = compute_sha256(canonical_input)
+
+    # Compute transaction payload hash (excludes idempotency_key — for replay protection)
+    txn_input = canonicalize_to_json({
+        "transaction_id": request.transaction_id,
+        "timestamp": normalize_timestamp(request.timestamp),
+        "amount": request.amount,
+        "currency": request.currency.upper(),
+        "payer_id": request.payer_id,
+        "payee_id": request.payee_id,
+        "metadata": request.metadata
+    })
+    transaction_payload_hash = compute_sha256(txn_input)
 
     response = FEAResponse(
         fea_id=fea_id,
@@ -146,6 +158,7 @@ def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = 
         fea_id=fea_id,
         idempotency_key=request.idempotency_key,
         canonical_payload_hash=canonical_payload_hash,
+        transaction_payload_hash=transaction_payload_hash,
         fea_payload=fea_payload,
         signature=signature,
         signature_version=signature_version,
@@ -157,9 +170,25 @@ def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = 
 
 
 def get_canonical_payload_hash(request: GenerateFEARequest) -> str:
-    """Compute the canonical payload hash for idempotency checking."""
+    """Compute the canonical payload hash for idempotency checking (includes idempotency_key)."""
     canonical_input = canonicalize_to_json({
         "idempotency_key": request.idempotency_key,
+        "transaction_id": request.transaction_id,
+        "timestamp": normalize_timestamp(request.timestamp),
+        "amount": request.amount,
+        "currency": request.currency.upper(),
+        "payer_id": request.payer_id,
+        "payee_id": request.payee_id,
+        "metadata": request.metadata
+    })
+    return compute_sha256(canonical_input)
+
+
+def get_transaction_payload_hash(request: GenerateFEARequest) -> str:
+    """Compute a hash of the transaction payload ONLY (excludes idempotency_key).
+    Used for replay protection — same transaction event should produce the same hash
+    regardless of which idempotency key was used."""
+    canonical_input = canonicalize_to_json({
         "transaction_id": request.transaction_id,
         "timestamp": normalize_timestamp(request.timestamp),
         "amount": request.amount,

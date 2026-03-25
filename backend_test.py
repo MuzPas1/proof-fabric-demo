@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 # External URL from frontend/.env
-BASE_URL = "https://fea-verify-engine.preview.emergentagent.com"
+BASE_URL = "https://pfp-hardening.preview.emergentagent.com"
 API_URL = f"{BASE_URL}/api"
 
 class PFPAPITester:

@@ -176,12 +176,48 @@ def verify_fea(
     return valid, reason, sig_version
 
 
+async def verify_fea_with_registry(
+    fea_payload: Dict[str, Any],
+    signature: str,
+    external_signature_version: Optional[str] = None
+) -> Tuple[bool, Optional[str], str]:
+    """
+    Verify FEA using the persistent DB-backed key registry.
+    Resolves public_key_id from the database, supporting retired keys.
+    """
+    public_key_id = fea_payload.get("public_key_id")
+    if not public_key_id:
+        return False, "Missing public_key_id in payload", "unknown"
+
+    # Resolve key from persistent registry
+    from services.key_service import get_public_key_bytes_by_id
+    public_key_bytes = await get_public_key_bytes_by_id(public_key_id)
+
+    if not public_key_bytes:
+        # Fallback: try current signing key (for backward compat)
+        try:
+            from crypto.signing import get_public_key_id as get_current_key_id, get_public_key
+            if public_key_id == get_current_key_id():
+                public_key_bytes = get_public_key()
+        except Exception:
+            pass
+
+    if not public_key_bytes:
+        return False, f"Unknown public_key_id: {public_key_id}", "unknown"
+
+    registry = {public_key_id: public_key_bytes}
+    return verify_fea(fea_payload, signature, registry, external_signature_version, skip_timestamp_validation=True)
+
+
 def verify_fea_public(
     fea_payload: Dict[str, Any],
     signature: str,
     external_signature_version: Optional[str] = None
 ) -> Tuple[bool, Optional[str], str]:
-    """Public verification using current key registry."""
+    """
+    Synchronous public verification — uses current key only.
+    Prefer verify_fea_with_registry for DB-backed resolution.
+    """
     try:
         from crypto.signing import get_public_key_id, get_public_key
         registry = {
