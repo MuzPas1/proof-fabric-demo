@@ -1,11 +1,16 @@
 """FEA generation service.
 
-SIGNING MODEL (v2):
-1. Build FEA structure (with signature_version, without fea_hash)
-2. Canonicalize and compute SHA-256 → fea_hash
-3. Add fea_hash to structure
-4. Canonicalize FULL structure (including fea_hash and signature_version)
-5. Sign the canonical JSON directly (pure base64, no prefix)
+SIGNING MODEL:
+- ONLY the fea_payload is signed
+- signature_version, created_at are metadata (NOT signed)
+
+SIGNING FLOW:
+1. Build fea_payload (without fea_hash)
+2. Canonicalize → compute SHA-256 → fea_hash
+3. Insert fea_hash into fea_payload
+4. Canonicalize full fea_payload
+5. Sign canonical fea_payload using Ed25519
+6. Return fea_payload + signature + metadata separately
 """
 import os
 import uuid
@@ -22,11 +27,16 @@ from crypto.hashing import compute_sha256, hash_metadata
 from crypto.signing import sign_message, get_public_key_id, SIGNATURE_VERSION_V2
 
 
-def build_fea_structure(request: GenerateFEARequest) -> Dict[str, Any]:
+def build_fea_payload(request: GenerateFEARequest) -> Dict[str, Any]:
     """
-    Build the canonical FEA structure from input request.
+    Build the FEA payload - THIS IS WHAT GETS SIGNED.
+    
+    Does NOT include:
+    - signature_version (metadata)
+    - created_at (metadata)
+    - signature (obviously)
+    
     Returns structure WITHOUT fea_hash (added later).
-    Includes signature_version field.
     """
     issuer_id = os.environ.get('ISSUER_ID', 'pfp-issuer-001')
     public_key_id = get_public_key_id()
@@ -34,10 +44,9 @@ def build_fea_structure(request: GenerateFEARequest) -> Dict[str, Any]:
     # Normalize timestamp
     normalized_ts = normalize_timestamp(request.timestamp)
 
-    # Build FEA structure with signature_version
-    fea_dict = {
+    # Build FEA payload - ONLY signed data
+    fea_payload = {
         "fea_version": "1.0",
-        "signature_version": SIGNATURE_VERSION_V2,  # Explicit version field
         "issuer_id": issuer_id,
         "public_key_id": public_key_id,
         "transaction_summary": {
@@ -54,57 +63,60 @@ def build_fea_structure(request: GenerateFEARequest) -> Dict[str, Any]:
 
     # Hash metadata if provided (never embed raw)
     if request.metadata:
-        fea_dict["metadata_hash"] = hash_metadata(request.metadata)
+        fea_payload["metadata_hash"] = hash_metadata(request.metadata)
 
-    return fea_dict
+    return fea_payload
 
 
-def compute_fea_hash(fea_structure: Dict[str, Any]) -> str:
+def compute_fea_hash(fea_payload: Dict[str, Any]) -> str:
     """
-    Compute the FEA hash from the canonical FEA structure.
-    The hash is computed on the structure WITHOUT the fea_hash field.
-    (signature_version IS included in the hash)
+    Compute the FEA hash from the canonical payload.
+    Hash is computed on payload WITHOUT the fea_hash field.
     """
-    # Ensure fea_hash is not in the structure when computing
-    structure_copy = {k: v for k, v in fea_structure.items() if k != 'fea_hash'}
-    canonical_json = canonicalize_to_json(structure_copy)
+    payload_without_hash = {k: v for k, v in fea_payload.items() if k != 'fea_hash'}
+    canonical_json = canonicalize_to_json(payload_without_hash)
     return compute_sha256(canonical_json)
 
 
 def generate_fea(request: GenerateFEARequest) -> Tuple[FEAResponse, FEADocument]:
     """
-    Generate a Financial Evidence Artifact from the request.
+    Generate a Financial Evidence Artifact.
     
     SIGNING FLOW:
-    1. Build FEA structure (with signature_version, without fea_hash)
-    2. Canonicalize and compute SHA-256 → fea_hash
-    3. Add fea_hash to structure
-    4. Canonicalize FULL structure
-    5. Sign canonical JSON directly (pure base64 output)
+    1. Build fea_payload (without fea_hash)
+    2. Canonicalize → SHA-256 → fea_hash
+    3. Insert fea_hash into fea_payload
+    4. Canonicalize full fea_payload
+    5. Sign canonical fea_payload (Ed25519)
     
-    Returns both the response and the document to store.
+    Returns:
+    - fea_payload: the signed data
+    - signature: pure base64
+    - signature_version: metadata (NOT signed)
+    - created_at: metadata (NOT signed)
     """
-    # Step 1: Build FEA structure (with signature_version, without fea_hash)
-    fea_structure = build_fea_structure(request)
+    # Step 1: Build fea_payload (without fea_hash)
+    fea_payload = build_fea_payload(request)
 
-    # Step 2: Compute SHA-256 hash on structure (without fea_hash)
-    fea_hash = compute_fea_hash(fea_structure)
+    # Step 2: Compute fea_hash
+    fea_hash = compute_fea_hash(fea_payload)
 
-    # Step 3: Add fea_hash to structure
-    fea_structure["fea_hash"] = fea_hash
+    # Step 3: Insert fea_hash into fea_payload
+    fea_payload["fea_hash"] = fea_hash
 
-    # Step 4: Canonicalize FULL structure (including fea_hash and signature_version)
-    final_canonical_json = canonicalize_to_json(fea_structure)
+    # Step 4: Canonicalize full fea_payload
+    canonical_payload = canonicalize_to_json(fea_payload)
 
-    # Step 5: Sign the canonical JSON directly (PURE base64, no prefix)
-    signature = sign_message(final_canonical_json)
+    # Step 5: Sign canonical fea_payload (ONLY the payload, not metadata)
+    signature = sign_message(canonical_payload)
 
-    # Generate FEA ID
+    # Generate metadata (NOT part of signed data)
     fea_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
+    signature_version = SIGNATURE_VERSION_V2
 
-    # Compute canonical payload hash for idempotency (based on input)
-    canonical_input_json = canonicalize_to_json({
+    # Compute idempotency hash (based on input request)
+    canonical_input = canonicalize_to_json({
         "idempotency_key": request.idempotency_key,
         "transaction_id": request.transaction_id,
         "timestamp": normalize_timestamp(request.timestamp),
@@ -114,15 +126,15 @@ def generate_fea(request: GenerateFEARequest) -> Tuple[FEAResponse, FEADocument]
         "payee_id": request.payee_id,
         "metadata": request.metadata
     })
-    canonical_payload_hash = compute_sha256(canonical_input_json)
+    canonical_payload_hash = compute_sha256(canonical_input)
 
-    # Build response
+    # Build response - clean separation
     response = FEAResponse(
         fea_id=fea_id,
-        fea_hash=fea_hash,
+        fea_payload=fea_payload,
         signature=signature,
-        public_key_id=fea_structure["public_key_id"],
-        fea_payload=fea_structure,
+        signature_version=signature_version,
+        public_key_id=fea_payload["public_key_id"],
         created_at=created_at
     )
 
@@ -131,11 +143,11 @@ def generate_fea(request: GenerateFEARequest) -> Tuple[FEAResponse, FEADocument]
         fea_id=fea_id,
         idempotency_key=request.idempotency_key,
         canonical_payload_hash=canonical_payload_hash,
-        fea_hash=fea_hash,
+        fea_payload=fea_payload,
         signature=signature,
-        public_key_id=fea_structure["public_key_id"],
-        created_at=created_at,
-        fea_payload=fea_structure
+        signature_version=signature_version,
+        public_key_id=fea_payload["public_key_id"],
+        created_at=created_at
     )
 
     return response, document
@@ -143,7 +155,7 @@ def generate_fea(request: GenerateFEARequest) -> Tuple[FEAResponse, FEADocument]
 
 def get_canonical_payload_hash(request: GenerateFEARequest) -> str:
     """Compute the canonical payload hash for idempotency checking."""
-    canonical_input_json = canonicalize_to_json({
+    canonical_input = canonicalize_to_json({
         "idempotency_key": request.idempotency_key,
         "transaction_id": request.transaction_id,
         "timestamp": normalize_timestamp(request.timestamp),
@@ -153,4 +165,4 @@ def get_canonical_payload_hash(request: GenerateFEARequest) -> str:
         "payee_id": request.payee_id,
         "metadata": request.metadata
     })
-    return compute_sha256(canonical_input_json)
+    return compute_sha256(canonical_input)

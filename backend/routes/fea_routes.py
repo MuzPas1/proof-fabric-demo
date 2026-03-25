@@ -1,7 +1,6 @@
 """FEA generation and verification routes (authenticated)."""
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime, timezone
-from typing import Optional
 
 from models.fea import (
     GenerateFEARequest,
@@ -10,21 +9,22 @@ from models.fea import (
     VerifyFEAResponse
 )
 from services.fea_service import generate_fea, get_canonical_payload_hash
-from services.verification_service import verify_fea_public, get_signature_version
+from services.verification_service import verify_fea_public
 from routes.auth import verify_api_key
 
 router = APIRouter(prefix="/fea", tags=["FEA"])
 
 
 @router.post("/generate", response_model=FEAResponse, dependencies=[Depends(verify_api_key)])
-async def generate_fea_endpoint(request: GenerateFEARequest, db=None):
+async def generate_fea_endpoint(request: GenerateFEARequest):
     """
     Generate a Financial Evidence Artifact.
 
-    SIGNING MODEL (v2):
-    - Builds FEA structure → computes SHA-256 → adds fea_hash
-    - Canonicalizes FULL structure (including fea_hash)
-    - Signs the canonical JSON directly using Ed25519
+    RESPONSE STRUCTURE (clean separation):
+    - fea_payload: the signed data (ONLY this is signed)
+    - signature: pure base64 Ed25519 signature
+    - signature_version: metadata (NOT signed)
+    - created_at: metadata (NOT signed)
 
     Idempotency:
     - Same idempotency_key + same payload = same FEA returned
@@ -46,14 +46,13 @@ async def generate_fea_endpoint(request: GenerateFEARequest, db=None):
             # Same payload, return existing FEA
             return FEAResponse(
                 fea_id=existing["fea_id"],
-                fea_hash=existing["fea_hash"],
-                signature=existing["signature"],
-                public_key_id=existing["public_key_id"],
                 fea_payload=existing["fea_payload"],
+                signature=existing["signature"],
+                signature_version=existing.get("signature_version", "v1"),
+                public_key_id=existing["public_key_id"],
                 created_at=existing["created_at"]
             )
         else:
-            # Different payload with same idempotency key - reject
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Idempotency key already used with different payload"
@@ -79,22 +78,26 @@ async def verify_fea_endpoint(request: VerifyFEARequest):
     """
     Verify an FEA payload and signature.
 
+    ACCEPTS BOTH FORMATS:
+    - New: fea_payload + signature + signature_version (external)
+    - Legacy: fea_payload (with signature_version inside) + signature
+
     VERIFICATION PROTOCOL:
-    1. Extract fea_payload (full payload including fea_hash)
-    2. Recompute fea_hash:
-       - Remove fea_hash field from payload
-       - Canonicalize (sort keys, remove nulls)
-       - Compute SHA-256
-    3. Compare computed hash with fea_payload.fea_hash
-    4. Canonicalize FULL fea_payload (including fea_hash)
-    5. Verify Ed25519 signature:
-       - v2: verify against canonical message (correct)
-       - v1: verify against fea_hash (legacy, backward compatible)
+    1. Detect signature_version (external > payload field > prefix > v1)
+    2. Clean payload (remove legacy signature_version if present)
+    3. Recompute fea_hash for integrity check
+    4. Canonicalize cleaned fea_payload
+    5. Verify Ed25519 signature based on version
     """
-    valid, reason = verify_fea_public(request.fea_payload, request.signature)
+    valid, reason, sig_version = verify_fea_public(
+        request.fea_payload,
+        request.signature,
+        request.signature_version  # External version (new format)
+    )
 
     return VerifyFEAResponse(
         valid=valid,
         reason=reason,
+        signature_version=sig_version,
         verified_at=datetime.now(timezone.utc).isoformat()
     )
