@@ -1,22 +1,22 @@
 import "@/App.css";
 import { Toaster } from "sonner";
-import TwoPartyProofComparison from "@/components/TwoPartyProofComparison";
+import TransactionFlow from "@/components/TransactionFlow";
 
 function App() {
   return (
     <>
       <Toaster
-        theme="dark"
+        theme="light"
         position="top-right"
         toastOptions={{
           style: {
-            background: "#09090b",
-            border: "1px solid #27272a",
-            color: "#fafafa",
+            background: "#ffffff",
+            border: "1px solid #e5e7eb",
+            color: "#111827",
           },
         }}
       />
-      <TwoPartyProofComparison />
+      <TransactionFlow />
     </>
   );
 }

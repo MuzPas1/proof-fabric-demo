@@ -56,17 +56,15 @@ Build a production-grade API for "Proof Fabric Protocol (PFP)" - Transform finan
 - [x] All endpoints use async DB-backed verification
 - [x] 19/19 backend tests passed
 
-### Phase 4: Two-Party Proof Comparison Demo (Complete - Feb 10, 2026)
-- [x] New public endpoint POST /api/demo/proof — normalizes + canonicalizes + SHA-256 hashes a party record
-- [x] Normalization rules: trim, lowercase user_id, 2-decimal amount, ISO-UTC timestamp with .000Z, sorted-key canonical JSON
-- [x] New demo-focused UI replacing dev console (App.js → TwoPartyProofComparison)
-- [x] Side-by-side Party A / Party B cards with identical pre-filled sample data
-- [x] Independent "Generate Party A/B Proof" actions
-- [x] Proof invalidation on edit (stale badge + compare disabled + result cleared)
-- [x] Compare Proofs action with green match / red mismatch result states
-- [x] Collapsible technical details drawer (hidden by default)
-- [x] Reset to defaults action
-- [x] 12/12 backend + full frontend e2e tests passed (iteration_3.json)
+### Phase 5: Transaction Flow Dashboard (Complete - Feb 10, 2026)
+- [x] Replaced developer-console UI with a light fintech dashboard (`TransactionFlow.jsx`)
+- [x] 5-step sectioned flow: Transaction → Compliance → Consistency → Exception (conditional) → Evidence
+- [x] Compliance card: KYC / AML / Limits auto-pass → "Transaction is COMPLIANT"
+- [x] Consistency card: Party A (Razorpay) vs Party B (HDFC) with "Simulate Mismatch" toggle → CONSISTENT / MISMATCH DETECTED
+- [x] Exception card (only on mismatch): "Amount mismatch detected" with reconciliation note
+- [x] Evidence card: "Generate Proof Artifact" (calls `/api/demo/proof`) → "Verify Proof" → "Proof Verified — Data Untampered"
+- [x] Theme switched to light/white fintech palette (Stripe/Razorpay feel); CSS vars + body bg updated in `index.css`
+- [x] Backend unchanged — reuses existing `/api/demo/proof` endpoint
 
 ## Prioritized Backlog
 
