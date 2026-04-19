@@ -1,13 +1,17 @@
 """
-Demo routes — Two-Party Proof Comparison.
+Demo routes — Transaction Proof Flow.
 
-Public, unauthenticated demo endpoint that normalizes a party record and
-returns a deterministic proof hash. Intended to showcase proof-based
-consistency comparison across two independent parties.
+Public, unauthenticated demo endpoints:
+  • POST /demo/proof              — stateless normalize + canonical SHA-256 hash
+  • POST /demo/issue              — issue a proof that embeds compliance state and persist it
+  • GET  /demo/verify/{proof_id}  — retrieve a stored proof and re-verify its integrity
+
+Crypto logic (canonicalization + hashing) is untouched; issue/verify only add
+persistence + lookup on top of the existing primitives.
 """
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from typing import Union
+from typing import Union, Optional
 from datetime import datetime, timezone
 
 from crypto.canonicalize import canonicalize_to_json, normalize_timestamp
@@ -114,4 +118,147 @@ async def generate_party_proof(record: PartyRecord):
             canonicalization="sorted-keys/utf-8/no-whitespace",
             generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Compliance-aware proof issuance & auditor verification
+# ---------------------------------------------------------------------------
+
+class ComplianceResult(BaseModel):
+    kyc: str = Field(..., pattern="^(Pass|Fail)$")
+    aml: str = Field(..., pattern="^(Pass|Fail)$")
+    limits: str = Field(..., pattern="^(Within allowed range|Exceeded)$")
+    status: str = Field(..., pattern="^(COMPLIANT|NON-COMPLIANT)$")
+
+
+class IssueRequest(BaseModel):
+    transaction_id: str = Field(..., min_length=1, max_length=200)
+    user_id: str = Field(..., min_length=1, max_length=200)
+    amount: Union[str, float, int]
+    created_at: str = Field(..., min_length=1)
+    compliance: ComplianceResult
+
+
+class IssueResponse(BaseModel):
+    proof_id: str
+    proof_hash: str
+    transaction_id: str
+    issued_at: str
+    metadata: ProofMetadata
+
+
+class VerifyByIdResponse(BaseModel):
+    valid: bool
+    proof_id: str
+    transaction_id: Optional[str] = None
+    compliance: Optional[dict] = None
+    issued_at: Optional[str] = None
+    reason: Optional[str] = None
+
+
+def _build_canonical_payload(record: PartyRecord, compliance: ComplianceResult) -> dict:
+    """Normalize the transaction record and embed the compliance result."""
+    normalized = normalize_party_record(record)
+    return {
+        **normalized,
+        "compliance": {
+            "kyc": compliance.kyc,
+            "aml": compliance.aml,
+            "limits": compliance.limits,
+            "status": compliance.status,
+        },
+    }
+
+
+@router.post("/issue", response_model=IssueResponse)
+async def issue_proof(req: IssueRequest):
+    """
+    Issue a compliance-aware proof for a transaction and persist it so it can
+    be verified later by an auditor using only the Proof ID.
+    """
+    from server import db as database
+
+    record = PartyRecord(
+        transaction_id=req.transaction_id,
+        user_id=req.user_id,
+        amount=req.amount,
+        created_at=req.created_at,
+    )
+    full_payload = _build_canonical_payload(record, req.compliance)
+    canonical_json = canonicalize_to_json(full_payload)
+    proof_hash = compute_sha256(canonical_json)
+
+    issued_at = (
+        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    )
+
+    await database.demo_proofs.replace_one(
+        {"proof_id": proof_hash},
+        {
+            "proof_id": proof_hash,
+            "transaction_id": full_payload["transaction_id"],
+            "compliance": full_payload["compliance"],
+            "normalized_payload": full_payload,
+            "issued_at": issued_at,
+        },
+        upsert=True,
+    )
+
+    return IssueResponse(
+        proof_id=proof_hash,
+        proof_hash=proof_hash,
+        transaction_id=full_payload["transaction_id"],
+        issued_at=issued_at,
+        metadata=ProofMetadata(
+            algorithm="SHA-256",
+            canonicalization="sorted-keys/utf-8/no-whitespace",
+            generated_at=issued_at,
+        ),
+    )
+
+
+@router.get("/verify/{proof_id}", response_model=VerifyByIdResponse)
+async def verify_proof_by_id(proof_id: str):
+    """
+    Look up a stored proof and re-verify its integrity by re-canonicalizing
+    and re-hashing the persisted payload. Returns the compliance state that
+    was embedded when the proof was issued.
+    """
+    from server import db as database
+
+    proof_id = proof_id.strip().lower()
+    if len(proof_id) != 64 or not all(c in "0123456789abcdef" for c in proof_id):
+        return VerifyByIdResponse(
+            valid=False,
+            proof_id=proof_id,
+            reason="Malformed Proof ID",
+        )
+
+    doc = await database.demo_proofs.find_one({"proof_id": proof_id}, {"_id": 0})
+    if not doc:
+        return VerifyByIdResponse(
+            valid=False,
+            proof_id=proof_id,
+            reason="Proof not found",
+        )
+
+    canonical = canonicalize_to_json(doc["normalized_payload"])
+    recomputed = compute_sha256(canonical)
+    if recomputed != proof_id:
+        return VerifyByIdResponse(
+            valid=False,
+            proof_id=proof_id,
+            transaction_id=doc.get("transaction_id"),
+            compliance=doc.get("compliance"),
+            issued_at=doc.get("issued_at"),
+            reason="Hash mismatch — proof integrity failed",
+        )
+
+    return VerifyByIdResponse(
+        valid=True,
+        proof_id=proof_id,
+        transaction_id=doc["transaction_id"],
+        compliance=doc["compliance"],
+        issued_at=doc["issued_at"],
     )

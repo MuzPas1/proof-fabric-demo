@@ -1,0 +1,24 @@
+{
+  "summary": "Full backend + frontend e2e testing of the new Transaction Flow demo (issue/verify + compliance-aware UI). All 16 backend pytest cases passed (happy path compliant/non-compliant issue, idempotency, 422 on invalid compliance enum x4, verify compliant/non-compliant, verify not-found for unknown hex, 5 malformed-id cases, legacy /demo/proof still works). Full Playwright UI walkthrough covered all 15 target flows: section order, hero + tamper/auditor copy, compliant happy path (Data Untampered/green), non-compliant path (KYC Fail / Flagged badge / flagged headline), auditor pre-fill + verify (kyc/aml/limits/txid populated from backend), invalid auditor (0*64 -> Invalid Proof — Verification Failed, reason 'Proof not found'), consistency mismatch toggle ON reveals Exception section with 'Amount mismatch detected' and OFF hides it, share button visible/clickable, edit-after-process invalidates proof (section-evidence hidden + processed badge removed), compliance-toggle-after-process invalidates too, and new-transaction-btn resets form to defaults + clears proof/auditor state.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_demo_issue_verify.py",
+    "/app/test_reports/pytest/demo_issue_verify_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "demo_routes.py: `from server import db as database` is done lazily inside each handler. Works, but consider injecting the DB handle at router-wire time for cleaner testability and to fail fast if server module wiring changes.",
+    "/api/demo/verify/{proof_id}: malformed-ID path returns 200 with valid=false (per spec). Consider documenting that shape in OpenAPI so consumers don't treat 200 as success.",
+    "Frontend TransactionFlow.jsx is ~920 lines. Not blocking, but AuditorResult + PartyPanel + FieldInput + ProofRow could be extracted to their own files for readability once more flows are added.",
+    "Share Proof falls back to clipboard which can throw in headless/iframe contexts; current try/catch + toast covers this fine — no action needed."
+  ],
+  "updated_files": ["/app/backend/tests/test_demo_issue_verify.py (new)"],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% (all target flows)"},
+  "test_credentials": "N/A — /api/demo/* endpoints are public",
+  "seed_data_creation": "Tests create TEST_TXN-* proofs in db.demo_proofs (upsert, idempotent). Not cleaned up — safe to leave since proof_id is deterministic hash of deterministic TEST_ inputs.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New feature fully verified. Backend: test file /app/backend/tests/test_demo_issue_verify.py covers all issue/verify flows. Legacy /api/demo/proof still works. Mongo collection db.demo_proofs is created on first POST /api/demo/issue. Frontend: all data-testids match spec (page-title, page-subtitle, section-*, compliance-toggle, compliance-summary, evidence-verification-status, evidence-status-badge, evidence-proof-id, evidence-tamper-note, auditor-proof-id-input, auditor-verify-btn, auditor-result, auditor-result-headline, auditor-result-reason, auditor-kyc/aml/limits/transaction-id, mismatch-toggle, consistency-status, exception-reason, share-proof-btn, new-transaction-btn). Editing any transaction field OR toggling the compliance switch after processing correctly invalidates and hides section-evidence.",
+  "rca of the issue": "N/A — no bugs found."
+}

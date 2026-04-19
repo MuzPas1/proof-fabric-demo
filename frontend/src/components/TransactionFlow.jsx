@@ -23,6 +23,9 @@ import {
   Lock,
   Scale,
   GitCompareArrows,
+  Share2,
+  Copy,
+  Search,
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -34,10 +37,7 @@ const DEFAULTS = {
   amount: "2450.00",
 };
 
-/* --------------------------------- helpers -------------------------------- */
-
-const nowIso = () =>
-  new Date().toISOString().replace(/\.\d{3}Z$/, (m) => m);
+const nowIso = () => new Date().toISOString();
 
 const formatTs = (iso) => {
   try {
@@ -57,7 +57,7 @@ const formatTs = (iso) => {
 
 const shortHash = (h) => (h ? `${h.slice(0, 10)}…${h.slice(-8)}` : "");
 
-/* ---------------------------- shared components --------------------------- */
+/* --------------------------------- UI bits -------------------------------- */
 
 function SectionCard({
   step,
@@ -119,7 +119,11 @@ function StatusPill({ status, label, testId }) {
     neutral: "bg-gray-100 text-gray-700 ring-1 ring-gray-200",
   };
   const Icon =
-    status === "success" ? CheckCircle2 : status === "error" ? AlertTriangle : null;
+    status === "success"
+      ? CheckCircle2
+      : status === "error"
+      ? AlertTriangle
+      : null;
   return (
     <span
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${map[status]}`}
@@ -131,14 +135,14 @@ function StatusPill({ status, label, testId }) {
   );
 }
 
-function CheckRow({ icon: Icon, label, value, testId }) {
+function CheckRow({ icon: Icon, label, value, status = "success", testId }) {
   return (
     <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">
       <div className="flex items-center gap-2.5 text-sm text-gray-700">
         <Icon className="w-4 h-4 text-gray-400" />
         <span>{label}</span>
       </div>
-      <StatusPill status="success" label={value} testId={testId} />
+      <StatusPill status={status} label={value} testId={testId} />
     </div>
   );
 }
@@ -150,30 +154,35 @@ export default function TransactionFlow() {
   const [processed, setProcessed] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  // Consistency
-  const [mismatch, setMismatch] = useState(false);
-  const partyAAmount = form.amount;
-  const partyBAmount = mismatch
-    ? (Number(form.amount) + 100).toFixed(2)
-    : form.amount;
-  const isConsistent = !mismatch;
+  // Compliance toggle
+  const [simulateComplianceFail, setSimulateComplianceFail] = useState(false);
 
-  // Evidence
-  const [proof, setProof] = useState(null); // { proof_hash, normalized_payload, metadata, issued_at }
-  const [generating, setGenerating] = useState(false);
+  // Evidence (proof from /api/demo/issue)
+  const [proof, setProof] = useState(null); // { proof_id, transaction_id, issued_at, compliance }
+
+  // Auditor verification
+  const [auditorProofId, setAuditorProofId] = useState("");
+  const [auditorResult, setAuditorResult] = useState(null); // VerifyByIdResponse
   const [verifying, setVerifying] = useState(false);
-  const [verifyStatus, setVerifyStatus] = useState(null); // 'verified' | 'tampered' | null
 
-  const handleInput = (key, value) => {
-    setForm((f) => ({ ...f, [key]: value }));
-    if (processed) {
-      // user edited after processing — invalidate downstream
-      setProcessed(false);
-      setProof(null);
-      setVerifyStatus(null);
-      setMismatch(false);
-    }
-  };
+  // Consistency + exception
+  const [mismatch, setMismatch] = useState(false);
+
+  const complianceState = simulateComplianceFail
+    ? {
+        kyc: "Fail",
+        aml: "Pass",
+        limits: "Within allowed range",
+        status: "NON-COMPLIANT",
+      }
+    : {
+        kyc: "Pass",
+        aml: "Pass",
+        limits: "Within allowed range",
+        status: "COMPLIANT",
+      };
+
+  const isCompliant = complianceState.status === "COMPLIANT";
 
   const canProcess =
     form.transaction_id.trim() &&
@@ -181,61 +190,101 @@ export default function TransactionFlow() {
     String(form.amount).trim() &&
     !isNaN(Number(form.amount));
 
+  const handleInput = (key, value) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    if (processed) {
+      // edited after processing — invalidate downstream
+      setProcessed(false);
+      setProof(null);
+      setAuditorResult(null);
+      setAuditorProofId("");
+      setMismatch(false);
+    }
+  };
+
   const processTransaction = async () => {
     if (!canProcess) {
-      toast.error("Please fill in all fields with valid values.");
+      toast.error("Please fill all fields with valid values.");
       return;
     }
     setProcessing(true);
-    // simulate compliance engine delay for UX weight
-    await new Promise((r) => setTimeout(r, 450));
-    setProcessed(true);
-    setProcessing(false);
     setProof(null);
-    setVerifyStatus(null);
-    toast.success("Transaction processed");
-  };
-
-  const generateProof = async () => {
-    setGenerating(true);
-    setVerifyStatus(null);
+    setAuditorResult(null);
     try {
-      const payload = {
+      // small UX delay to make the "checks running" feel weighty
+      await new Promise((r) => setTimeout(r, 300));
+      const { data } = await axios.post(`${API}/demo/issue`, {
         transaction_id: form.transaction_id,
         user_id: form.user_id,
         amount: form.amount,
         created_at: nowIso(),
-      };
-      const { data } = await axios.post(`${API}/demo/proof`, payload);
-      setProof({ ...data, issued_at: new Date().toISOString() });
-      toast.success("Proof artifact generated");
+        compliance: complianceState,
+      });
+      setProof({ ...data, compliance: complianceState });
+      setAuditorProofId(data.proof_id); // pre-fill for demo convenience
+      setProcessed(true);
+      toast.success(
+        `Transaction processed — proof issued (${isCompliant ? "compliant" : "non-compliant"})`
+      );
     } catch (e) {
       const detail =
-        e?.response?.data?.detail || e?.message || "Failed to generate proof";
+        e?.response?.data?.detail || e?.message || "Failed to process transaction";
       toast.error(detail);
     } finally {
-      setGenerating(false);
+      setProcessing(false);
     }
   };
 
-  const verifyProof = async () => {
-    if (!proof) return;
-    setVerifying(true);
-    setVerifyStatus(null);
+  const copyProofId = async () => {
+    if (!proof?.proof_id) return;
     try {
-      // Re-run proof generation on the same normalized input and compare.
-      const { data } = await axios.post(`${API}/demo/proof`, {
-        transaction_id: proof.normalized_payload.transaction_id,
-        user_id: proof.normalized_payload.user_id,
-        amount: proof.normalized_payload.amount,
-        created_at: proof.normalized_payload.created_at,
-      });
+      await navigator.clipboard.writeText(proof.proof_id);
+      toast.success("Proof ID copied to clipboard");
+    } catch {
+      toast.error("Unable to copy");
+    }
+  };
+
+  const shareProof = async () => {
+    if (!proof?.proof_id) return;
+    const shareText = `Proof ID: ${proof.proof_id}\nTransaction: ${proof.transaction_id}\nIssued: ${proof.issued_at}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Proof Fabric Protocol — Evidence Artifact",
+          text: shareText,
+        });
+        return;
+      } catch {
+        /* fall through */
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(shareText);
+      toast.success("Proof details copied — paste to share");
+    } catch {
+      toast.error("Unable to share");
+    }
+  };
+
+  const runAuditorVerification = async () => {
+    const pid = auditorProofId.trim();
+    if (!pid) {
+      toast.error("Enter a Proof ID to verify.");
+      return;
+    }
+    setVerifying(true);
+    setAuditorResult(null);
+    try {
       await new Promise((r) => setTimeout(r, 350));
-      const ok = data.proof_hash === proof.proof_hash;
-      setVerifyStatus(ok ? "verified" : "tampered");
+      const { data } = await axios.get(`${API}/demo/verify/${pid}`);
+      setAuditorResult(data);
     } catch (e) {
-      toast.error("Verification failed");
-      setVerifyStatus("tampered");
+      setAuditorResult({
+        valid: false,
+        proof_id: pid,
+        reason: e?.response?.data?.detail || "Verification request failed",
+      });
     } finally {
       setVerifying(false);
     }
@@ -245,9 +294,11 @@ export default function TransactionFlow() {
     setForm(DEFAULTS);
     setProcessed(false);
     setProcessing(false);
-    setMismatch(false);
+    setSimulateComplianceFail(false);
     setProof(null);
-    setVerifyStatus(null);
+    setAuditorProofId("");
+    setAuditorResult(null);
+    setMismatch(false);
     toast.message("New transaction started");
   };
 
@@ -291,7 +342,7 @@ export default function TransactionFlow() {
           className="text-3xl sm:text-4xl font-semibold tracking-tight text-gray-900 font-['Space_Grotesk']"
           data-testid="page-title"
         >
-          Transaction to verifiable evidence, in one flow.
+          Convert transactions into verifiable proof.
         </h1>
         <p
           className="mt-3 text-base text-gray-600 max-w-2xl"
@@ -361,254 +412,314 @@ export default function TransactionFlow() {
           </div>
         </SectionCard>
 
-        {/* Downstream sections — reveal after processing */}
-        {processed && (
-          <>
-            {/* 2. Compliance */}
-            <SectionCard
-              step="2"
-              title="Compliance Checks"
-              description="Automated KYC, AML and transaction limit verification."
-              testId="section-compliance"
-              tone="success"
-              rightSlot={
+        {/* 2. Compliance */}
+        <SectionCard
+          step="2"
+          title="Compliance Checks"
+          description="Automated KYC, AML and transaction limit verification."
+          testId="section-compliance"
+          tone={processed ? (isCompliant ? "success" : "error") : "neutral"}
+          rightSlot={
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Label
+                  htmlFor="compliance-toggle"
+                  className="text-xs text-gray-500"
+                >
+                  Simulate Compliance Failure
+                </Label>
+                <Switch
+                  id="compliance-toggle"
+                  checked={simulateComplianceFail}
+                  onCheckedChange={(v) => {
+                    setSimulateComplianceFail(v);
+                    if (processed) {
+                      setProcessed(false);
+                      setProof(null);
+                      setAuditorResult(null);
+                      setAuditorProofId("");
+                    }
+                  }}
+                  data-testid="compliance-toggle"
+                />
+              </div>
+              {processed && (
                 <StatusPill
-                  status="success"
-                  label="Compliant"
+                  status={isCompliant ? "success" : "error"}
+                  label={isCompliant ? "Compliant" : "Non-Compliant"}
                   testId="compliance-overall-badge"
                 />
-              }
-            >
-              <div className="rounded-lg bg-gray-50 border border-gray-100 px-4 py-2">
-                <CheckRow
-                  icon={BadgeCheck}
-                  label="KYC verification"
-                  value="Pass"
-                  testId="compliance-kyc"
-                />
-                <CheckRow
-                  icon={Lock}
-                  label="AML screening"
-                  value="Pass"
-                  testId="compliance-aml"
-                />
-                <CheckRow
-                  icon={Scale}
-                  label="Transaction limits"
-                  value="Within range"
-                  testId="compliance-limits"
-                />
-              </div>
-              <p
-                className="text-sm text-emerald-700 font-medium mt-4"
-                data-testid="compliance-summary"
-              >
-                Transaction is COMPLIANT
-              </p>
-            </SectionCard>
-
-            {/* 3. Consistency */}
-            <SectionCard
-              step="3"
-              title="Cross-Party Consistency"
-              description="Compare the transaction record as seen by both parties."
-              testId="section-consistency"
-              tone={isConsistent ? "success" : "error"}
-              rightSlot={
-                <div className="flex items-center gap-2.5">
-                  <Label
-                    htmlFor="mismatch-toggle"
-                    className="text-xs text-gray-500"
-                  >
-                    Simulate Mismatch
-                  </Label>
-                  <Switch
-                    id="mismatch-toggle"
-                    checked={mismatch}
-                    onCheckedChange={setMismatch}
-                    data-testid="mismatch-toggle"
-                  />
-                </div>
-              }
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <PartyPanel
-                  name="Party A"
-                  subtitle="Client · Razorpay"
-                  amount={partyAAmount}
-                  testId="party-a-panel"
-                />
-                <PartyPanel
-                  name="Party B"
-                  subtitle="Bank · HDFC"
-                  amount={partyBAmount}
-                  diverged={!isConsistent}
-                  testId="party-b-panel"
-                />
-              </div>
-              <div className="mt-4 flex items-center justify-between">
-                <div className="text-sm text-gray-600 flex items-center gap-2">
-                  <GitCompareArrows className="w-4 h-4 text-gray-400" />
-                  Comparing records across parties
-                </div>
-                {isConsistent ? (
-                  <StatusPill
-                    status="success"
-                    label="CONSISTENT"
-                    testId="consistency-status"
-                  />
-                ) : (
-                  <StatusPill
-                    status="error"
-                    label="MISMATCH DETECTED"
-                    testId="consistency-status"
-                  />
-                )}
-              </div>
-            </SectionCard>
-
-            {/* 4. Exception (only on mismatch) */}
-            {!isConsistent && (
-              <SectionCard
-                step="4"
-                title="Exception"
-                description="Discrepancy requiring review before settlement."
-                testId="section-exception"
-                tone="error"
-                rightSlot={
-                  <StatusPill
-                    status="error"
-                    label="Open"
-                    testId="exception-status"
-                  />
-                }
-              >
-                <div className="rounded-lg bg-red-50 border border-red-100 p-4 flex items-start gap-3">
-                  <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
-                  <div>
-                    <div
-                      className="text-sm font-medium text-red-800"
-                      data-testid="exception-reason"
-                    >
-                      Amount mismatch detected
-                    </div>
-                    <div className="text-sm text-red-700/90 mt-1">
-                      Party A reports ₹{partyAAmount}, Party B reports ₹
-                      {partyBAmount}. Settlement paused pending reconciliation.
-                    </div>
-                  </div>
-                </div>
-              </SectionCard>
-            )}
-
-            {/* 5. Evidence */}
-            <SectionCard
-              step={isConsistent ? "4" : "5"}
-              title="Evidence"
-              description="Generate and verify a tamper-evident proof artifact for this transaction."
-              testId="section-evidence"
-              tone={
-                verifyStatus === "verified"
-                  ? "success"
-                  : verifyStatus === "tampered"
-                  ? "error"
-                  : "info"
-              }
-            >
-              {!proof ? (
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div className="text-sm text-gray-600">
-                    Create a cryptographically verifiable record of this
-                    transaction. No raw data is exposed.
-                  </div>
-                  <Button
-                    onClick={generateProof}
-                    disabled={generating}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
-                    data-testid="generate-proof-btn"
-                  >
-                    {generating ? (
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    ) : (
-                      <FileSignature className="w-4 h-4 mr-2" />
-                    )}
-                    Generate Proof Artifact
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="rounded-lg bg-gray-50 border border-gray-100 divide-y divide-gray-100">
-                    <ProofRow
-                      label="Proof ID"
-                      value={shortHash(proof.proof_hash)}
-                      full={proof.proof_hash}
-                      testId="proof-id"
-                    />
-                    <ProofRow
-                      label="Issued at"
-                      value={formatTs(proof.issued_at)}
-                      testId="proof-timestamp"
-                    />
-                    <ProofRow
-                      label="Algorithm"
-                      value={proof.metadata.algorithm}
-                      testId="proof-algorithm"
-                    />
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div
-                      className="text-sm"
-                      data-testid="verify-status-text"
-                    >
-                      {verifyStatus === "verified" && (
-                        <span className="inline-flex items-center gap-2 text-emerald-700 font-medium">
-                          <CheckCircle2 className="w-4 h-4" />
-                          Proof Verified — Data Untampered
-                        </span>
-                      )}
-                      {verifyStatus === "tampered" && (
-                        <span className="inline-flex items-center gap-2 text-red-700 font-medium">
-                          <AlertTriangle className="w-4 h-4" />
-                          Verification failed — data may be tampered
-                        </span>
-                      )}
-                      {!verifyStatus && (
-                        <span className="text-gray-500">
-                          Proof artifact ready. Run verification to confirm
-                          integrity.
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={generateProof}
-                        disabled={generating}
-                        className="border-gray-200 text-gray-700 hover:bg-gray-50"
-                        data-testid="regenerate-proof-btn"
-                      >
-                        Regenerate
-                      </Button>
-                      <Button
-                        onClick={verifyProof}
-                        disabled={verifying}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-                        data-testid="verify-proof-btn"
-                      >
-                        {verifying ? (
-                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                        ) : (
-                          <ShieldCheck className="w-4 h-4 mr-2" />
-                        )}
-                        Verify Proof
-                      </Button>
-                    </div>
-                  </div>
-                </div>
               )}
-            </SectionCard>
-          </>
+            </div>
+          }
+        >
+          <div className="rounded-lg bg-gray-50 border border-gray-100 px-4 py-2">
+            <CheckRow
+              icon={BadgeCheck}
+              label="KYC verification"
+              value={complianceState.kyc}
+              status={complianceState.kyc === "Pass" ? "success" : "error"}
+              testId="compliance-kyc"
+            />
+            <CheckRow
+              icon={Lock}
+              label="AML screening"
+              value={complianceState.aml}
+              status={complianceState.aml === "Pass" ? "success" : "error"}
+              testId="compliance-aml"
+            />
+            <CheckRow
+              icon={Scale}
+              label="Transaction amount limit"
+              value={complianceState.limits}
+              status={
+                complianceState.limits === "Within allowed range"
+                  ? "success"
+                  : "error"
+              }
+              testId="compliance-limits"
+            />
+          </div>
+          <p
+            className={`text-sm font-medium mt-4 ${
+              isCompliant ? "text-emerald-700" : "text-red-700"
+            }`}
+            data-testid="compliance-summary"
+          >
+            {isCompliant
+              ? "Transaction is COMPLIANT"
+              : "KYC Fail — Transaction is NON-COMPLIANT"}
+          </p>
+        </SectionCard>
+
+        {/* 3. Evidence (auto after process) */}
+        {processed && proof && (
+          <SectionCard
+            step="3"
+            title="Evidence"
+            description="A cryptographically verifiable proof artifact has been issued for this transaction."
+            testId="section-evidence"
+            tone={isCompliant ? "success" : "error"}
+            rightSlot={
+              <StatusPill
+                status={isCompliant ? "success" : "error"}
+                label={isCompliant ? "Proof Issued" : "Flagged"}
+                testId="evidence-status-badge"
+              />
+            }
+          >
+            <div className="rounded-lg bg-gray-50 border border-gray-100 divide-y divide-gray-100">
+              <ProofRow
+                label="Transaction ID"
+                value={proof.transaction_id}
+                testId="evidence-transaction-id"
+              />
+              <ProofRow
+                label="Proof ID"
+                value={shortHash(proof.proof_id)}
+                full={proof.proof_id}
+                testId="evidence-proof-id"
+                action={
+                  <button
+                    onClick={copyProofId}
+                    className="text-gray-400 hover:text-gray-700 transition-colors"
+                    data-testid="copy-proof-id-btn"
+                    aria-label="Copy Proof ID"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
+                }
+              />
+              <ProofRow
+                label="Issued at"
+                value={formatTs(proof.issued_at)}
+                testId="evidence-timestamp"
+              />
+            </div>
+
+            <div
+              className={`mt-4 flex items-center gap-2 text-sm font-medium ${
+                isCompliant ? "text-emerald-700" : "text-red-700"
+              }`}
+              data-testid="evidence-verification-status"
+            >
+              {isCompliant ? (
+                <CheckCircle2 className="w-4 h-4" />
+              ) : (
+                <AlertTriangle className="w-4 h-4" />
+              )}
+              {isCompliant
+                ? "Proof Verified — Data Untampered"
+                : "Proof Verified — Transaction flagged as NON-COMPLIANT"}
+            </div>
+
+            <p
+              className="text-xs text-gray-500 mt-2"
+              data-testid="evidence-tamper-note"
+            >
+              This proof is cryptographically generated, independently
+              verifiable, and cannot be altered.
+            </p>
+
+            <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-sm text-gray-600">
+                Share this proof with auditors or external systems for
+                independent verification.
+              </p>
+              <Button
+                onClick={shareProof}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                data-testid="share-proof-btn"
+              >
+                <Share2 className="w-4 h-4 mr-2" />
+                Share Proof
+              </Button>
+            </div>
+          </SectionCard>
+        )}
+
+        {/* 4. Auditor / External Verification */}
+        <SectionCard
+          step="4"
+          title="Auditor Verification"
+          description="Verify any issued proof using only its Proof ID — no transaction data required."
+          testId="section-auditor"
+          tone={
+            auditorResult
+              ? auditorResult.valid
+                ? auditorResult.compliance?.status === "COMPLIANT"
+                  ? "success"
+                  : "error"
+                : "error"
+              : "neutral"
+          }
+        >
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Input
+              placeholder="Paste Proof ID (64-character hash)"
+              value={auditorProofId}
+              onChange={(e) => setAuditorProofId(e.target.value)}
+              className="bg-white border-gray-200 font-mono text-sm flex-1 focus-visible:ring-2 focus-visible:ring-blue-500/30 focus-visible:border-blue-400"
+              data-testid="auditor-proof-id-input"
+            />
+            <Button
+              onClick={runAuditorVerification}
+              disabled={verifying || !auditorProofId.trim()}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
+              data-testid="auditor-verify-btn"
+            >
+              {verifying ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <Search className="w-4 h-4 mr-2" />
+              )}
+              Verify External Proof
+            </Button>
+          </div>
+
+          {auditorResult && (
+            <div className="mt-5" data-testid="auditor-result">
+              <AuditorResult result={auditorResult} />
+            </div>
+          )}
+
+          <p className="text-xs text-gray-500 mt-4" data-testid="auditor-note">
+            Verification is performed using cryptographic proof, not by
+            re-entering transaction data.
+          </p>
+        </SectionCard>
+
+        {/* 5. Consistency */}
+        {processed && proof && (
+          <SectionCard
+            step="5"
+            title="Cross-Party Consistency"
+            description="Compare the transaction record as seen by both parties."
+            testId="section-consistency"
+            tone={mismatch ? "error" : "success"}
+            rightSlot={
+              <div className="flex items-center gap-2.5">
+                <Label
+                  htmlFor="mismatch-toggle"
+                  className="text-xs text-gray-500"
+                >
+                  Simulate Mismatch
+                </Label>
+                <Switch
+                  id="mismatch-toggle"
+                  checked={mismatch}
+                  onCheckedChange={setMismatch}
+                  data-testid="mismatch-toggle"
+                />
+              </div>
+            }
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <PartyPanel
+                name="Party A"
+                subtitle="Client · ABCPay"
+                amount={form.amount}
+                testId="party-a-panel"
+              />
+              <PartyPanel
+                name="Party B"
+                subtitle="Bank · HDFC"
+                amount={
+                  mismatch
+                    ? (Number(form.amount) + 100).toFixed(2)
+                    : form.amount
+                }
+                diverged={mismatch}
+                testId="party-b-panel"
+              />
+            </div>
+            <div className="mt-4 flex items-center justify-between">
+              <div className="text-sm text-gray-600 flex items-center gap-2">
+                <GitCompareArrows className="w-4 h-4 text-gray-400" />
+                Comparing records across parties
+              </div>
+              <StatusPill
+                status={mismatch ? "error" : "success"}
+                label={mismatch ? "MISMATCH DETECTED" : "CONSISTENT"}
+                testId="consistency-status"
+              />
+            </div>
+          </SectionCard>
+        )}
+
+        {/* 6. Exception (only on mismatch) */}
+        {processed && proof && mismatch && (
+          <SectionCard
+            step="6"
+            title="Exception"
+            description="Discrepancy requiring review before settlement."
+            testId="section-exception"
+            tone="error"
+            rightSlot={
+              <StatusPill
+                status="error"
+                label="Open"
+                testId="exception-status"
+              />
+            }
+          >
+            <div className="rounded-lg bg-red-50 border border-red-100 p-4 flex items-start gap-3">
+              <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+              <div>
+                <div
+                  className="text-sm font-medium text-red-800"
+                  data-testid="exception-reason"
+                >
+                  Amount mismatch detected
+                </div>
+                <div className="text-sm text-red-700/90 mt-1">
+                  Party A reports ₹{form.amount}, Party B reports ₹
+                  {(Number(form.amount) + 100).toFixed(2)}. Settlement paused
+                  pending reconciliation.
+                </div>
+              </div>
+            </div>
+          </SectionCard>
         )}
 
         {/* Footer */}
@@ -619,6 +730,108 @@ export default function TransactionFlow() {
           </span>
         </footer>
       </main>
+    </div>
+  );
+}
+
+/* --------------------------- auditor result view -------------------------- */
+
+function AuditorResult({ result }) {
+  const { valid, compliance, transaction_id, issued_at, reason } = result;
+  const isCompliant = valid && compliance?.status === "COMPLIANT";
+  const isNonCompliantValid = valid && compliance?.status === "NON-COMPLIANT";
+
+  const headline = !valid
+    ? "Invalid Proof — Verification Failed"
+    : isCompliant
+    ? "Valid Proof — Data Untampered"
+    : "Valid Proof — Transaction flagged as NON-COMPLIANT";
+
+  const tone = !valid
+    ? "bg-red-50 border-red-200 text-red-800"
+    : isCompliant
+    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+    : "bg-red-50 border-red-200 text-red-800";
+
+  const Icon = !valid
+    ? AlertTriangle
+    : isCompliant
+    ? CheckCircle2
+    : AlertTriangle;
+
+  return (
+    <div className={`rounded-lg border ${tone} p-4`}>
+      <div
+        className="flex items-center gap-2 text-sm font-semibold"
+        data-testid="auditor-result-headline"
+      >
+        <Icon className="w-4 h-4" />
+        {headline}
+      </div>
+
+      {!valid && reason && (
+        <div className="mt-1 text-xs" data-testid="auditor-result-reason">
+          {reason}
+        </div>
+      )}
+
+      {(valid || compliance) && (
+        <div className="mt-4 rounded-md bg-white/80 border border-white/60 divide-y divide-gray-100 backdrop-blur-sm">
+          {transaction_id && (
+            <ProofRow
+              label="Transaction ID"
+              value={transaction_id}
+              testId="auditor-transaction-id"
+              borderless
+            />
+          )}
+          {compliance && (
+            <>
+              <ProofRow
+                label="KYC"
+                value={compliance.kyc}
+                testId="auditor-kyc"
+                borderless
+                valueClass={
+                  compliance.kyc === "Pass"
+                    ? "text-emerald-700"
+                    : "text-red-700"
+                }
+              />
+              <ProofRow
+                label="AML"
+                value={compliance.aml}
+                testId="auditor-aml"
+                borderless
+                valueClass={
+                  compliance.aml === "Pass"
+                    ? "text-emerald-700"
+                    : "text-red-700"
+                }
+              />
+              <ProofRow
+                label="Transaction Amount Limit"
+                value={compliance.limits}
+                testId="auditor-limits"
+                borderless
+                valueClass={
+                  compliance.limits === "Within allowed range"
+                    ? "text-emerald-700"
+                    : "text-red-700"
+                }
+              />
+            </>
+          )}
+          {issued_at && (
+            <ProofRow
+              label="Issued at"
+              value={formatTs(issued_at)}
+              testId="auditor-issued-at"
+              borderless
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -654,9 +867,7 @@ function PartyPanel({ name, subtitle, amount, diverged, testId }) {
   return (
     <div
       className={`rounded-lg border p-4 ${
-        diverged
-          ? "border-red-200 bg-red-50/40"
-          : "border-gray-200 bg-gray-50"
+        diverged ? "border-red-200 bg-red-50/40" : "border-gray-200 bg-gray-50"
       }`}
       data-testid={testId}
     >
@@ -678,19 +889,34 @@ function PartyPanel({ name, subtitle, amount, diverged, testId }) {
   );
 }
 
-function ProofRow({ label, value, full, testId }) {
+function ProofRow({
+  label,
+  value,
+  full,
+  testId,
+  action,
+  borderless,
+  valueClass = "text-gray-900",
+}) {
   return (
-    <div className="flex items-center justify-between px-4 py-3">
+    <div
+      className={`flex items-center justify-between px-4 py-3 ${
+        borderless ? "" : ""
+      }`}
+    >
       <span className="text-xs uppercase tracking-wide text-gray-500">
         {label}
       </span>
-      <span
-        className="text-sm font-mono text-gray-900 truncate max-w-[60%] text-right"
-        title={full || value}
-        data-testid={testId}
-      >
-        {value}
-      </span>
+      <div className="flex items-center gap-2 max-w-[65%]">
+        <span
+          className={`text-sm font-mono truncate text-right ${valueClass}`}
+          title={full || value}
+          data-testid={testId}
+        >
+          {value}
+        </span>
+        {action}
+      </div>
     </div>
   );
 }
