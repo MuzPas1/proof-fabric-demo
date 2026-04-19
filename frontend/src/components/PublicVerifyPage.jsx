@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
 import {
@@ -20,7 +20,9 @@ import {
   FileText,
   Loader2,
   ArrowLeft,
+  Link2,
 } from "lucide-react";
+import { decodeProofFromLinkParam } from "@/lib/proofLink";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -46,9 +48,74 @@ export default function PublicVerifyPage() {
   const [rawJson, setRawJson] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [result, setResult] = useState(null);
+  const [loadedFromLink, setLoadedFromLink] = useState(false);
+  const [linkError, setLinkError] = useState(null);
   const fileRef = useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const autoVerifiedRef = useRef(false);
 
   const canVerify = useMemo(() => rawJson.trim().length > 0, [rawJson]);
+
+  // Run verification against whatever is currently in `rawJson`.
+  const runVerification = async (payloadText) => {
+    const text = (payloadText ?? rawJson).trim();
+    if (!text) return;
+    setVerifying(true);
+    setResult(null);
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      setResult({
+        valid: false,
+        status: "invalid",
+        reason: "Malformed JSON — could not parse the artifact",
+      });
+      setVerifying(false);
+      return;
+    }
+    try {
+      const { data } = await axios.post(`${API}/demo/artifact/verify`, parsed);
+      setResult(data);
+    } catch (e) {
+      setResult({
+        valid: false,
+        status: "invalid",
+        reason:
+          e?.response?.data?.detail ||
+          e?.message ||
+          "Verification request failed",
+      });
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  // Auto-load from ?proof=<base64url> on first mount.
+  useEffect(() => {
+    if (autoVerifiedRef.current) return;
+    const encoded = searchParams.get("proof");
+    if (!encoded) return;
+    autoVerifiedRef.current = true;
+    try {
+      const jsonStr = decodeProofFromLinkParam(encoded);
+      // Pretty-print so the textarea remains human-readable.
+      let pretty = jsonStr;
+      try {
+        pretty = JSON.stringify(JSON.parse(jsonStr), null, 2);
+      } catch {
+        /* keep raw */
+      }
+      setRawJson(pretty);
+      setLoadedFromLink(true);
+      // Auto-trigger verification.
+      runVerification(pretty);
+    } catch (e) {
+      setLinkError("Invalid or corrupted proof in URL");
+      toast.error("Invalid or corrupted proof in URL");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleFile = async (file) => {
     if (!file) return;
@@ -80,39 +147,16 @@ export default function PublicVerifyPage() {
     e.stopPropagation();
   };
 
-  const verify = async () => {
-    setResult(null);
-    setVerifying(true);
-    let parsed;
-    try {
-      parsed = JSON.parse(rawJson);
-    } catch (e) {
-      setVerifying(false);
-      setResult({
-        valid: false,
-        status: "invalid",
-        reason: "Malformed JSON — could not parse the artifact",
-      });
-      return;
-    }
-    try {
-      const { data } = await axios.post(`${API}/demo/artifact/verify`, parsed);
-      setResult(data);
-    } catch (e) {
-      setResult({
-        valid: false,
-        status: "invalid",
-        reason:
-          e?.response?.data?.detail || e?.message || "Verification request failed",
-      });
-    } finally {
-      setVerifying(false);
-    }
-  };
+  const verify = () => runVerification();
 
   const clearAll = () => {
     setRawJson("");
     setResult(null);
+    setLoadedFromLink(false);
+    setLinkError(null);
+    if (searchParams.get("proof")) {
+      setSearchParams({}, { replace: true });
+    }
   };
 
   return (
@@ -166,6 +210,34 @@ export default function PublicVerifyPage() {
       </section>
 
       <main className="max-w-4xl mx-auto px-6 pb-20 space-y-5">
+        {loadedFromLink && (
+          <div
+            className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 flex items-start gap-3"
+            data-testid="loaded-from-link-banner"
+          >
+            <Link2 className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <div className="text-sm font-medium text-blue-900">
+                Proof loaded from link
+              </div>
+              <div className="text-xs text-blue-800/80 mt-0.5">
+                This link contains the full proof artifact. Share only with
+                intended recipients.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {linkError && (
+          <div
+            className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 flex items-start gap-3"
+            data-testid="link-error-banner"
+          >
+            <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+            <div className="text-sm font-medium text-red-800">{linkError}</div>
+          </div>
+        )}
+
         {/* Input */}
         <Card className="bg-white border-gray-200 shadow-sm">
           <CardHeader className="pb-3">

@@ -13,6 +13,15 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { buildVerifyUrl } from "@/lib/proofLink";
+import {
   CheckCircle2,
   ShieldCheck,
   AlertTriangle,
@@ -28,6 +37,8 @@ import {
   Search,
   Download,
   ExternalLink,
+  Link2,
+  ClipboardCopy,
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -270,45 +281,56 @@ export default function TransactionFlow() {
   };
 
   const [downloading, setDownloading] = useState(false);
+  const [copyingLink, setCopyingLink] = useState(false);
+  const [tooLargeOpen, setTooLargeOpen] = useState(false);
+  const [tooLargeArtifact, setTooLargeArtifact] = useState(null); // raw JSON string
+
+  /** Fetch the signed artifact JSON (raw text). Used by both download + link. */
+  const fetchSignedArtifactJson = async () => {
+    const { data, headers } = await axios.post(
+      `${API}/demo/artifact`,
+      {
+        transaction_id: form.transaction_id,
+        user_id: form.user_id,
+        amount: form.amount,
+        compliance: complianceState,
+      },
+      { responseType: "text", transformResponse: (t) => t }
+    );
+    return {
+      jsonText: data,
+      contentType:
+        headers?.["content-type"] || "application/pfp-proof+json;v=1",
+    };
+  };
+
+  const triggerDownload = (jsonText, contentType) => {
+    const blob = new Blob([jsonText], { type: contentType });
+    let proofId = "";
+    try {
+      proofId = JSON.parse(jsonText).proof_id || "";
+    } catch {
+      /* ignore */
+    }
+    const fname = proofId
+      ? `pfp-proof-${proofId.slice(0, 16)}.json`
+      : "pfp-proof.json";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const downloadSignedArtifact = async () => {
     if (!proof) return;
     setDownloading(true);
     try {
-      const { data, headers } = await axios.post(
-        `${API}/demo/artifact`,
-        {
-          transaction_id: form.transaction_id,
-          user_id: form.user_id,
-          amount: form.amount,
-          compliance: complianceState,
-        },
-        { responseType: "text", transformResponse: (t) => t }
-      );
-
-      const contentType =
-        headers?.["content-type"] || "application/pfp-proof+json;v=1";
-      const blob = new Blob([data], { type: contentType });
-
-      // Derive proof_id from payload for filename
-      let proofId = "";
-      try {
-        proofId = JSON.parse(data).proof_id || "";
-      } catch {
-        /* ignore */
-      }
-      const fname = proofId
-        ? `pfp-proof-${proofId.slice(0, 16)}.json`
-        : "pfp-proof.json";
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fname;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const { jsonText, contentType } = await fetchSignedArtifactJson();
+      triggerDownload(jsonText, contentType);
       toast.success("Proof artifact downloaded");
     } catch (e) {
       const detail =
@@ -316,6 +338,39 @@ export default function TransactionFlow() {
       toast.error(detail);
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const copyVerificationLink = async () => {
+    if (!proof) return;
+    setCopyingLink(true);
+    try {
+      const { jsonText } = await fetchSignedArtifactJson();
+      const { url, tooLong } = buildVerifyUrl(jsonText);
+
+      if (tooLong) {
+        setTooLargeArtifact(jsonText);
+        setTooLargeOpen(true);
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success("Verification link copied to clipboard");
+      } catch {
+        // Clipboard blocked — surface the URL via the too-large modal as a
+        // fallback so the user can still grab it manually.
+        setTooLargeArtifact(url);
+        setTooLargeOpen(true);
+      }
+    } catch (e) {
+      const detail =
+        e?.response?.data?.detail ||
+        e?.message ||
+        "Failed to build verification link";
+      toast.error(detail);
+    } finally {
+      setCopyingLink(false);
     }
   };
 
@@ -634,6 +689,20 @@ export default function TransactionFlow() {
                   Download Proof
                 </Button>
                 <Button
+                  variant="outline"
+                  onClick={copyVerificationLink}
+                  disabled={copyingLink}
+                  className="border-gray-200 text-gray-700 hover:bg-gray-50"
+                  data-testid="copy-verification-link-btn"
+                >
+                  {copyingLink ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <Link2 className="w-4 h-4 mr-2" />
+                  )}
+                  Copy Verification Link
+                </Button>
+                <Button
                   onClick={shareProof}
                   className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
                   data-testid="share-proof-btn"
@@ -655,6 +724,13 @@ export default function TransactionFlow() {
                 <ExternalLink className="w-3 h-3" />
               </Link>
               .
+            </div>
+            <div
+              className="mt-1.5 text-xs text-gray-400"
+              data-testid="link-security-note"
+            >
+              This link contains the full proof artifact. Share only with
+              intended recipients.
             </div>
           </SectionCard>
         )}
@@ -811,6 +887,68 @@ export default function TransactionFlow() {
           </span>
         </footer>
       </main>
+
+      {/* Too-large fallback dialog */}
+      <Dialog open={tooLargeOpen} onOpenChange={setTooLargeOpen}>
+        <DialogContent
+          className="bg-white border-gray-200"
+          data-testid="too-large-dialog"
+        >
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">
+              Proof too large for link — use file sharing
+            </DialogTitle>
+            <DialogDescription className="text-gray-500">
+              This proof exceeds the safe URL size. Send it as a file or paste
+              the JSON directly instead.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(tooLargeArtifact || "");
+                  toast.success("Proof JSON copied to clipboard");
+                  setTooLargeOpen(false);
+                } catch {
+                  toast.error("Could not copy — select the text manually");
+                }
+              }}
+              className="border-gray-200 text-gray-700 hover:bg-gray-50"
+              data-testid="copy-json-btn"
+            >
+              <ClipboardCopy className="w-4 h-4 mr-2" />
+              Copy JSON
+            </Button>
+            <Button
+              onClick={() => {
+                if (tooLargeArtifact) {
+                  triggerDownload(
+                    tooLargeArtifact,
+                    "application/pfp-proof+json;v=1"
+                  );
+                  setTooLargeOpen(false);
+                }
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              data-testid="too-large-download-btn"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Download Proof
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setTooLargeOpen(false)}
+              className="text-gray-500 hover:text-gray-800"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

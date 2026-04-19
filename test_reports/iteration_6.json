@@ -1,0 +1,36 @@
+{
+  "summary": "Tested the new shareable verification URL feature end-to-end. All 12 frontend scenarios pass: dashboard Copy Verification Link button visible+enabled after process, clipboard receives a URL matching /^https?:\\/\\/.+\\/verify\\?proof=[A-Za-z0-9_-]+$/ with only URL-safe base64url chars (no +, /, =), success toast appears, link-security-note visible with 'Share only with intended recipients' text, /verify auto-loads valid compliant artifact (banner + pretty-printed textarea + auto-verified 'Valid Proof — Data Untampered' + extracted kyc/aml/limits/timestamp/kid), auto-loads non-compliant artifact ('Valid Proof — Transaction flagged as NON-COMPLIANT'), shows link-error-banner 'Invalid or corrupted proof in URL' for bad base64 with no auto-verify, auto-verifies valid-b64-of-bad-JSON as 'Invalid Proof' with missing-fields reason, renders normally without banners when no proof param, manual edit after auto-load re-verifies to 'Invalid Proof' via Verify button, Clear removes ?proof= from URL + clears textarea + hides banner, too-large-dialog opens with 'Proof too large for link — use file sharing' when artifact POST returns a padded >2000-char body (copy-json-btn + too-large-download-btn visible), and base64url encode/decode roundtrip is byte-identical. Backend regression smoke: POST /api/demo/artifact and POST /api/demo/artifact/verify still work (one compliant round-trip confirmed valid=true, status=valid_compliant). No backend files were modified in this iteration.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/demo/issue", "issue": "Schema requires client-supplied 'created_at' field and ComplianceResult.status is Literal requiring exact value 'COMPLIANT' or 'NON-COMPLIANT' (with dash). Not a regression from this iteration — pre-existing behaviour; smoke of /api/demo/issue was not exercised here because the contract is unchanged. Carry-forward note from iteration 5: revoked-key path still returns 500 due to PublicKeyInfo.status Literal missing 'revoked' — still unfixed."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_artifact.py"
+  ],
+  "action_items": [
+    "No new action items for this feature — shareable verify URL implementation is fully spec-compliant.",
+    "Carry-forward from iteration 5 (still open): extend PublicKeyInfo.status Literal in /app/backend/models/key_registry.py to include 'revoked' so /api/demo/artifact/verify returns 'Key revoked' reason instead of 500."
+  ],
+  "critical_code_review_comments": [
+    "proofLink.js uses standards-compliant base64url (+→-, /→_, strip =) via TextEncoder+btoa(String.fromCharCode loop) — correct for full UTF-8 range and matches Python base64.urlsafe_b64encode.",
+    "PublicVerifyPage.useEffect guards re-run with autoVerifiedRef so React 18 StrictMode double-invoke doesn't fire verification twice — good.",
+    "clearAll() correctly strips ?proof via setSearchParams({}, {replace:true}) — no history pollution.",
+    "TransactionFlow.copyVerificationLink: tooLong check uses full URL length (origin+path+param) which correctly accounts for origin-length variance across envs; 2000 threshold is well inside browser URL limits.",
+    "Minor: when clipboard write fails, the fallback reuses the too-large dialog with the URL as 'tooLargeArtifact' — this is a clever reuse but the dialog title still says 'Proof too large for link' which could confuse users whose clipboard was merely blocked. Consider a separate 'Copy link manually' path or dynamic title."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% smoke (2/2 existing endpoints verified)", "frontend": "100% (12/12 scenarios)"},
+  "test_credentials": "N/A — /api/demo/* endpoints are public",
+  "seed_data_creation": "None — tests fetch fresh artifacts per run; no DB writes beyond stateless artifact signing.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Shareable URL feature is fully working. For backend POST /api/demo/artifact, the ComplianceResult model requires 'status' ∈ {'COMPLIANT','NON-COMPLIANT'} (with hyphen, not underscore); forgetting this yields 422 — not a bug. Browser-side clipboard cannot be read in headless Playwright; stub navigator.clipboard.writeText via add_init_script before any click, then reload, then read window.__clipboardWrites. For too-large fallback, use page.route('**/api/demo/artifact', ...) with route.fulfill to return a >2000-char synthetic JSON (signature doesn't need to be valid — only the dashboard path is being exercised). All data-testids match the spec: copy-verification-link-btn, link-security-note, loaded-from-link-banner, link-error-banner, too-large-dialog, copy-json-btn, too-large-download-btn, clear-btn, verify-proof-btn, verify-result-headline, verify-result-reason, extracted-kyc/aml/limits/timestamp/kid, json-textarea, public-verify-page.",
+  "rca of the issue": "No bugs found in this iteration's feature. Pre-existing iteration-5 revoked-key 500 issue remains unfixed (not in scope)."
+}
