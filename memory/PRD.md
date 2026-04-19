@@ -56,15 +56,19 @@ Build a production-grade API for "Proof Fabric Protocol (PFP)" - Transform finan
 - [x] All endpoints use async DB-backed verification
 - [x] 19/19 backend tests passed
 
-### Phase 5: Transaction Flow Dashboard (Complete - Feb 10, 2026)
-- [x] Replaced developer-console UI with a light fintech dashboard (`TransactionFlow.jsx`)
-- [x] 5-step sectioned flow: Transaction → Compliance → Consistency → Exception (conditional) → Evidence
-- [x] Compliance card: KYC / AML / Limits auto-pass → "Transaction is COMPLIANT"
-- [x] Consistency card: Party A (Razorpay) vs Party B (HDFC) with "Simulate Mismatch" toggle → CONSISTENT / MISMATCH DETECTED
-- [x] Exception card (only on mismatch): "Amount mismatch detected" with reconciliation note
-- [x] Evidence card: "Generate Proof Artifact" (calls `/api/demo/proof`) → "Verify Proof" → "Proof Verified — Data Untampered"
-- [x] Theme switched to light/white fintech palette (Stripe/Razorpay feel); CSS vars + body bg updated in `index.css`
-- [x] Backend unchanged — reuses existing `/api/demo/proof` endpoint
+### Phase 6: Compliance-Aware Transaction Flow + Auditor Verification (Complete - Feb 10, 2026)
+- [x] New backend endpoint `POST /api/demo/issue` — embeds compliance state (KYC/AML/Limits/Status) in canonical payload, hashes it, persists to `db.demo_proofs`
+- [x] New backend endpoint `GET /api/demo/verify/{proof_id}` — lookup + re-canonicalize + re-hash integrity check; returns valid/invalid + compliance breakdown + transaction_id + issued_at
+- [x] Crypto primitives (canonicalize_to_json, compute_sha256) unchanged
+- [x] Frontend flow reordered: Transaction → Compliance (with "Simulate Compliance Failure" toggle) → Evidence (auto-issued) → Auditor Verification → Consistency → Exception
+- [x] Compliant messaging: "Transaction is COMPLIANT" / "Proof Verified — Data Untampered" / "Valid Proof — Data Untampered"
+- [x] Non-compliant messaging: "KYC Fail — Transaction is NON-COMPLIANT" / "Proof Verified — Transaction flagged as NON-COMPLIANT" / "Valid Proof — Transaction flagged as NON-COMPLIANT"
+- [x] Invalid proof messaging: "Invalid Proof — Verification Failed"
+- [x] Evidence tamper-evident copy + "Share Proof" button (navigator.share → clipboard fallback)
+- [x] Auditor section displays extracted KYC/AML/Limits/Transaction ID from cryptographic proof (no re-entry of raw data)
+- [x] Consistency: Party A (Client · ABCPay) vs Party B (Bank · HDFC), Simulate Mismatch toggle, Exception reveal on mismatch
+- [x] Edit-after-process / compliance-toggle-after-process invalidates Evidence section
+- [x] 16/16 backend + all 15 frontend e2e flows passed (iteration_4.json)
 
 ## Prioritized Backlog
 
@@ -84,7 +88,9 @@ Build a production-grade API for "Proof Fabric Protocol (PFP)" - Transform finan
 - POST /api/fea/verify - Verify FEA (requires X-API-Key)
 - GET /api/public/verify/{fea_id} - Public verify (no auth)
 - GET /api/public/keys - Key registry (no auth)
-- POST /api/demo/proof - Two-party demo proof generation (no auth, stateless)
+- POST /api/demo/proof - Stateless normalize + SHA-256 hash (no auth)
+- POST /api/demo/issue - Issue compliance-aware proof + persist (no auth)
+- GET  /api/demo/verify/{proof_id} - Auditor lookup + integrity re-verify (no auth)
 - GET /api/config - Test API key (no auth)
 - GET /api/health - Health check
 
