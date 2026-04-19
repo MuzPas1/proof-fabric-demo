@@ -1,0 +1,33 @@
+{
+  "summary": "Full backend + frontend testing of Two-Party Proof Comparison demo. Backend: 12/12 pytest cases passed covering normalization equivalence (user_id case/whitespace, amount formats 100.5/100.50/'100.5'), differentiation (different amount/user_id produce different hash), determinism (same input -> same SHA-256), validation (400 on invalid/empty amount, 400 on invalid timestamp, 422 on missing field), and ISO-UTC timestamp normalization with .000Z. Frontend: full Playwright e2e across all 12 target flows passed — identical pre-filled A/B records, independent proof generation with Proof Ready badges, compare-btn disabled-until-both-proofs, green match result, proof invalidation + stale badge + result clearing + compare disabled on edit, regenerate -> mismatch flow, tech-details drawer collapsed by default + expands with proof_hash/normalized_payload/algorithm/canonicalization, and reset-demo-btn restores defaults.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_demo_proof.py",
+    "/app/test_reports/pytest/demo_proof_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "demo_routes.py uses datetime.utcnow() (deprecated in Python 3.12+). Prefer datetime.now(timezone.utc) — non-blocking but a future-proofing nit.",
+    "canonicalize.normalize_value converts whole-number floats to int (e.g. 100.0 -> 100). Not triggered in demo (amount is pre-stringified to '100.50'), so no behavioural impact, but worth noting for future field additions.",
+    "_normalize_timestamp_safe: normalize_timestamp returns the raw string on parse failure; the safe wrapper correctly detects this by re-parsing. Works as designed — just slightly indirect. Could be clearer if normalize_timestamp raised on failure.",
+    "Frontend staleness is computed by JSON.stringify(record) snapshot comparison — reliable for this flat shape; fine as-is."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_demo_proof.py (new)"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% (all target flows)"},
+  "test_credentials": "N/A — /api/demo/proof is public/unauthenticated",
+  "seed_data_creation": "None — stateless endpoint, no DB writes",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Demo feature is fully working end-to-end. Backend normalization rules verified: user_id is trim+lowercase, transaction_id is trim-only (opaque), amount is trim+comma-strip+2-decimal, timestamp is ISO UTC with .000Z. Frontend data-testids are all present and stable. If revisiting, re-run: pytest /app/backend/tests/test_demo_proof.py. Existing /api/fea and /api/public routes intentionally no longer surfaced in UI — per spec, do not flag.",
+  "rca of the issue": "N/A — no bugs found."
+}

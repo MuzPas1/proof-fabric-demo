@@ -56,10 +56,12 @@ app.add_middleware(
 
 from routes.fea_routes import router as fea_router
 from routes.public_routes import router as public_router
+from routes.demo_routes import router as demo_router
 from routes.auth import generate_test_api_key, get_test_api_key
 
 app.include_router(fea_router, prefix="/api")
 app.include_router(public_router, prefix="/api")
+app.include_router(demo_router, prefix="/api")
 
 
 @app.on_event("startup")
