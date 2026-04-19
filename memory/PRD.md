@@ -70,6 +70,15 @@ Build a production-grade API for "Proof Fabric Protocol (PFP)" - Transform finan
 - [x] Edit-after-process / compliance-toggle-after-process invalidates Evidence section
 - [x] 16/16 backend + all 15 frontend e2e flows passed (iteration_4.json)
 
+### Phase 8: Shareable Verification URL (Complete - Feb 10, 2026)
+- [x] New frontend-only helper `/app/frontend/src/lib/proofLink.js` — `encodeProofToLinkParam` / `decodeProofFromLinkParam` / `buildVerifyUrl` using standards-compliant base64url (`+→-`, `/→_`, strip `=`) via TextEncoder+btoa; threshold `MAX_URL_PROOF_LENGTH=2000`
+- [x] Dashboard Evidence section: `Copy Verification Link` button builds `/verify?proof=<base64url>`, copies to clipboard. Security note: "This link contains the full proof artifact. Share only with intended recipients."
+- [x] Too-large fallback: if built URL > 2000 chars, opens Dialog "Proof too large for link — use file sharing" with `Copy JSON` + `Download Proof` buttons
+- [x] `/verify?proof=<…>` auto-loads: base64url→JSON decode, pretty-prints into textarea, shows "Proof loaded from link" banner, auto-runs verification; decode errors surface as "Invalid or corrupted proof in URL"
+- [x] Manual edit after auto-load works; Clear also strips the `?proof=` param from the URL so subsequent reloads don't re-load stale data
+- [x] Backend completely untouched in this iteration
+- [x] 12/12 frontend scenarios pass (iteration_6.json); zero issues found
+
 ### Phase 7: Independent Verification (Signed Downloadable Artifact) (Complete - Feb 10, 2026)
 - [x] New endpoint `POST /api/demo/artifact` — builds a standalone Ed25519-signed proof artifact (schema v1), returns canonical JSON with `Content-Type: application/pfp-proof+json;v=1` + attachment filename
 - [x] New endpoint `POST /api/demo/artifact/verify` — independent verification: strict schema + no-extra-fields, canonical ordering, normalization, timestamp skew (≤5 min future), constant-time `proof_id` compare (hmac.compare_digest), `kid` lookup with revocation check, Ed25519 signature verify with `PFP_ARTIFACT_V1::` domain separator
