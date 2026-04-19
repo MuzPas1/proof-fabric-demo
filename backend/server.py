@@ -78,6 +78,14 @@ async def startup_event():
         logger.info("Persistent key registry initialized")
     except Exception as e:
         logger.warning(f"Key registry initialization warning: {e}")
+
+    # Ensure demo artifact signing key is registered
+    try:
+        from services.artifact_service import ensure_demo_signing_key
+        demo_kid = await ensure_demo_signing_key(db)
+        logger.info(f"Demo artifact signing key active: kid={demo_kid}")
+    except Exception as e:
+        logger.warning(f"Demo signing key init warning: {e}")
     
     # Create indexes for FEAs
     await db.feas.create_index("fea_id", unique=True)

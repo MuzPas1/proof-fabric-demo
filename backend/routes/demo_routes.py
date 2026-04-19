@@ -5,14 +5,17 @@ Public, unauthenticated demo endpoints:
   • POST /demo/proof              — stateless normalize + canonical SHA-256 hash
   • POST /demo/issue              — issue a proof that embeds compliance state and persist it
   • GET  /demo/verify/{proof_id}  — retrieve a stored proof and re-verify its integrity
+  • POST /demo/artifact           — build + sign a downloadable standalone proof artifact
+  • POST /demo/artifact/verify    — independently verify an uploaded proof artifact
 
 Crypto logic (canonicalization + hashing) is untouched; issue/verify only add
 persistence + lookup on top of the existing primitives.
 """
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, Field
-from typing import Union, Optional
+from typing import Union, Optional, Any, Dict
 from datetime import datetime, timezone
+import json
 
 from crypto.canonicalize import canonicalize_to_json, normalize_timestamp
 from crypto.hashing import compute_sha256
@@ -262,3 +265,80 @@ async def verify_proof_by_id(proof_id: str):
         compliance=doc["compliance"],
         issued_at=doc["issued_at"],
     )
+
+
+# ---------------------------------------------------------------------------
+# Independent signed proof artifact (Ed25519, downloadable, externally verifiable)
+# ---------------------------------------------------------------------------
+
+class ArtifactRequest(BaseModel):
+    transaction_id: str = Field(..., min_length=1, max_length=200)
+    user_id: str = Field(..., min_length=1, max_length=200)
+    amount: Union[str, float, int]
+    compliance: ComplianceResult
+    timestamp: Optional[str] = None
+
+
+class ArtifactVerifyResult(BaseModel):
+    valid: bool
+    status: str  # valid_compliant | valid_non_compliant | invalid
+    reason: Optional[str] = None
+    extracted: Optional[Dict[str, Any]] = None
+
+
+@router.post("/artifact")
+async def build_downloadable_artifact(req: ArtifactRequest):
+    """
+    Build and sign a standalone proof artifact that can be downloaded,
+    shared, and independently verified anywhere.
+
+    Response:
+      - Body: canonical JSON of the signed artifact
+      - Content-Type: application/pfp-proof+json;v=1
+      - Content-Disposition: attachment (suggested filename with proof_id)
+    """
+    from server import db as database
+    from services.artifact_service import build_signed_artifact
+
+    try:
+        artifact = await build_signed_artifact(
+            database,
+            transaction_id=req.transaction_id,
+            user_id=req.user_id,
+            amount=req.amount,
+            compliance=req.compliance.model_dump(exclude={"status"}),
+            timestamp=req.timestamp,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        )
+
+    # Canonical body so the download matches what was signed.
+    body = canonicalize_to_json(artifact)
+    filename = f"pfp-proof-{artifact['proof_id'][:16]}.json"
+    return Response(
+        content=body,
+        media_type="application/pfp-proof+json;v=1",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.post("/artifact/verify", response_model=ArtifactVerifyResult)
+async def verify_downloadable_artifact(artifact: Dict[str, Any]):
+    """
+    Independently verify an uploaded/pasted signed proof artifact.
+
+    Runs strict schema checks, canonical-ordering enforcement, normalization,
+    timestamp skew, constant-time proof_id comparison, kid lookup (including
+    revocation), and Ed25519 signature verification.
+    """
+    from server import db as database
+    from services.artifact_service import verify_signed_artifact
+
+    result = await verify_signed_artifact(database, artifact)
+    return ArtifactVerifyResult(**result)
+

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -15,7 +16,6 @@ import {
   CheckCircle2,
   ShieldCheck,
   AlertTriangle,
-  FileSignature,
   ArrowRight,
   Loader2,
   RotateCcw,
@@ -26,6 +26,8 @@ import {
   Share2,
   Copy,
   Search,
+  Download,
+  ExternalLink,
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -264,6 +266,56 @@ export default function TransactionFlow() {
       toast.success("Proof details copied — paste to share");
     } catch {
       toast.error("Unable to share");
+    }
+  };
+
+  const [downloading, setDownloading] = useState(false);
+
+  const downloadSignedArtifact = async () => {
+    if (!proof) return;
+    setDownloading(true);
+    try {
+      const { data, headers } = await axios.post(
+        `${API}/demo/artifact`,
+        {
+          transaction_id: form.transaction_id,
+          user_id: form.user_id,
+          amount: form.amount,
+          compliance: complianceState,
+        },
+        { responseType: "text", transformResponse: (t) => t }
+      );
+
+      const contentType =
+        headers?.["content-type"] || "application/pfp-proof+json;v=1";
+      const blob = new Blob([data], { type: contentType });
+
+      // Derive proof_id from payload for filename
+      let proofId = "";
+      try {
+        proofId = JSON.parse(data).proof_id || "";
+      } catch {
+        /* ignore */
+      }
+      const fname = proofId
+        ? `pfp-proof-${proofId.slice(0, 16)}.json`
+        : "pfp-proof.json";
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Proof artifact downloaded");
+    } catch (e) {
+      const detail =
+        e?.response?.data?.detail || e?.message || "Download failed";
+      toast.error(detail);
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -566,14 +618,43 @@ export default function TransactionFlow() {
                 Share this proof with auditors or external systems for
                 independent verification.
               </p>
-              <Button
-                onClick={shareProof}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
-                data-testid="share-proof-btn"
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  onClick={downloadSignedArtifact}
+                  disabled={downloading}
+                  className="border-gray-200 text-gray-700 hover:bg-gray-50"
+                  data-testid="download-proof-btn"
+                >
+                  {downloading ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <Download className="w-4 h-4 mr-2" />
+                  )}
+                  Download Proof
+                </Button>
+                <Button
+                  onClick={shareProof}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                  data-testid="share-proof-btn"
+                >
+                  <Share2 className="w-4 h-4 mr-2" />
+                  Share Proof
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-3 text-xs text-gray-500">
+              Downloaded proof can be verified anywhere using the{" "}
+              <Link
+                to="/verify"
+                className="text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"
+                data-testid="open-public-verify-link"
               >
-                <Share2 className="w-4 h-4 mr-2" />
-                Share Proof
-              </Button>
+                public verifier
+                <ExternalLink className="w-3 h-3" />
+              </Link>
+              .
             </div>
           </SectionCard>
         )}

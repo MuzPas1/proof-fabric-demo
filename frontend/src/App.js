@@ -1,6 +1,8 @@
 import "@/App.css";
 import { Toaster } from "sonner";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import TransactionFlow from "@/components/TransactionFlow";
+import PublicVerifyPage from "@/components/PublicVerifyPage";
 
 function App() {
   return (
@@ -16,7 +18,12 @@ function App() {
           },
         }}
       />
-      <TransactionFlow />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<TransactionFlow />} />
+          <Route path="/verify" element={<PublicVerifyPage />} />
+        </Routes>
+      </BrowserRouter>
     </>
   );
 }

@@ -1,0 +1,40 @@
+{
+  "summary": "Tested new signed-artifact feature end-to-end: POST /api/demo/artifact (content-type, filename, schema, determinism), POST /api/demo/artifact/verify (valid compliant, valid non-compliant, 8 tamper scenarios, schema rejection x4, unknown-kid, key-status active/retired/revoked), plus existing /api/demo/issue & /api/demo/verify/{proof_id} smoke. Also tested frontend /verify page (paste + file upload + verify result + tamper) and dashboard download-proof-btn (real download event → valid artifact schema) and open-public-verify-link navigation. Found 1 real bug: revoked-key verification path 500s instead of returning valid=false+reason='revoked' because models/key_registry.py::PublicKeyInfo.status is Literal['active','retired'] and rejects 'revoked' at pydantic parse time.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "/api/demo/artifact/verify", "issue": "When the signing kid has status='revoked' in db.key_registry, verify_signed_artifact() raises pydantic ValidationError inside get_key_by_id() → 500 Internal Server Error. Spec requires valid=false with reason mentioning 'revoked'. Root cause: models/key_registry.py PublicKeyInfo.status = Literal['active','retired'] (missing 'revoked'). Fix: extend Literal to include 'revoked' (and ideally wrap the key-lookup in a try/except ValidationError → return 'Key revoked' reason defensively).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "services/key_service.py::retire_key / rotate_key / direct DB mutation", "issue": "In-memory _key_cache is NOT invalidated when db.key_registry is mutated outside the API (e.g., revocation via ops tooling or another process). Revocation only takes effect after a backend restart. Consider adding a lightweight cache TTL or on-miss DB refresh for status changes."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_artifact.py",
+    "/app/test_reports/pytest/artifact_results.xml"
+  ],
+  "action_items": [
+    "Fix PublicKeyInfo.status Literal in /app/backend/models/key_registry.py to accept 'revoked' (e.g., Literal['active','retired','revoked']) so /api/demo/artifact/verify returns the spec-required 'Key revoked' reason instead of 500.",
+    "Optional hardening: invalidate/refresh _key_cache when status changes at the DB level, or TTL-based refresh in get_key_by_id."
+  ],
+  "critical_code_review_comments": [
+    "models/key_registry.py: PublicKeyInfo.status literal is out of sync with the feature spec and with artifact_service which explicitly handles 'revoked'. The Pydantic parse in get_key_by_id raises before verify_signed_artifact's revoked-status check can return a clean reason.",
+    "services/key_service.py: _key_cache is a module-level singleton populated at startup; any external mutation to db.key_registry is invisible to a running server. This is acceptable for demo but should be documented.",
+    "routes/demo_routes.py build_downloadable_artifact: ComplianceResult.model_dump(exclude={'status'}) correctly strips the UI-only status before signing; good defensive normalization.",
+    "artifact_service.verify_signed_artifact returns 200 with valid=false for all invalid artifacts (schema, tamper, kid, timestamp skew). Consistent API shape; clients rely on valid/status/reason fields — no 4xx mixing. Recommend documenting this in OpenAPI."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_artifact.py (new — 20 tests covering all artifact flows + existing endpoints smoke)"
+  ],
+  "success_rate": {"backend": "95% (19/20 passed, 1 xfailed due to real bug)", "frontend": "100% (/verify paste+upload+tamper + dashboard download + link nav all pass)"},
+  "test_credentials": "N/A — /api/demo/* endpoints are public",
+  "seed_data_creation": "Tests create TEST_* artifacts; artifacts are stateless — not persisted server-side. db.key_registry has 1 kid (key_0c6c7071b3086f1a) pre-registered by server startup hook; status was temporarily flipped during revocation test and restored to 'active'.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend test file /app/backend/tests/test_artifact.py is the regression suite for the signed-artifact feature. test_revoked_key_fails_verification is currently xfail until PublicKeyInfo.status Literal is extended to include 'revoked'. After fix, remove the @pytest.mark.xfail decorator and re-run. All tamper tests (amount/txid/compliance/future-ts/signature/kid/missing/extra) pass. All frontend data-testids match spec: public-verify-page, verify-page-title, verify-note, json-textarea, file-input, upload-file-btn, paste-clipboard-btn, verify-proof-btn, verify-result-headline, verify-result-reason, extracted-kyc/aml/limits/timestamp/kid, download-proof-btn, open-public-verify-link.",
+  "rca of the issue": "Revoked-key 500: verify_signed_artifact() → _get_public_key_and_status() → get_key_by_id() constructs PublicKeyInfo(**key_doc) from Mongo. PublicKeyInfo.status is typed Literal['active','retired'] → raises ValidationError for 'revoked' before artifact_service can return the graceful reason. Fix by broadening the Literal and (defensively) catching ValidationError in key_service to treat any parse failure as unknown/revoked key."
+}
