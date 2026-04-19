@@ -70,6 +70,17 @@ Build a production-grade API for "Proof Fabric Protocol (PFP)" - Transform finan
 - [x] Edit-after-process / compliance-toggle-after-process invalidates Evidence section
 - [x] 16/16 backend + all 15 frontend e2e flows passed (iteration_4.json)
 
+### Phase 7: Independent Verification (Signed Downloadable Artifact) (Complete - Feb 10, 2026)
+- [x] New endpoint `POST /api/demo/artifact` — builds a standalone Ed25519-signed proof artifact (schema v1), returns canonical JSON with `Content-Type: application/pfp-proof+json;v=1` + attachment filename
+- [x] New endpoint `POST /api/demo/artifact/verify` — independent verification: strict schema + no-extra-fields, canonical ordering, normalization, timestamp skew (≤5 min future), constant-time `proof_id` compare (hmac.compare_digest), `kid` lookup with revocation check, Ed25519 signature verify with `PFP_ARTIFACT_V1::` domain separator
+- [x] Key registry supports `active` / `retired` / `revoked` status (extended `PublicKeyInfo.status` Literal); artifact service reads key status live from DB (cache-bypass) so revocation takes effect without restart
+- [x] Existing `/api/demo/issue` and `/api/demo/verify/{proof_id}` untouched
+- [x] Frontend: new `/verify` route (`PublicVerifyPage.jsx`) with drag-drop, file upload, clipboard paste, textarea, and three result states (Valid compliant / Valid non-compliant flagged / Invalid with reason) + extracted KYC/AML/Limits/Timestamp/Key ID
+- [x] Dashboard Evidence section gained `Download Proof` button (triggers browser download of signed JSON) and a link to `/verify`
+- [x] React Router (v7) wired in App.js: `/` → TransactionFlow, `/verify` → PublicVerifyPage
+- [x] Tamper coverage verified: amount/txid/compliance/timestamp/signature/kid modifications all rejected; missing + extra fields rejected; unsupported version/algorithm rejected; revoked key rejected; retired key still verifies
+- [x] 20/20 backend tests passing after revoked-key bug fix; all frontend flows passed (iteration_5.json)
+
 ## Prioritized Backlog
 
 ### P1 (Important)
@@ -91,6 +102,8 @@ Build a production-grade API for "Proof Fabric Protocol (PFP)" - Transform finan
 - POST /api/demo/proof - Stateless normalize + SHA-256 hash (no auth)
 - POST /api/demo/issue - Issue compliance-aware proof + persist (no auth)
 - GET  /api/demo/verify/{proof_id} - Auditor lookup + integrity re-verify (no auth)
+- POST /api/demo/artifact - Build+sign downloadable Ed25519 artifact (no auth)
+- POST /api/demo/artifact/verify - Independent artifact verification (no auth)
 - GET /api/config - Test API key (no auth)
 - GET /api/health - Health check
 

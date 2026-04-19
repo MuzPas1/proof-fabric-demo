@@ -11,7 +11,7 @@ class PublicKeyInfo(BaseModel):
     public_key: str  # Base64 encoded
     algorithm: str = "Ed25519"
     created_at: str
-    status: Literal["active", "retired"] = "active"
+    status: Literal["active", "retired", "revoked"] = "active"
 
 
 class KeyRegistryResponse(BaseModel):

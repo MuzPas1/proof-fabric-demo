@@ -54,7 +54,7 @@ from crypto.signing import (
     get_public_key_id,
     get_public_key_b64,
 )
-from services.key_service import get_key_by_id, register_key
+from services.key_service import register_key
 
 
 ARTIFACT_VERSION = 1
@@ -160,7 +160,7 @@ async def ensure_demo_signing_key(db: AsyncIOMotorDatabase) -> str:
     its public key in the key registry. Returns the active kid.
     """
     kid = get_public_key_id()
-    existing = await get_key_by_id(kid)
+    existing = await db.key_registry.find_one({"public_key_id": kid}, {"_id": 0})
     if existing is None:
         await register_key(kid, get_public_key_b64(), status="active")
     return kid
@@ -169,10 +169,19 @@ async def ensure_demo_signing_key(db: AsyncIOMotorDatabase) -> str:
 async def _get_public_key_and_status(
     db: AsyncIOMotorDatabase, kid: str
 ) -> Tuple[Optional[bytes], Optional[str]]:
-    key_info = await get_key_by_id(kid)
-    if key_info is None:
+    # Read straight from DB so revocation / status changes take effect
+    # without needing a backend restart (bypasses the in-memory cache).
+    doc = await db.key_registry.find_one({"public_key_id": kid}, {"_id": 0})
+    if doc is None:
         return None, None
-    return base64.b64decode(key_info.public_key), key_info.status
+    status_value = doc.get("status", "active")
+    public_key_b64 = doc.get("public_key")
+    if not public_key_b64:
+        return None, None
+    try:
+        return base64.b64decode(public_key_b64), status_value
+    except Exception:
+        return None, status_value
 
 
 # ---------------------------------------------------------------------------
