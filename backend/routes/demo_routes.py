@@ -8,7 +8,7 @@ consistency comparison across two independent parties.
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import Union
-from datetime import datetime
+from datetime import datetime, timezone
 
 from crypto.canonicalize import canonicalize_to_json, normalize_timestamp
 from crypto.hashing import compute_sha256
@@ -112,6 +112,6 @@ async def generate_party_proof(record: PartyRecord):
         metadata=ProofMetadata(
             algorithm="SHA-256",
             canonicalization="sorted-keys/utf-8/no-whitespace",
-            generated_at=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+            generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
         ),
     )
