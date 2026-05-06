@@ -70,6 +70,13 @@ Build a production-grade API for "Proof Fabric Protocol (PFP)" - Transform finan
 - [x] Edit-after-process / compliance-toggle-after-process invalidates Evidence section
 - [x] 16/16 backend + all 15 frontend e2e flows passed (iteration_4.json)
 
+### Phase 9: Evidence Section Restoration (Complete - Feb 10, 2026)
+- [x] Step 3 "Evidence Generated" now ALWAYS visible — pre-process shows a placeholder card with "Awaiting Transaction" badge and explanatory text so the 1→2→3→4 sequence stays intact
+- [x] Post-process content updated per spec: "Proof Generated" status badge (was "Proof Issued"), Proof ID truncation upgraded to **first 16 + "..." + last 8** chars with copy button preserving the full hash, **Timestamp (UTC)** explicit format, new **Algorithm** row "Ed25519 · SHA-256 · Deterministic canonicalization"
+- [x] Tamper note rewording: "tamper-resistant" (replaces prior "cannot be altered"); added new privacy note `evidence-privacy-note`: "Proof can be verified without sharing raw transaction data."
+- [x] Visual emphasis: SectionCard now supports `accent="primary"` adding a coloured ring + larger title — applied to Step 3 to mark it as the core product
+- [x] Backend untouched in this iteration
+
 ### Phase 8: Shareable Verification URL (Complete - Feb 10, 2026)
 - [x] New frontend-only helper `/app/frontend/src/lib/proofLink.js` — `encodeProofToLinkParam` / `decodeProofFromLinkParam` / `buildVerifyUrl` using standards-compliant base64url (`+→-`, `/→_`, strip `=`) via TextEncoder+btoa; threshold `MAX_URL_PROOF_LENGTH=2000`
 - [x] Dashboard Evidence section: `Copy Verification Link` button builds `/verify?proof=<base64url>`, copies to clipboard. Security note: "This link contains the full proof artifact. Share only with intended recipients."

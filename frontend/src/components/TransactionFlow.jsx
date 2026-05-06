@@ -68,7 +68,21 @@ const formatTs = (iso) => {
   }
 };
 
-const shortHash = (h) => (h ? `${h.slice(0, 10)}…${h.slice(-8)}` : "");
+const formatTsUTC = (iso) => {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    const pad = (n) => String(n).padStart(2, "0");
+    return (
+      `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
+      `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC`
+    );
+  } catch {
+    return iso;
+  }
+};
+
+const shortHash = (h) => (h ? `${h.slice(0, 16)}...${h.slice(-8)}` : "");
 
 /* --------------------------------- UI bits -------------------------------- */
 
@@ -80,6 +94,7 @@ function SectionCard({
   children,
   testId,
   rightSlot,
+  accent,
 }) {
   const toneRing = {
     neutral: "border-gray-200",
@@ -95,9 +110,23 @@ function SectionCard({
     info: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",
   }[tone];
 
+  // Visual emphasis for "core product" sections (e.g., Evidence)
+  const accentRing =
+    accent === "primary"
+      ? tone === "neutral"
+        ? "ring-1 ring-blue-100 shadow-blue-50"
+        : tone === "success"
+        ? "ring-2 ring-emerald-100"
+        : tone === "error"
+        ? "ring-2 ring-red-100"
+        : ""
+      : "";
+
+  const accentTitle = accent === "primary" ? "text-lg" : "text-base";
+
   return (
     <Card
-      className={`bg-white ${toneRing} shadow-sm hover:shadow-md transition-shadow`}
+      className={`bg-white ${toneRing} ${accentRing} shadow-sm hover:shadow-md transition-shadow`}
       data-testid={testId}
     >
       <CardHeader className="pb-4">
@@ -109,7 +138,9 @@ function SectionCard({
               {step}
             </div>
             <div>
-              <CardTitle className="text-base font-semibold text-gray-900 tracking-tight">
+              <CardTitle
+                className={`${accentTitle} font-semibold text-gray-900 tracking-tight`}
+              >
                 {title}
               </CardTitle>
               {description && (
@@ -599,141 +630,182 @@ export default function TransactionFlow() {
           </p>
         </SectionCard>
 
-        {/* 3. Evidence (auto after process) */}
-        {processed && proof && (
-          <SectionCard
-            step="3"
-            title="Evidence"
-            description="A cryptographically verifiable proof artifact has been issued for this transaction."
-            testId="section-evidence"
-            tone={isCompliant ? "success" : "error"}
-            rightSlot={
+        {/* 3. Evidence Generated — CORE PRODUCT (always rendered) */}
+        <SectionCard
+          step="3"
+          title="Evidence Generated"
+          description={
+            processed && proof
+              ? "A cryptographically verifiable proof artifact has been issued for this transaction."
+              : "A cryptographic proof of the processed transaction will appear here."
+          }
+          testId="section-evidence"
+          tone={
+            !processed || !proof
+              ? "neutral"
+              : isCompliant
+              ? "success"
+              : "error"
+          }
+          accent="primary"
+          rightSlot={
+            processed && proof ? (
               <StatusPill
                 status={isCompliant ? "success" : "error"}
-                label={isCompliant ? "Proof Issued" : "Flagged"}
+                label={isCompliant ? "Proof Generated" : "Flagged"}
                 testId="evidence-status-badge"
               />
-            }
-          >
-            <div className="rounded-lg bg-gray-50 border border-gray-100 divide-y divide-gray-100">
-              <ProofRow
-                label="Transaction ID"
-                value={proof.transaction_id}
-                testId="evidence-transaction-id"
+            ) : (
+              <StatusPill
+                status="neutral"
+                label="Awaiting Transaction"
+                testId="evidence-status-badge"
               />
-              <ProofRow
-                label="Proof ID"
-                value={shortHash(proof.proof_id)}
-                full={proof.proof_id}
-                testId="evidence-proof-id"
-                action={
-                  <button
-                    onClick={copyProofId}
-                    className="text-gray-400 hover:text-gray-700 transition-colors"
-                    data-testid="copy-proof-id-btn"
-                    aria-label="Copy Proof ID"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                  </button>
-                }
-              />
-              <ProofRow
-                label="Issued at"
-                value={formatTs(proof.issued_at)}
-                testId="evidence-timestamp"
-              />
-            </div>
-
+            )
+          }
+        >
+          {!processed || !proof ? (
             <div
-              className={`mt-4 flex items-center gap-2 text-sm font-medium ${
-                isCompliant ? "text-emerald-700" : "text-red-700"
-              }`}
-              data-testid="evidence-verification-status"
+              className="rounded-lg border border-dashed border-gray-200 bg-gray-50/60 px-4 py-6 text-sm text-gray-500"
+              data-testid="evidence-placeholder"
             >
-              {isCompliant ? (
-                <CheckCircle2 className="w-4 h-4" />
-              ) : (
-                <AlertTriangle className="w-4 h-4" />
-              )}
-              {isCompliant
-                ? "Proof Verified — Data Untampered"
-                : "Proof Verified — Transaction flagged as NON-COMPLIANT"}
+              Process a transaction above. Once compliance checks pass, a
+              tamper-resistant proof artifact will be generated here automatically.
             </div>
-
-            <p
-              className="text-xs text-gray-500 mt-2"
-              data-testid="evidence-tamper-note"
-            >
-              This proof is cryptographically generated, independently
-              verifiable, and cannot be altered.
-            </p>
-
-            <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <p className="text-sm text-gray-600">
-                Share this proof with auditors or external systems for
-                independent verification.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  onClick={downloadSignedArtifact}
-                  disabled={downloading}
-                  className="border-gray-200 text-gray-700 hover:bg-gray-50"
-                  data-testid="download-proof-btn"
-                >
-                  {downloading ? (
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  ) : (
-                    <Download className="w-4 h-4 mr-2" />
-                  )}
-                  Download Proof
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={copyVerificationLink}
-                  disabled={copyingLink}
-                  className="border-gray-200 text-gray-700 hover:bg-gray-50"
-                  data-testid="copy-verification-link-btn"
-                >
-                  {copyingLink ? (
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  ) : (
-                    <Link2 className="w-4 h-4 mr-2" />
-                  )}
-                  Copy Verification Link
-                </Button>
-                <Button
-                  onClick={shareProof}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
-                  data-testid="share-proof-btn"
-                >
-                  <Share2 className="w-4 h-4 mr-2" />
-                  Share Proof
-                </Button>
+          ) : (
+            <>
+              <div className="rounded-lg bg-gray-50 border border-gray-100 divide-y divide-gray-100">
+                <ProofRow
+                  label="Transaction ID"
+                  value={proof.transaction_id}
+                  testId="evidence-transaction-id"
+                />
+                <ProofRow
+                  label="Proof ID"
+                  value={shortHash(proof.proof_id)}
+                  full={proof.proof_id}
+                  testId="evidence-proof-id"
+                  action={
+                    <button
+                      onClick={copyProofId}
+                      className="text-gray-400 hover:text-gray-700 transition-colors"
+                      data-testid="copy-proof-id-btn"
+                      aria-label="Copy Proof ID"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  }
+                />
+                <ProofRow
+                  label="Timestamp (UTC)"
+                  value={formatTsUTC(proof.issued_at)}
+                  testId="evidence-timestamp"
+                />
+                <ProofRow
+                  label="Algorithm"
+                  value="Ed25519 · SHA-256 · Deterministic canonicalization"
+                  testId="evidence-algorithm"
+                  valueClass="text-gray-700"
+                />
               </div>
-            </div>
 
-            <div className="mt-3 text-xs text-gray-500">
-              Downloaded proof can be verified anywhere using the{" "}
-              <Link
-                to="/verify"
-                className="text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"
-                data-testid="open-public-verify-link"
+              <div
+                className={`mt-4 flex items-center gap-2 text-sm font-medium ${
+                  isCompliant ? "text-emerald-700" : "text-red-700"
+                }`}
+                data-testid="evidence-verification-status"
               >
-                public verifier
-                <ExternalLink className="w-3 h-3" />
-              </Link>
-              .
-            </div>
-            <div
-              className="mt-1.5 text-xs text-gray-400"
-              data-testid="link-security-note"
-            >
-              This link contains the full proof artifact. Share only with
-              intended recipients.
-            </div>
-          </SectionCard>
-        )}
+                {isCompliant ? (
+                  <CheckCircle2 className="w-4 h-4" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4" />
+                )}
+                {isCompliant
+                  ? "Proof Verified — Data Untampered"
+                  : "Proof Verified — Transaction flagged as NON-COMPLIANT"}
+              </div>
+
+              <p
+                className="text-xs text-gray-500 mt-2"
+                data-testid="evidence-tamper-note"
+              >
+                This proof is cryptographically generated, independently
+                verifiable, and tamper-resistant.
+              </p>
+              <p
+                className="text-xs text-gray-500"
+                data-testid="evidence-privacy-note"
+              >
+                Proof can be verified without sharing raw transaction data.
+              </p>
+
+              <div className="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <p className="text-sm text-gray-600">
+                  Share this proof with auditors or external systems for
+                  independent verification.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={downloadSignedArtifact}
+                    disabled={downloading}
+                    className="border-gray-200 text-gray-700 hover:bg-gray-50"
+                    data-testid="download-proof-btn"
+                  >
+                    {downloading ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    ) : (
+                      <Download className="w-4 h-4 mr-2" />
+                    )}
+                    Download Proof
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={copyVerificationLink}
+                    disabled={copyingLink}
+                    className="border-gray-200 text-gray-700 hover:bg-gray-50"
+                    data-testid="copy-verification-link-btn"
+                  >
+                    {copyingLink ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    ) : (
+                      <Link2 className="w-4 h-4 mr-2" />
+                    )}
+                    Copy Verification Link
+                  </Button>
+                  <Button
+                    onClick={shareProof}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                    data-testid="share-proof-btn"
+                  >
+                    <Share2 className="w-4 h-4 mr-2" />
+                    Share Proof
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-3 text-xs text-gray-500">
+                Downloaded proof can be verified anywhere using the{" "}
+                <Link
+                  to="/verify"
+                  className="text-blue-600 hover:text-blue-700 inline-flex items-center gap-1"
+                  data-testid="open-public-verify-link"
+                >
+                  public verifier
+                  <ExternalLink className="w-3 h-3" />
+                </Link>
+                .
+              </div>
+              <div
+                className="mt-1.5 text-xs text-gray-400"
+                data-testid="link-security-note"
+              >
+                This link contains the full proof artifact. Share only with
+                intended recipients.
+              </div>
+            </>
+          )}
+        </SectionCard>
 
         {/* 4. Auditor / External Verification */}
         <SectionCard
