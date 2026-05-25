@@ -1,0 +1,663 @@
+openapi: 3.0.3
+
+info:
+  title: Proof Fabric Protocol (PFP) API
+  version: "1.0.0"
+  description: |
+    The **Proof Fabric Protocol (PFP)** transforms financial transactions into
+    deterministic, cryptographically verifiable Financial Evidence Artifacts
+    (FEAs). Each FEA is signed with Ed25519, content-addressed by SHA-256, and
+    can be re-verified by any third party using only the public key registry —
+    no shared secret required.
+
+    ## Why PFP
+    - **Immutable evidence** — every FEA carries a tamper-evident signature.
+    - **Independent verification** — auditors verify without trusting the issuer.
+    - **Replay protection** — `(transaction_id, timestamp)` is globally unique.
+    - **Idempotent issuance** — same idempotency key + same payload returns the same FEA.
+
+    ## Security model
+    - Signing: Ed25519 (libsodium / `nacl.signing`).
+    - Hashing: SHA-256 over deterministic JSON canonicalization
+      (sorted keys, UTF-8, no whitespace).
+    - Public keys are resolved via `public_key_id` (kid) from `/api/public/keys`.
+    - Keys can be `active`, `retired`, or `revoked`. Revoked keys fail verification.
+
+  contact:
+    name: PFP Integrations
+    email: support@pfprotocol.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://demo.pfprotocol.com
+    description: Production (live demo)
+  - url: https://fea-crypto.preview.emergentagent.com
+    description: Staging / sandbox
+
+tags:
+  - name: FEA
+    description: Authenticated FEA generation and verification (production integration).
+  - name: Public
+    description: Unauthenticated verification + key registry (auditor-friendly).
+  - name: System
+    description: Health, root, and sandbox configuration.
+  - name: Demo
+    description: |
+      Demo-only endpoints powering the public-facing transaction flow
+      (`demo.pfprotocol.com`). Useful for prototyping; production
+      integrations should use the **FEA** endpoints instead.
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /api/fea/generate:
+    post:
+      tags: [FEA]
+      summary: Generate a Financial Evidence Artifact
+      description: |
+        Generates a new, signed FEA for a financial transaction.
+
+        **Dual-layer replay protection:**
+        1. **Idempotency** — same `idempotency_key` + identical payload returns
+           the existing FEA (HTTP 200). Same key + different payload → `409`.
+        2. **Transaction uniqueness** — `(transaction_id, timestamp)` is enforced
+           globally unique. Same pair + identical payload → existing FEA.
+           Same pair + different payload → `409`.
+
+        **Amounts** are integers in the smallest currency unit (e.g. paise, cents).
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenerateFEARequest' }
+            examples:
+              standard:
+                summary: A typical INR transaction
+                value:
+                  idempotency_key: "idem-2026-02-10-9f3a"
+                  transaction_id: "TXN-8F2C-2026-00418"
+                  timestamp: "2026-02-10T14:23:00Z"
+                  amount: 245000
+                  currency: "INR"
+                  payer_id: "sha256:7b9c…"
+                  payee_id: "sha256:a14d…"
+                  metadata:
+                    channel: "upi"
+                    rail: "NPCI"
+      responses:
+        '200':
+          description: FEA issued (or existing FEA returned for idempotent retries).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FEAResponse' }
+              examples:
+                issued:
+                  value:
+                    fea_id: "f1c2c45e-9c91-4f12-8e7c-2c5c5b1a4b0e"
+                    fea_payload:
+                      fea_version: "1.0"
+                      issuer_id: "pfp-issuer-001"
+                      public_key_id: "key_0c6c7071b3086f1a"
+                      transaction_summary:
+                        transaction_id: "TXN-8F2C-2026-00418"
+                        timestamp: "2026-02-10T14:23:00Z"
+                        amount: 245000
+                        currency: "INR"
+                      parties:
+                        payer_hash: "sha256:7b9c…"
+                        payee_hash: "sha256:a14d…"
+                      metadata_hash: "8d51b…"
+                      fea_hash: "9e2c4…"
+                    signature: "MEUCIQDp…base64…"
+                    signature_version: "v2"
+                    public_key_id: "key_0c6c7071b3086f1a"
+                    created_at: "2026-02-10T14:23:01.221Z"
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/fea/verify:
+    post:
+      tags: [FEA]
+      summary: Verify an FEA payload + signature
+      description: |
+        Verifies a signed FEA. Accepts both current (signature outside payload)
+        and legacy (signature_version inside payload) formats for backward
+        compatibility. Resolves the public key via `public_key_id` from the
+        on-chain key registry.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VerifyFEARequest' }
+            examples:
+              currentFormat:
+                value:
+                  fea_payload:
+                    fea_version: "1.0"
+                    issuer_id: "pfp-issuer-001"
+                    public_key_id: "key_0c6c7071b3086f1a"
+                    transaction_summary:
+                      transaction_id: "TXN-8F2C-2026-00418"
+                      timestamp: "2026-02-10T14:23:00Z"
+                      amount: 245000
+                      currency: "INR"
+                    parties:
+                      payer_hash: "sha256:7b9c…"
+                      payee_hash: "sha256:a14d…"
+                    fea_hash: "9e2c4…"
+                  signature: "MEUCIQDp…base64…"
+                  signature_version: "v2"
+      responses:
+        '200':
+          description: Verification result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifyFEAResponse' }
+              examples:
+                valid:
+                  value: { valid: true, reason: null, signature_version: "v2", verified_at: "2026-02-10T14:23:02.001Z" }
+                invalid:
+                  value: { valid: false, reason: "Signature mismatch", signature_version: "v2", verified_at: "2026-02-10T14:23:02.001Z" }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /api/public/verify/{fea_id}:
+    get:
+      tags: [Public]
+      summary: Public verification of an FEA by ID
+      description: |
+        Independent verification path: given a stored `fea_id`, returns the
+        full FEA payload, its signature, the resolved signature version, and a
+        re-computed `signature_valid` flag. No authentication required.
+      security: []
+      parameters:
+        - in: path
+          name: fea_id
+          required: true
+          schema: { type: string, format: uuid }
+          description: The `fea_id` returned at issuance time.
+      responses:
+        '200':
+          description: Verification result + full payload.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicVerifyResponse' }
+        '404':
+          description: Unknown `fea_id`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/public/keys:
+    get:
+      tags: [Public]
+      summary: Public key registry
+      description: |
+        Returns all public keys with their lifecycle status. Active + retired
+        keys are returned to support verification of historical FEAs. Revoked
+        keys are excluded from issuance but may still appear here for audit.
+      security: []
+      responses:
+        '200':
+          description: Key registry snapshot.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KeyRegistryResponse' }
+
+  /api/:
+    get:
+      tags: [System]
+      summary: API root / liveness
+      security: []
+      responses:
+        '200':
+          description: API metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name: { type: string }
+                  version: { type: string }
+                  status: { type: string }
+                  timestamp: { type: string, format: date-time }
+
+  /api/health:
+    get:
+      tags: [System]
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: Service healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [healthy] }
+
+  /api/config:
+    get:
+      tags: [System]
+      summary: Sandbox configuration
+      description: |
+        Returns the **sandbox** test API key and the issuer ID. **Disable or
+        restrict this endpoint in production** — it is intended for the
+        dev console and integration testing only.
+      security: []
+      responses:
+        '200':
+          description: Sandbox configuration.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  test_api_key: { type: string, example: "pfp_test_…" }
+                  issuer_id: { type: string, example: "pfp-issuer-001" }
+                  endpoints:
+                    type: object
+                    additionalProperties: { type: string }
+
+  /api/demo/issue:
+    post:
+      tags: [Demo]
+      summary: (Demo) Issue compliance-aware proof
+      description: |
+        Demo endpoint powering `demo.pfprotocol.com`. Persists a proof with
+        embedded compliance state. **Not** for production integration — use
+        `POST /api/fea/generate` instead.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IssueRequest' }
+      responses:
+        '200':
+          description: Issued proof.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssueResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /api/demo/verify/{proof_id}:
+    get:
+      tags: [Demo]
+      summary: (Demo) Verify proof by ID
+      security: []
+      parameters:
+        - in: path
+          name: proof_id
+          required: true
+          schema: { type: string, pattern: '^[0-9a-f]{64}$' }
+      responses:
+        '200':
+          description: Verification result with compliance breakdown.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifyByIdResponse' }
+
+  /api/demo/artifact:
+    post:
+      tags: [Demo]
+      summary: (Demo) Build downloadable Ed25519-signed artifact
+      description: |
+        Returns a standalone, signed JSON artifact with media type
+        `application/pfp-proof+json;v=1` and an attachment filename. The
+        artifact can be verified anywhere via `/api/demo/artifact/verify`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ArtifactRequest' }
+      responses:
+        '200':
+          description: Signed canonical JSON artifact.
+          content:
+            application/pfp-proof+json;v=1:
+              schema: { $ref: '#/components/schemas/SignedArtifact' }
+
+  /api/demo/artifact/verify:
+    post:
+      tags: [Demo]
+      summary: (Demo) Independently verify a signed artifact
+      description: |
+        Strict schema validation, canonical-ordering enforcement, normalization,
+        timestamp skew (≤ 5 min future), constant-time `proof_id` compare,
+        `kid` lookup including revocation, Ed25519 signature verify.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignedArtifact' }
+      responses:
+        '200':
+          description: Verification result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArtifactVerifyResult' }
+
+  /api/demo/proof:
+    post:
+      tags: [Demo]
+      summary: (Demo) Stateless proof hash
+      description: Normalize + canonical SHA-256 hash of a party record. Stateless.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PartyRecord' }
+      responses:
+        '200':
+          description: Proof hash + normalized payload.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProofResponse' }
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        Sandbox keys can be fetched from `GET /api/config` (sandbox only).
+        Production keys are provisioned by the PFP team — contact
+        support@pfprotocol.com.
+
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Missing or invalid `X-API-Key` header.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: Replay or idempotency conflict.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    ValidationError:
+      description: Pydantic schema validation failure.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationErrorResponse' }
+    RateLimited:
+      description: Too many requests. See `Retry-After` header.
+
+  schemas:
+    GenerateFEARequest:
+      type: object
+      required: [idempotency_key, transaction_id, timestamp, amount, currency, payer_id, payee_id]
+      properties:
+        idempotency_key:
+          type: string
+          minLength: 1
+          description: Unique per logical request. Safe to retry with the same value.
+          example: "idem-2026-02-10-9f3a"
+        transaction_id:
+          type: string
+          minLength: 1
+          example: "TXN-8F2C-2026-00418"
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC. Used in the replay-uniqueness compound key.
+          example: "2026-02-10T14:23:00Z"
+        amount:
+          type: integer
+          minimum: 0
+          description: Smallest currency unit (paise, cents).
+          example: 245000
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: "INR"
+        payer_id:
+          type: string
+          description: Hashed / tokenized payer identifier — never raw PII.
+          example: "sha256:7b9c…"
+        payee_id:
+          type: string
+          example: "sha256:a14d…"
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Optional metadata; its SHA-256 hash is committed via `metadata_hash`.
+
+    FEAPayload:
+      type: object
+      required: [fea_version, issuer_id, public_key_id, transaction_summary, parties, fea_hash]
+      properties:
+        fea_version: { type: string, example: "1.0" }
+        issuer_id: { type: string, example: "pfp-issuer-001" }
+        public_key_id: { type: string, example: "key_0c6c7071b3086f1a" }
+        transaction_summary:
+          type: object
+          required: [transaction_id, timestamp, amount, currency]
+          properties:
+            transaction_id: { type: string }
+            timestamp: { type: string, format: date-time }
+            amount: { type: integer }
+            currency: { type: string }
+        parties:
+          type: object
+          required: [payer_hash, payee_hash]
+          properties:
+            payer_hash: { type: string }
+            payee_hash: { type: string }
+        metadata_hash: { type: string, nullable: true }
+        fea_hash: { type: string, description: "SHA-256 of the canonical payload (excluding fea_hash itself)." }
+
+    FEAResponse:
+      type: object
+      required: [fea_id, fea_payload, signature, signature_version, public_key_id, created_at]
+      properties:
+        fea_id: { type: string, format: uuid }
+        fea_payload: { $ref: '#/components/schemas/FEAPayload' }
+        signature: { type: string, description: "Pure base64 Ed25519 signature over the canonical fea_payload." }
+        signature_version: { type: string, example: "v2" }
+        public_key_id: { type: string, example: "key_0c6c7071b3086f1a" }
+        created_at: { type: string, format: date-time }
+
+    VerifyFEARequest:
+      type: object
+      required: [fea_payload, signature]
+      properties:
+        fea_payload: { $ref: '#/components/schemas/FEAPayload' }
+        signature: { type: string }
+        signature_version:
+          type: string
+          nullable: true
+          description: Provide externally for current format. May be omitted for legacy payloads that embed it.
+
+    VerifyFEAResponse:
+      type: object
+      required: [valid, signature_version, verified_at]
+      properties:
+        valid: { type: boolean }
+        reason: { type: string, nullable: true }
+        signature_version: { type: string }
+        verified_at: { type: string, format: date-time }
+
+    PublicVerifyResponse:
+      type: object
+      required: [fea_id, fea_payload, signature, signature_version, signature_valid, issuer_id, created_at]
+      properties:
+        fea_id: { type: string, format: uuid }
+        fea_payload: { $ref: '#/components/schemas/FEAPayload' }
+        signature: { type: string }
+        signature_version: { type: string }
+        signature_valid: { type: boolean }
+        issuer_id: { type: string }
+        created_at: { type: string, format: date-time }
+
+    PublicKeyInfo:
+      type: object
+      required: [public_key_id, public_key, algorithm, created_at, status]
+      properties:
+        public_key_id: { type: string, example: "key_0c6c7071b3086f1a" }
+        public_key: { type: string, description: "Base64 of the raw Ed25519 public key." }
+        algorithm: { type: string, enum: [Ed25519] }
+        created_at: { type: string, format: date-time }
+        status: { type: string, enum: [active, retired, revoked] }
+
+    KeyRegistryResponse:
+      type: object
+      properties:
+        keys:
+          type: array
+          items: { $ref: '#/components/schemas/PublicKeyInfo' }
+        total: { type: integer }
+        active_count: { type: integer }
+        retired_count: { type: integer }
+
+    # ----- Demo schemas -----
+    IssueRequest:
+      type: object
+      required: [transaction_id, user_id, amount, created_at, compliance]
+      properties:
+        transaction_id: { type: string }
+        user_id: { type: string }
+        amount: { oneOf: [{ type: string }, { type: number }] }
+        created_at: { type: string, format: date-time }
+        compliance:
+          type: object
+          required: [kyc, aml, limits, status]
+          properties:
+            kyc: { type: string, enum: [Pass, Fail] }
+            aml: { type: string, enum: [Pass, Fail] }
+            limits: { type: string, enum: ["Within allowed range", "Exceeded"] }
+            status: { type: string, enum: [COMPLIANT, NON-COMPLIANT] }
+
+    IssueResponse:
+      type: object
+      properties:
+        proof_id: { type: string }
+        proof_hash: { type: string }
+        transaction_id: { type: string }
+        issued_at: { type: string, format: date-time }
+        metadata:
+          type: object
+          properties:
+            algorithm: { type: string }
+            canonicalization: { type: string }
+            generated_at: { type: string, format: date-time }
+
+    VerifyByIdResponse:
+      type: object
+      properties:
+        valid: { type: boolean }
+        proof_id: { type: string }
+        transaction_id: { type: string, nullable: true }
+        compliance: { type: object, nullable: true }
+        issued_at: { type: string, format: date-time, nullable: true }
+        reason: { type: string, nullable: true }
+
+    ArtifactRequest:
+      type: object
+      required: [transaction_id, user_id, amount, compliance]
+      properties:
+        transaction_id: { type: string }
+        user_id: { type: string }
+        amount: { oneOf: [{ type: string }, { type: number }] }
+        compliance: { $ref: '#/components/schemas/IssueRequest/properties/compliance' }
+        timestamp: { type: string, nullable: true }
+
+    SignedArtifact:
+      type: object
+      required: [version, transaction_id, user_id, amount, compliance, timestamp, proof_id, algorithm, kid, signature]
+      properties:
+        version: { type: integer, enum: [1] }
+        transaction_id: { type: string }
+        user_id: { type: string }
+        amount: { type: string }
+        compliance:
+          type: object
+          properties:
+            kyc: { type: string, enum: [Pass, Fail] }
+            aml: { type: string, enum: [Pass, Fail] }
+            limits: { type: string, enum: ["Within allowed range", "Exceeded"] }
+        timestamp: { type: string, format: date-time }
+        proof_id: { type: string, pattern: '^[0-9a-f]{64}$' }
+        algorithm: { type: string, enum: [Ed25519] }
+        kid: { type: string }
+        signature: { type: string }
+
+    ArtifactVerifyResult:
+      type: object
+      properties:
+        valid: { type: boolean }
+        status: { type: string, enum: [valid_compliant, valid_non_compliant, invalid] }
+        reason: { type: string, nullable: true }
+        extracted:
+          type: object
+          nullable: true
+          properties:
+            transaction_id: { type: string }
+            compliance: { type: object }
+            timestamp: { type: string, format: date-time }
+            kid: { type: string }
+            key_status: { type: string }
+
+    PartyRecord:
+      type: object
+      required: [transaction_id, user_id, amount, created_at]
+      properties:
+        transaction_id: { type: string }
+        user_id: { type: string }
+        amount: { oneOf: [{ type: string }, { type: number }] }
+        created_at: { type: string, format: date-time }
+
+    ProofResponse:
+      type: object
+      properties:
+        proof_hash: { type: string, pattern: '^[0-9a-f]{64}$' }
+        normalized_payload: { type: object }
+        metadata:
+          type: object
+          properties:
+            algorithm: { type: string, enum: ["SHA-256"] }
+            canonicalization: { type: string }
+            generated_at: { type: string, format: date-time }
+
+    # ----- Errors -----
+    ErrorResponse:
+      type: object
+      required: [detail]
+      properties:
+        detail: { type: string, example: "Invalid API key" }
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items: { oneOf: [{ type: string }, { type: integer }] }
+              msg: { type: string }
+              type: { type: string }
