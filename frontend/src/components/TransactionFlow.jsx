@@ -13,6 +13,13 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -22,15 +29,17 @@ import {
 } from "@/components/ui/dialog";
 import { buildVerifyUrl } from "@/lib/proofLink";
 import {
+  INDUSTRIES,
+  INDUSTRY_ORDER,
+  DEFAULT_INDUSTRY,
+} from "@/lib/industries";
+import {
   CheckCircle2,
   ShieldCheck,
   AlertTriangle,
   ArrowRight,
   Loader2,
   RotateCcw,
-  BadgeCheck,
-  Lock,
-  Scale,
   GitCompareArrows,
   Share2,
   Copy,
@@ -179,14 +188,34 @@ function StatusPill({ status, label, testId }) {
   );
 }
 
-function CheckRow({ icon: Icon, label, value, status = "success", testId }) {
+function ComplianceCheckRow({ name, desc, status = "success", testId }) {
+  const Icon = status === "success" ? CheckCircle2 : AlertTriangle;
+  const iconClass =
+    status === "success" ? "text-emerald-600" : "text-red-600";
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">
-      <div className="flex items-center gap-2.5 text-sm text-gray-700">
-        <Icon className="w-4 h-4 text-gray-400" />
-        <span>{label}</span>
+    <div
+      className="flex items-start justify-between gap-4 py-3 border-b border-gray-100 last:border-0"
+      data-testid={testId}
+    >
+      <div className="flex items-start gap-2.5 min-w-0">
+        <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${iconClass}`} />
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-gray-900 leading-snug">
+            {name}
+          </div>
+          <div
+            className="text-xs text-gray-500 mt-0.5 leading-relaxed"
+            data-testid={`${testId}-desc`}
+          >
+            {desc}
+          </div>
+        </div>
       </div>
-      <StatusPill status={status} label={value} testId={testId} />
+      <StatusPill
+        status={status}
+        label={status === "success" ? "Pass" : "Fail"}
+        testId={`${testId}-status`}
+      />
     </div>
   );
 }
@@ -197,6 +226,10 @@ export default function TransactionFlow() {
   const [form, setForm] = useState(DEFAULTS);
   const [processed, setProcessed] = useState(false);
   const [processing, setProcessing] = useState(false);
+
+  // Industry context (presentation-only — backend payload is unchanged)
+  const [industryId, setIndustryId] = useState(DEFAULT_INDUSTRY);
+  const industry = INDUSTRIES[industryId] || INDUSTRIES[DEFAULT_INDUSTRY];
 
   // Compliance toggle
   const [simulateComplianceFail, setSimulateComplianceFail] = useState(false);
@@ -433,6 +466,7 @@ export default function TransactionFlow() {
     setProcessed(false);
     setProcessing(false);
     setSimulateComplianceFail(false);
+    setIndustryId(DEFAULT_INDUSTRY);
     setProof(null);
     setAuditorProofId("");
     setAuditorResult(null);
@@ -480,15 +514,72 @@ export default function TransactionFlow() {
           className="text-3xl sm:text-4xl font-semibold tracking-tight text-gray-900 font-['Space_Grotesk']"
           data-testid="page-title"
         >
-          Convert transactions into verifiable proof.
+          Cryptographic proof for any regulated workflow.
         </h1>
         <p
           className="mt-3 text-base text-gray-600 max-w-2xl"
           data-testid="page-subtitle"
         >
-          This demo shows how transactions are converted into independently
-          verifiable proof artifacts.
+          This demo shows how transactions, records and events are converted
+          into independently verifiable proof artifacts — across industries.
         </p>
+
+        {/* Industry context selector */}
+        <div
+          className="mt-6 flex flex-col sm:flex-row sm:items-center gap-3"
+          data-testid="industry-selector-row"
+        >
+          <Label
+            htmlFor="industry-select"
+            className="text-xs font-medium text-gray-500 uppercase tracking-wide"
+          >
+            Industry
+          </Label>
+          <Select
+            value={industryId}
+            onValueChange={(v) => {
+              setIndustryId(v);
+              if (processed) {
+                // changing the displayed compliance ruleset invalidates the
+                // currently issued proof from a UX standpoint
+                setProcessed(false);
+                setProof(null);
+                setAuditorResult(null);
+                setAuditorProofId("");
+                setMismatch(false);
+              }
+            }}
+          >
+            <SelectTrigger
+              id="industry-select"
+              className="w-full sm:w-[340px] bg-white border-gray-200 text-gray-900 focus:ring-2 focus:ring-blue-500/30"
+              data-testid="industry-select-trigger"
+            >
+              <SelectValue placeholder="Select an industry" />
+            </SelectTrigger>
+            <SelectContent className="bg-white border-gray-200">
+              {INDUSTRY_ORDER.map((id) => {
+                const ind = INDUSTRIES[id];
+                return (
+                  <SelectItem
+                    key={id}
+                    value={id}
+                    data-testid={`industry-option-${id}`}
+                  >
+                    <span className="mr-2">{ind.emoji}</span>
+                    {ind.label}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+          <span
+            className="text-xs text-gray-500 sm:ml-2"
+            data-testid="industry-tagline"
+          >
+            {industry.tagline}
+          </span>
+        </div>
       </section>
 
       <main className="max-w-5xl mx-auto px-6 pb-20 space-y-5">
@@ -554,7 +645,7 @@ export default function TransactionFlow() {
         <SectionCard
           step="2"
           title="Compliance Checks"
-          description="Automated KYC, AML and transaction limit verification."
+          description={`Automated checks for ${industry.label}.`}
           testId="section-compliance"
           tone={processed ? (isCompliant ? "success" : "error") : "neutral"}
           rightSlot={
@@ -591,32 +682,25 @@ export default function TransactionFlow() {
             </div>
           }
         >
-          <div className="rounded-lg bg-gray-50 border border-gray-100 px-4 py-2">
-            <CheckRow
-              icon={BadgeCheck}
-              label="KYC verification"
-              value={complianceState.kyc}
-              status={complianceState.kyc === "Pass" ? "success" : "error"}
-              testId="compliance-kyc"
-            />
-            <CheckRow
-              icon={Lock}
-              label="AML screening"
-              value={complianceState.aml}
-              status={complianceState.aml === "Pass" ? "success" : "error"}
-              testId="compliance-aml"
-            />
-            <CheckRow
-              icon={Scale}
-              label="Transaction amount limit"
-              value={complianceState.limits}
-              status={
-                complianceState.limits === "Within allowed range"
-                  ? "success"
-                  : "error"
-              }
-              testId="compliance-limits"
-            />
+          <div
+            className="rounded-lg bg-gray-50 border border-gray-100 px-4 py-1"
+            data-testid="compliance-checks-list"
+          >
+            {industry.checks.map((c, idx) => {
+              // When simulating failure, mark only the first check as failed
+              // so the auditor result still has a clear, single point of
+              // divergence (mirrors the underlying kyc/aml/limits semantics).
+              const failed = simulateComplianceFail && idx === 0;
+              return (
+                <ComplianceCheckRow
+                  key={`${industry.id}-${idx}`}
+                  name={c.name}
+                  desc={c.desc}
+                  status={failed ? "error" : "success"}
+                  testId={`compliance-check-${industry.id}-${idx}`}
+                />
+              );
+            })}
           </div>
           <p
             className={`text-sm font-medium mt-4 ${
@@ -625,8 +709,8 @@ export default function TransactionFlow() {
             data-testid="compliance-summary"
           >
             {isCompliant
-              ? "Transaction is COMPLIANT"
-              : "KYC Fail — Transaction is NON-COMPLIANT"}
+              ? "All checks passed — workflow is COMPLIANT"
+              : `${industry.checks[0].name} failed — workflow is NON-COMPLIANT`}
           </p>
         </SectionCard>
 

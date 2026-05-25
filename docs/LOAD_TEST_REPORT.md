@@ -1,6 +1,6 @@
 # PFP Load Test Report — `POST /api/fea/generate`
 
-**Target:** `https://fea-crypto.preview.emergentagent.com` (preview pod)
+**Target:** `https://proof-fabric.preview.emergentagent.com` (preview pod)
 **Endpoint:** `POST /api/fea/generate`
 **Payload:** unique `idempotency_key` / `transaction_id` / `timestamp` per request — exercises the **write path** (not idempotent fast-return).
 **Tool:** `aiohttp` async load generator with warm-up, ~25 s runs.

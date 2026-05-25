@@ -77,6 +77,14 @@ Build a production-grade API for "Proof Fabric Protocol (PFP)" - Transform finan
 - [x] Visual emphasis: SectionCard now supports `accent="primary"` adding a coloured ring + larger title — applied to Step 3 to mark it as the core product
 - [x] Backend untouched in this iteration
 
+### Phase 9: Multi-Industry Compliance Simulation (Complete - Feb 25, 2026)
+- [x] New presentation-layer module `/app/frontend/src/lib/industries.js` with 9 industry presets: Generic/Universal (default), Financial Services, Telecom Expense Management (TEM), Healthcare, Insurance, Supply Chain, Government / Public Sector, E-commerce, Manufacturing — each with 8 industry-specific checks (name + short description) and a one-line tagline
+- [x] Industry dropdown added in the hero of `TransactionFlow.jsx` (shadcn `Select`, default = Generic/Universal); switching industries swaps the displayed compliance checks and reset any in-flight processed state for clarity
+- [x] Compliance Checks section (Step 2) now renders the industry-specific checks dynamically as name + description rows with green/red Pass/Fail pills; "Simulate Compliance Failure" toggle flips only the first check to Fail (matches the underlying kyc/aml/limits semantics)
+- [x] Hero copy repositioned: "Cryptographic proof for any regulated workflow." + "across industries" subtitle — communicates universality
+- [x] Backend untouched: `/api/demo/issue`, `/api/demo/artifact`, `/api/demo/artifact/verify`, all FEA endpoints, canonicalization, Ed25519 signing, replay protection, idempotency, key registry — zero changes. The compliance payload sent to the backend remains `{kyc, aml, limits, status}` regardless of UI industry selection
+- [x] End-to-end verified: proof issuance + auditor verification still work after switching industries (proof_id `89b2fc503da81274…3c83d116` issued under TEM, verified as "Valid Proof — Data Untampered")
+
 ### Phase 8: Shareable Verification URL (Complete - Feb 10, 2026)
 - [x] New frontend-only helper `/app/frontend/src/lib/proofLink.js` — `encodeProofToLinkParam` / `decodeProofFromLinkParam` / `buildVerifyUrl` using standards-compliant base64url (`+→-`, `/→_`, strip `=`) via TextEncoder+btoa; threshold `MAX_URL_PROOF_LENGTH=2000`
 - [x] Dashboard Evidence section: `Copy Verification Link` button builds `/verify?proof=<base64url>`, copies to clipboard. Security note: "This link contains the full proof artifact. Share only with intended recipients."

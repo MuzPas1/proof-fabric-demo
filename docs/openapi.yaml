@@ -32,7 +32,7 @@ info:
 servers:
   - url: https://demo.pfprotocol.com
     description: Production (live demo)
-  - url: https://fea-crypto.preview.emergentagent.com
+  - url: https://proof-fabric.preview.emergentagent.com
     description: Staging / sandbox
 
 tags:
