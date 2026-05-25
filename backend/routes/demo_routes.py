@@ -13,7 +13,7 @@ persistence + lookup on top of the existing primitives.
 """
 from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, Field
-from typing import Union, Optional, Any, Dict
+from typing import Union, Optional, Any, Dict, List
 from datetime import datetime, timezone
 import json
 
@@ -135,12 +135,35 @@ class ComplianceResult(BaseModel):
     status: str = Field(..., pattern="^(COMPLIANT|NON-COMPLIANT)$")
 
 
+class IndustryCheck(BaseModel):
+    """A single industry-specific compliance check executed before proof issuance."""
+    name: str = Field(..., min_length=1, max_length=200)
+    desc: str = Field(..., min_length=1, max_length=500)
+    status: str = Field(..., pattern="^(Pass|Fail)$")
+
+
+class IndustryContext(BaseModel):
+    """
+    Optional industry-aware metadata describing which checks were executed.
+
+    When present, this object is embedded in the canonical payload so the
+    exact list of industry-specific checks (and their outcomes) is
+    cryptographically proven by the issued proof_id. The cryptographic
+    primitives (canonicalize → SHA-256 → Ed25519) are unchanged; only the
+    input dict gains an additional, well-defined field.
+    """
+    id: str = Field(..., min_length=1, max_length=50)
+    label: str = Field(..., min_length=1, max_length=100)
+    checks: List[IndustryCheck] = Field(..., min_length=1, max_length=20)
+
+
 class IssueRequest(BaseModel):
     transaction_id: str = Field(..., min_length=1, max_length=200)
     user_id: str = Field(..., min_length=1, max_length=200)
     amount: Union[str, float, int]
     created_at: str = Field(..., min_length=1)
     compliance: ComplianceResult
+    industry: Optional[IndustryContext] = None
 
 
 class IssueResponse(BaseModel):
@@ -156,14 +179,24 @@ class VerifyByIdResponse(BaseModel):
     proof_id: str
     transaction_id: Optional[str] = None
     compliance: Optional[dict] = None
+    industry: Optional[dict] = None
     issued_at: Optional[str] = None
     reason: Optional[str] = None
 
 
-def _build_canonical_payload(record: PartyRecord, compliance: ComplianceResult) -> dict:
-    """Normalize the transaction record and embed the compliance result."""
+def _build_canonical_payload(
+    record: PartyRecord,
+    compliance: ComplianceResult,
+    industry: Optional[IndustryContext] = None,
+) -> dict:
+    """Normalize the transaction record and embed the compliance result.
+
+    When `industry` is provided, the exact list of industry-specific checks
+    (with their pass/fail outcomes) is embedded too, so the issued proof
+    cryptographically attests to *which* checks were executed.
+    """
     normalized = normalize_party_record(record)
-    return {
+    payload: Dict[str, Any] = {
         **normalized,
         "compliance": {
             "kyc": compliance.kyc,
@@ -172,6 +205,20 @@ def _build_canonical_payload(record: PartyRecord, compliance: ComplianceResult) 
             "status": compliance.status,
         },
     }
+    if industry is not None:
+        payload["industry"] = {
+            "id": industry.id.strip(),
+            "label": industry.label.strip(),
+            "checks": [
+                {
+                    "name": c.name.strip(),
+                    "desc": c.desc.strip(),
+                    "status": c.status,
+                }
+                for c in industry.checks
+            ],
+        }
+    return payload
 
 
 @router.post("/issue", response_model=IssueResponse)
@@ -188,7 +235,7 @@ async def issue_proof(req: IssueRequest):
         amount=req.amount,
         created_at=req.created_at,
     )
-    full_payload = _build_canonical_payload(record, req.compliance)
+    full_payload = _build_canonical_payload(record, req.compliance, req.industry)
     canonical_json = canonicalize_to_json(full_payload)
     proof_hash = compute_sha256(canonical_json)
 
@@ -202,6 +249,7 @@ async def issue_proof(req: IssueRequest):
             "proof_id": proof_hash,
             "transaction_id": full_payload["transaction_id"],
             "compliance": full_payload["compliance"],
+            "industry": full_payload.get("industry"),
             "normalized_payload": full_payload,
             "issued_at": issued_at,
         },
@@ -254,6 +302,7 @@ async def verify_proof_by_id(proof_id: str):
             proof_id=proof_id,
             transaction_id=doc.get("transaction_id"),
             compliance=doc.get("compliance"),
+            industry=doc.get("industry"),
             issued_at=doc.get("issued_at"),
             reason="Hash mismatch — proof integrity failed",
         )
@@ -263,6 +312,7 @@ async def verify_proof_by_id(proof_id: str):
         proof_id=proof_id,
         transaction_id=doc["transaction_id"],
         compliance=doc["compliance"],
+        industry=doc.get("industry"),
         issued_at=doc["issued_at"],
     )
 

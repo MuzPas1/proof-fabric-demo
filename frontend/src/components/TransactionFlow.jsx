@@ -290,12 +290,29 @@ export default function TransactionFlow() {
     try {
       // small UX delay to make the "checks running" feel weighty
       await new Promise((r) => setTimeout(r, 300));
+
+      // Build the industry-aware check list to send alongside the canonical
+      // compliance result so the auditor can later see exactly which checks
+      // were executed for this industry. The first check fails when
+      // "Simulate Compliance Failure" is on (mirrors the kyc/aml/limits
+      // semantics carried by `complianceState`).
+      const industryPayload = {
+        id: industry.id,
+        label: industry.label,
+        checks: industry.checks.map((c, idx) => ({
+          name: c.name,
+          desc: c.desc,
+          status: simulateComplianceFail && idx === 0 ? "Fail" : "Pass",
+        })),
+      };
+
       const { data } = await axios.post(`${API}/demo/issue`, {
         transaction_id: form.transaction_id,
         user_id: form.user_id,
         amount: form.amount,
         created_at: nowIso(),
         compliance: complianceState,
+        industry: industryPayload,
       });
       setProof({ ...data, compliance: complianceState });
       setAuditorProofId(data.proof_id); // pre-fill for demo convenience
@@ -1112,15 +1129,15 @@ export default function TransactionFlow() {
 /* --------------------------- auditor result view -------------------------- */
 
 function AuditorResult({ result }) {
-  const { valid, compliance, transaction_id, issued_at, reason } = result;
+  const { valid, compliance, industry, transaction_id, issued_at, reason } =
+    result;
   const isCompliant = valid && compliance?.status === "COMPLIANT";
-  const isNonCompliantValid = valid && compliance?.status === "NON-COMPLIANT";
 
   const headline = !valid
     ? "Invalid Proof — Verification Failed"
     : isCompliant
     ? "Valid Proof — Data Untampered"
-    : "Valid Proof — Transaction flagged as NON-COMPLIANT";
+    : "Valid Proof — Workflow flagged as NON-COMPLIANT";
 
   const tone = !valid
     ? "bg-red-50 border-red-200 text-red-800"
@@ -1133,6 +1150,9 @@ function AuditorResult({ result }) {
     : isCompliant
     ? CheckCircle2
     : AlertTriangle;
+
+  const hasIndustryChecks =
+    valid && industry && Array.isArray(industry.checks) && industry.checks.length > 0;
 
   return (
     <div className={`rounded-lg border ${tone} p-4`}>
@@ -1150,7 +1170,76 @@ function AuditorResult({ result }) {
         </div>
       )}
 
-      {(valid || compliance) && (
+      {valid && industry?.label && (
+        <div
+          className="mt-1 text-xs text-gray-600"
+          data-testid="auditor-industry-label"
+        >
+          Industry context: <span className="font-medium">{industry.label}</span>
+        </div>
+      )}
+
+      {hasIndustryChecks && (
+        <div
+          className="mt-4 rounded-md bg-white/80 border border-white/60 backdrop-blur-sm divide-y divide-gray-100"
+          data-testid="auditor-industry-checks"
+        >
+          {industry.checks.map((c, idx) => {
+            const passed = c.status === "Pass";
+            const RowIcon = passed ? CheckCircle2 : AlertTriangle;
+            const iconClass = passed ? "text-emerald-600" : "text-red-600";
+            return (
+              <div
+                key={`auditor-check-${idx}`}
+                className="flex items-start justify-between gap-4 px-4 py-3"
+                data-testid={`auditor-check-${idx}`}
+              >
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <RowIcon
+                    className={`w-4 h-4 mt-0.5 shrink-0 ${iconClass}`}
+                  />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-gray-900 leading-snug">
+                      {c.name}
+                    </div>
+                    {c.desc && (
+                      <div className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                        {c.desc}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <StatusPill
+                  status={passed ? "success" : "error"}
+                  label={passed ? "Pass" : "Fail"}
+                  testId={`auditor-check-${idx}-status`}
+                />
+              </div>
+            );
+          })}
+          {transaction_id && (
+            <ProofRow
+              label="Transaction ID"
+              value={transaction_id}
+              testId="auditor-transaction-id"
+              borderless
+            />
+          )}
+          {issued_at && (
+            <ProofRow
+              label="Issued at"
+              value={formatTs(issued_at)}
+              testId="auditor-issued-at"
+              borderless
+            />
+          )}
+        </div>
+      )}
+
+      {/* Fallback: when no industry metadata was persisted with this proof
+          (e.g. proofs issued before industry-aware persistence), show the
+          underlying compliance summary so older proofs remain auditable. */}
+      {valid && !hasIndustryChecks && compliance && (
         <div className="mt-4 rounded-md bg-white/80 border border-white/60 divide-y divide-gray-100 backdrop-blur-sm">
           {transaction_id && (
             <ProofRow
@@ -1160,43 +1249,39 @@ function AuditorResult({ result }) {
               borderless
             />
           )}
-          {compliance && (
-            <>
-              <ProofRow
-                label="KYC"
-                value={compliance.kyc}
-                testId="auditor-kyc"
-                borderless
-                valueClass={
-                  compliance.kyc === "Pass"
-                    ? "text-emerald-700"
-                    : "text-red-700"
-                }
-              />
-              <ProofRow
-                label="AML"
-                value={compliance.aml}
-                testId="auditor-aml"
-                borderless
-                valueClass={
-                  compliance.aml === "Pass"
-                    ? "text-emerald-700"
-                    : "text-red-700"
-                }
-              />
-              <ProofRow
-                label="Transaction Amount Limit"
-                value={compliance.limits}
-                testId="auditor-limits"
-                borderless
-                valueClass={
-                  compliance.limits === "Within allowed range"
-                    ? "text-emerald-700"
-                    : "text-red-700"
-                }
-              />
-            </>
-          )}
+          <ProofRow
+            label="KYC"
+            value={compliance.kyc}
+            testId="auditor-kyc"
+            borderless
+            valueClass={
+              compliance.kyc === "Pass"
+                ? "text-emerald-700"
+                : "text-red-700"
+            }
+          />
+          <ProofRow
+            label="AML"
+            value={compliance.aml}
+            testId="auditor-aml"
+            borderless
+            valueClass={
+              compliance.aml === "Pass"
+                ? "text-emerald-700"
+                : "text-red-700"
+            }
+          />
+          <ProofRow
+            label="Transaction Amount Limit"
+            value={compliance.limits}
+            testId="auditor-limits"
+            borderless
+            valueClass={
+              compliance.limits === "Within allowed range"
+                ? "text-emerald-700"
+                : "text-red-700"
+            }
+          />
           {issued_at && (
             <ProofRow
               label="Issued at"
