@@ -541,61 +541,74 @@ export default function TransactionFlow() {
           into independently verifiable proof artifacts — across industries.
         </p>
 
-        {/* Industry context selector */}
+        {/* Industry context selector — primary context, immediately visible */}
         <div
-          className="mt-6 flex flex-col sm:flex-row sm:items-center gap-3"
+          className="mt-7 rounded-xl border border-gray-200 bg-white shadow-sm px-5 py-4 sm:px-6 sm:py-5"
           data-testid="industry-selector-row"
         >
-          <Label
-            htmlFor="industry-select"
-            className="text-xs font-medium text-gray-500 uppercase tracking-wide"
-          >
-            Industry
-          </Label>
-          <Select
-            value={industryId}
-            onValueChange={(v) => {
-              setIndustryId(v);
-              if (processed) {
-                // changing the displayed compliance ruleset invalidates the
-                // currently issued proof from a UX standpoint
-                setProcessed(false);
-                setProof(null);
-                setAuditorResult(null);
-                setAuditorProofId("");
-                setMismatch(false);
-              }
-            }}
-          >
-            <SelectTrigger
-              id="industry-select"
-              className="w-full sm:w-[340px] bg-white border-gray-200 text-gray-900 focus:ring-2 focus:ring-blue-500/30"
-              data-testid="industry-select-trigger"
-            >
-              <SelectValue placeholder="Select an industry" />
-            </SelectTrigger>
-            <SelectContent className="bg-white border-gray-200">
-              {INDUSTRY_ORDER.map((id) => {
-                const ind = INDUSTRIES[id];
-                return (
-                  <SelectItem
-                    key={id}
-                    value={id}
-                    data-testid={`industry-option-${id}`}
-                  >
-                    <span className="mr-2">{ind.emoji}</span>
-                    {ind.label}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-          <span
-            className="text-xs text-gray-500 sm:ml-2"
-            data-testid="industry-tagline"
-          >
-            {industry.tagline}
-          </span>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+            <div className="shrink-0">
+              <Label
+                htmlFor="industry-select"
+                className="block text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-500"
+              >
+                Industry
+              </Label>
+              <p className="mt-1 text-xs text-gray-400 hidden sm:block">
+                Context for compliance checks
+              </p>
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <Select
+                value={industryId}
+                onValueChange={(v) => {
+                  setIndustryId(v);
+                  if (processed) {
+                    // changing the displayed compliance ruleset invalidates
+                    // the currently issued proof from a UX standpoint
+                    setProcessed(false);
+                    setProof(null);
+                    setAuditorResult(null);
+                    setAuditorProofId("");
+                    setMismatch(false);
+                  }
+                }}
+              >
+                <SelectTrigger
+                  id="industry-select"
+                  className="w-full h-14 bg-white border-2 border-gray-200 hover:border-gray-300 text-gray-900 text-lg font-medium px-4 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-colors data-[state=open]:border-blue-400"
+                  data-testid="industry-select-trigger"
+                >
+                  <SelectValue placeholder="Select an industry" />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-gray-200">
+                  {INDUSTRY_ORDER.map((id) => {
+                    const ind = INDUSTRIES[id];
+                    return (
+                      <SelectItem
+                        key={id}
+                        value={id}
+                        className="text-base py-2.5"
+                        data-testid={`industry-option-${id}`}
+                      >
+                        <span className="mr-2.5 text-lg leading-none">
+                          {ind.emoji}
+                        </span>
+                        <span className="font-medium">{ind.label}</span>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <p
+                className="mt-2 text-sm text-gray-500"
+                data-testid="industry-tagline"
+              >
+                {industry.tagline}
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
