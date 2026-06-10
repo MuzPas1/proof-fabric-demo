@@ -3,7 +3,7 @@ import { api } from "../api";
 import { PageHeader, Panel, StatusBadge, Empty, Mono } from "../ui";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { RefreshCw, Loader2, Copy } from "lucide-react";
 import { toast } from "sonner";
@@ -81,7 +81,9 @@ export default function SigningKeys() {
 
       <Dialog open={!!rotated} onOpenChange={(o) => !o && setRotated(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>New signing key generated</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>New signing key generated</DialogTitle>
+            <DialogDescription>Deploy the new seed to your KMS, then restart to sign with it.</DialogDescription>
+          </DialogHeader>
           {rotated && (
             <div className="py-2 space-y-3 text-sm">
               <div>New key ID: <Mono>{rotated.new_public_key_id}</Mono></div>

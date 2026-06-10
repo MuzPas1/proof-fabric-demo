@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -44,7 +44,9 @@ export default function Tenants() {
               </Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Create tenant</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>Create tenant</DialogTitle>
+                <DialogDescription>Define a new customer isolation boundary.</DialogDescription>
+              </DialogHeader>
               <div className="space-y-3 py-2">
                 <Label htmlFor="tname">Tenant name</Label>
                 <Input id="tname" value={name} onChange={(e) => setName(e.target.value)}

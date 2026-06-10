@@ -5,7 +5,7 @@ import TenantConnect from "../TenantConnect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
@@ -94,7 +94,9 @@ export default function ProofExplorer() {
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>FEA detail</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>FEA detail</DialogTitle>
+            <DialogDescription>Signed Financial Evidence Artifact (read-only).</DialogDescription>
+          </DialogHeader>
           {detail && (
             <pre className="text-xs bg-slate-50 border border-slate-200 rounded-md p-3 overflow-auto max-h-[60vh]"
               data-testid="proof-detail-json">{JSON.stringify(detail, null, 2)}</pre>

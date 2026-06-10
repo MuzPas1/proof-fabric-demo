@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -69,7 +69,11 @@ export default function ApiKeys() {
               </Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>{created ? "API key created" : "Create API key"}</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{created ? "API key created" : "Create API key"}</DialogTitle>
+                <DialogDescription>
+                  {created ? "Copy the key now — it is shown only once." : "Tenant-scoped data-plane credential."}
+                </DialogDescription>
+              </DialogHeader>
               {created ? (
                 <div className="py-2 space-y-3">
                   <p className="text-sm text-slate-600">Copy this key now — it will not be shown again.</p>
