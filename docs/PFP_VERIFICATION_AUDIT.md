@@ -104,16 +104,18 @@ Base URL: `https://pfp-evidence.preview.emergentagent.com` (from
 | 2 | DB-backed API key lifecycle | ✅ Verified |
 | 3 | Admin control plane + audit | ✅ Verified (rotate not run on prod key) |
 | 4 | Webhooks + HMAC | ✅ Verified |
-| 5 | SDK offline verification + parity | ✅ Verified (Py/JS live; Java/.NET source-complete) |
+| 5 | SDK offline verification + parity | ✅ Verified (Py/JS/Java/.NET all runtime-proven) |
 | 6 | Endpoint count 12→34 | ✅ Verified (34 paths / 35 ops) |
 | 7 | Security controls | ✅ Verified (legacy demo_proofs residue noted) |
 | 11 | Revocation behavior | ✅ Verified |
 
 ## Partially-verified / not-verified details
-- **Java & .NET SDKs — Partially Verified.** Source is complete and faithful
-  (`sdks/java/...PfpVerifier.java`, `sdks/dotnet/PfpVerifier.cs`) and share the
-  same canonicalization, but they were **not compiled/executed** here (no JDK
-  Maven build / .NET SDK run). Python & JS are runtime-proven.
+- **Java & .NET SDKs — VERIFIED (runtime).** Compiled and executed against a live
+  server-issued FEA. Java: `javac` build OK → `valid=true`, tamper `valid=false`.
+  .NET: `dotnet build` OK → `valid=True`, tamper `valid=False`. NOTE: the .NET SDK
+  csproj initially referenced a non-existent NuGet id `Org.BouncyCastle.Cryptography`;
+  fixed to the correct id `BouncyCastle.Cryptography` (v2.4.0) in
+  `sdks/dotnet/Pfp.Sdk.csproj`, after which restore/build/run succeeded.
 - **Admin keys/rotate — Partially Verified.** Endpoint exists and create/retire/
   revoke were executed; `rotate` was not invoked against the live production key
   because it retires the active key and registers a new public key with no
