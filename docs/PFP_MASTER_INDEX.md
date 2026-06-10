@@ -69,6 +69,35 @@ Protocol enterprise hardening. Dates are file last-modified (UTC, June 2026).
 |---|---|---|---|
 | Assessment v1 (baseline) | `/app/docs/PRODUCT_READINESS_ASSESSMENT.md` | Feb-2026 audit — 4/10, 5 critical blockers | 2026-06-10 |
 | Assessment v2 (post-hardening) | `/app/docs/PRODUCT_READINESS_ASSESSMENT_V2.md` | June-2026 audit — 8/10 Pilot Ready; blocker resolutions | 2026-06-10 |
+## Admin Dashboard
+| Item | Detail |
+|---|---|
+| **URL** | `/admin` (login at `/admin/login`) — same repo, same deployment, same backend |
+| Demo portal (unchanged) | `/` (TransactionFlow), public verify `/verify` |
+| Source | `/app/frontend/src/admin/` — `AdminApp.jsx`, `AuthContext.jsx`, `Layout.jsx`, `Login.jsx`, `api.js`, `TenantConnect.jsx`, `ui.jsx`, `pages/*` |
+| Modules | Overview · Tenants · API Keys · Signing Keys · Proof Explorer · Webhooks · Audit Log |
+| Backend changes | **None** — uses only existing verified endpoints |
+
+### Dashboard architecture
+- Two auth planes, both pre-existing:
+  - **Control plane (JWT + RBAC):** Overview, Tenants, API Keys, Signing Keys, Audit → `Authorization: Bearer <jwt>`.
+  - **Data plane (tenant API key):** Proof Explorer, Webhooks → `X-API-Key` for the selected tenant (the `TenantConnect` component binds a tenant's key for the session). Because keys are server-side tenant-scoped, this *is* the isolation enforcement.
+- Route tree `/admin/*` rendered by `AdminApp` inside the existing `BrowserRouter`; demo routes untouched.
+
+### Authentication flow
+1. `POST /api/auth/login {email,password}` → `{access_token, role, tenant_id, email}` (also sets httpOnly cookies).
+2. Token stored in `localStorage`; axios attaches `Authorization: Bearer`. `GET /api/auth/me` validates the session on load.
+3. `Protected` route guard redirects unauthenticated users to `/admin/login`; a 401 from any control-plane call clears the session and redirects.
+4. Logout clears token + session-scoped tenant keys.
+
+### Admin user guide (quick)
+- **Sign in** at `/admin/login` (super_admin: `admin@pfprotocol.com`).
+- **Tenants** → create customer isolation boundaries (super_admin only).
+- **API Keys** → create a tenant-scoped key (raw value shown once; auto-bound for data-plane modules), revoke when needed.
+- **Signing Keys** → view registry; rotate (returns new seed once), retire, revoke.
+- **Proof Explorer / Webhooks** → pick a tenant connection (created key, pasted key, or dev sandbox) to browse that tenant's FEAs / manage webhooks. Switching tenants proves isolation.
+- **Audit Log** → every action recorded; "Verify Chain" confirms hash-chain integrity.
+
 | Verification Audit (this) | `/app/docs/PFP_VERIFICATION_AUDIT.md` | Evidence-based verification of all hardening claims | 2026-06-10 |
 
 ## Tests

@@ -3,6 +3,7 @@ import { Toaster } from "sonner";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import TransactionFlow from "@/components/TransactionFlow";
 import PublicVerifyPage from "@/components/PublicVerifyPage";
+import AdminApp from "@/admin/AdminApp";
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
         <Routes>
           <Route path="/" element={<TransactionFlow />} />
           <Route path="/verify" element={<PublicVerifyPage />} />
+          <Route path="/admin/*" element={<AdminApp />} />
         </Routes>
       </BrowserRouter>
     </>
