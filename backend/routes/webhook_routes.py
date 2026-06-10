@@ -25,6 +25,12 @@ async def subscribe(
     body: SubscribeRequest,
     key: ApiKeyRecord = Depends(require_scope("webhooks:manage")),
 ):
+    unknown = [e for e in body.events if e not in webhook_service.SUPPORTED_EVENTS]
+    if unknown:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Unsupported event(s): {unknown}. Supported: {sorted(webhook_service.SUPPORTED_EVENTS)}",
+        )
     sub = await webhook_service.subscribe(_db(), key.tenant_id, str(body.url), body.events)
     await audit_service.record_audit(
         _db(), "webhook.subscribed", actor=key.key_id, tenant_id=key.tenant_id, target=sub.webhook_id,

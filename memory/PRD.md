@@ -1,138 +1,75 @@
 # Proof Fabric Protocol (PFP) - PRD
 
 ## Original Problem Statement
-Build a production-grade API for "Proof Fabric Protocol (PFP)" - Transform financial transactions into deterministic, cryptographically verifiable Financial Evidence Artifacts (FEAs) that can be independently verified without accessing internal systems.
+Production-grade API for "Proof Fabric Protocol (PFP)" — transform transactions
+into deterministic, cryptographically verifiable Financial Evidence Artifacts
+(FEAs), independently verifiable without internal-system access. A public
+"Transaction Evidence Dashboard" demonstrates the flow across industries. In
+June 2026 the user (acting as enterprise architect) commissioned a full
+enterprise hardening + productionization sprint across 10 phases.
 
 ## User Personas
-- **Developers**: Testing cryptographic proof APIs via dev console
-- **Backend Systems**: Integrating FEA generation/verification into financial workflows
-- **Auditors**: Publicly verifying FEA authenticity without credentials
+- Developers (dev console), Backend systems (FEA generate/verify), Auditors
+  (independent public verification), Platform/Security operators (control plane).
 
 ## Core Requirements
-1. Deterministic canonicalization (lexicographic JSON sorting, null removal, timestamp normalization)
-2. SHA-256 hashing on canonical FEA structure
-3. Ed25519 signing/verification with domain separation (PFP_V2::)
-4. Idempotency enforcement
-5. Strict replay protection via unique (transaction_id, timestamp) constraint
-6. Persistent, immutable key registry in MongoDB
-7. API key authentication for private endpoints
-8. Public verification without auth
-9. Rate limiting (100 req/min)
-10. MongoDB storage with atomic constraints
+Deterministic canonicalization (PFP-JCS), SHA-256 + Ed25519 with domain
+separation, idempotency + replay protection, persistent key registry, API-key +
+JWT/RBAC auth, multi-tenancy, public verification, rate limiting, MongoDB.
+
+## Tech Stack
+FastAPI + React + MongoDB; PyNaCl (Ed25519); PyJWT + bcrypt; slowapi;
+prometheus-client. KMS abstraction (local/aws/gcp/azure).
 
 ## What's Been Implemented
 
-### Phase 1: Core Protocol (Complete)
-- [x] Backend modular architecture (models/, crypto/, services/, routes/)
-- [x] Canonicalization module with deterministic JSON output
-- [x] SHA-256 hashing and Ed25519 signing/verification
-- [x] POST /api/fea/generate - FEA generation with idempotency
-- [x] POST /api/fea/verify - FEA verification with API key auth
-- [x] GET /api/public/verify/{fea_id} - Public verification (no auth)
-- [x] GET /api/public/keys - Public key registry
-- [x] GET /api/config - Test API key retrieval
-- [x] API key authentication middleware
-- [x] Rate limiting (100/min)
-- [x] Dark-themed developer console UI (3 tabs: Generate, Verify, Public Verify)
+### Phases 1–3 (Mar 2026) — Core protocol, hardening, replay/key registry
+Canonicalization, SHA-256, Ed25519 v2 (domain prefix PFP_V2::), idempotency,
+replay (compound unique index), persistent key registry (active/retired/revoked),
+downloadable signed artifact, public verify, demo multi-industry portal.
 
-### Phase 2: Protocol Hardening (Complete)
-- [x] Corrected signing model: sign(message) not sign(hash) for Ed25519
-- [x] Domain separation (PFP_V2:: prefix) for cross-protocol attack prevention
-- [x] Constant-time hash comparison (hmac.compare_digest) for timing attack prevention
-- [x] Timestamp boundary validation (5 min future, 1 year past)
-- [x] Protocol version (fea_version) enforcement
-- [x] Backward compatibility for v1 (hash-signed), legacy v2 (prefix), and current v2 formats
-- [x] Structural separation of signed fea_payload from signature metadata
-- [x] Metadata hashing included in signed payload
+### Enterprise Hardening Sprint (June 10, 2026) — Phases 1–10 COMPLETE
+- **Security remediation (P1):** DB-backed API keys (create/revoke/rotate/scopes/
+  expiry/customer+tenant); `/api/config` no longer leaks key in prod; demo
+  isolated to separate DB + separate demo signing key + rate-limited; KMS
+  abstraction (local/aws/gcp/azure); admin key lifecycle + audit.
+- **Enterprise (P2):** JWT auth + RBAC (5 roles); multi-tenancy (`tenant_id`
+  bound in signed payload); admin APIs (`/api/admin/*`); immutable hash-chained
+  audit log + verify endpoint.
+- **Crypto (P3):** FEA v1.1 (iat/jti/tenant_id/algorithm signed); legacy v1
+  rejected by default; live revocation enforcement; PFP-JCS spec; time-anchor
+  abstraction documented.
+- **Integration (P4):** batch FEA, pagination, single fetch, webhooks (HMAC).
+- **Observability (P5):** `/api/metrics` (Prometheus), structured JSON logging
+  (redaction), deep `/api/health`.
+- **Security (P6):** security headers, strict CORS, 1MiB body cap, rate limits.
+- **SDKs (P7):** Python, JavaScript, Java, .NET — client + independent
+  verification (Python/JS proven live; cross-lang canonicalization parity tested).
+- **Docs (P8):** Architecture, Security, Crypto, Canonicalization spec, API ref,
+  OpenAPI (34 paths, regenerated) + Postman, Integration, Runbook, DR, Key
+  rotation, Threat model, Pilot deployment.
+- **Deploy (P9):** Dockerfile, docker-compose, K8s, Helm, Terraform, CI/CD.
+- **Audit (P10):** new readiness assessment — **8/10 Pilot Ready (D)**; 56/56
+  tests pass.
 
-### Phase 3: Replay Protection & Key Registry (Complete - March 25, 2026)
-- [x] Strict replay protection: unique compound index on (transaction_id, timestamp)
-- [x] Dual-layer protection: idempotency key (Layer 1) + transaction uniqueness (Layer 2)
-- [x] transaction_payload_hash stored separately for replay comparison (excludes idempotency_key)
-- [x] Persistent key registry in MongoDB (key_registry collection)
-- [x] Key immutability: keys never deleted, only status changes (active → retired)
-- [x] DB-backed key resolution for verification (verify_fea_with_registry)
-- [x] Key rotation support (retire_key, rotate_key functions)
-- [x] All endpoints use async DB-backed verification
-- [x] 19/19 backend tests passed
+## API Endpoints (34) — see docs/API_REFERENCE.md
+System(4), Auth(4), Admin(12), FEA(5), Public(2), Webhooks(4), Demo(5).
 
-### Phase 6: Compliance-Aware Transaction Flow + Auditor Verification (Complete - Feb 10, 2026)
-- [x] New backend endpoint `POST /api/demo/issue` — embeds compliance state (KYC/AML/Limits/Status) in canonical payload, hashes it, persists to `db.demo_proofs`
-- [x] New backend endpoint `GET /api/demo/verify/{proof_id}` — lookup + re-canonicalize + re-hash integrity check; returns valid/invalid + compliance breakdown + transaction_id + issued_at
-- [x] Crypto primitives (canonicalize_to_json, compute_sha256) unchanged
-- [x] Frontend flow reordered: Transaction → Compliance (with "Simulate Compliance Failure" toggle) → Evidence (auto-issued) → Auditor Verification → Consistency → Exception
-- [x] Compliant messaging: "Transaction is COMPLIANT" / "Proof Verified — Data Untampered" / "Valid Proof — Data Untampered"
-- [x] Non-compliant messaging: "KYC Fail — Transaction is NON-COMPLIANT" / "Proof Verified — Transaction flagged as NON-COMPLIANT" / "Valid Proof — Transaction flagged as NON-COMPLIANT"
-- [x] Invalid proof messaging: "Invalid Proof — Verification Failed"
-- [x] Evidence tamper-evident copy + "Share Proof" button (navigator.share → clipboard fallback)
-- [x] Auditor section displays extracted KYC/AML/Limits/Transaction ID from cryptographic proof (no re-entry of raw data)
-- [x] Consistency: Party A (Client · ABCPay) vs Party B (Bank · HDFC), Simulate Mismatch toggle, Exception reveal on mismatch
-- [x] Edit-after-process / compliance-toggle-after-process invalidates Evidence section
-- [x] 16/16 backend + all 15 frontend e2e flows passed (iteration_4.json)
+## Credentials
+Admin: admin@pfprotocol.com / PfpAdmin!2026 (super_admin). Sandbox X-API-Key:
+pfp_sandbox_a5fb2bad1924d788c128edf6a31bf1aaa107a9a4 (dev only). See
+/app/memory/test_credentials.md.
 
-### Phase 9: Evidence Section Restoration (Complete - Feb 10, 2026)
-- [x] Step 3 "Evidence Generated" now ALWAYS visible — pre-process shows a placeholder card with "Awaiting Transaction" badge and explanatory text so the 1→2→3→4 sequence stays intact
-- [x] Post-process content updated per spec: "Proof Generated" status badge (was "Proof Issued"), Proof ID truncation upgraded to **first 16 + "..." + last 8** chars with copy button preserving the full hash, **Timestamp (UTC)** explicit format, new **Algorithm** row "Ed25519 · SHA-256 · Deterministic canonicalization"
-- [x] Tamper note rewording: "tamper-resistant" (replaces prior "cannot be altered"); added new privacy note `evidence-privacy-note`: "Proof can be verified without sharing raw transaction data."
-- [x] Visual emphasis: SectionCard now supports `accent="primary"` adding a coloured ring + larger title — applied to Step 3 to mark it as the core product
-- [x] Backend untouched in this iteration
-
-### Phase 9: Multi-Industry Compliance Simulation (Complete - Feb 25, 2026)
-- [x] New presentation-layer module `/app/frontend/src/lib/industries.js` with 9 industry presets: Generic/Universal (default), Financial Services, Telecom Expense Management (TEM), Healthcare, Insurance, Supply Chain, Government / Public Sector, E-commerce, Manufacturing — each with 8 industry-specific checks (name + short description) and a one-line tagline
-- [x] Industry dropdown added in the hero of `TransactionFlow.jsx` (shadcn `Select`, default = Generic/Universal); switching industries swaps the displayed compliance checks and reset any in-flight processed state for clarity
-- [x] Compliance Checks section (Step 2) now renders the industry-specific checks dynamically as name + description rows with green/red Pass/Fail pills; "Simulate Compliance Failure" toggle flips only the first check to Fail (matches the underlying kyc/aml/limits semantics)
-- [x] Hero copy repositioned: "Cryptographic proof for any regulated workflow." + "across industries" subtitle — communicates universality
-- [x] **Bug fix (Feb 25, 2026 — Phase 9.1)**: Auditor Verification was hardcoded to KYC/AML/Transaction Limit regardless of industry. Fixed by extending `/api/demo/issue` to accept an optional `industry` object `{id, label, checks:[{name, desc, status}]}`, embedding it in the canonical payload (so the exact industry checks executed are cryptographically proven by the same `proof_id = SHA-256(canonical_json)` pipeline — no changes to canonicalization / hashing / signing modules), persisting it in `demo_proofs`, and returning it from `/api/demo/verify/{proof_id}`. `VerifyByIdResponse` gained an optional `industry` field. Frontend `AuditorResult` now renders the industry-specific checks (Patient Identity, Remit Address, Contract-to-Invoice, etc.) with the same Pass/Fail pill UI as Step 2, falls back to KYC/AML/Limits when industry metadata isn't present (back-compat for older proofs)
-- [x] End-to-end verified: TEM proof → "Valid Proof — Data Untampered, Industry context: Telecom Expense Management (TEM)" + 8 TEM-specific checks; Healthcare with simulated failure → "Valid Proof — Workflow flagged as NON-COMPLIANT, Industry context: Healthcare" + Patient Identity Verification = Fail, remaining 7 checks = Pass
-
-### Phase 8: Shareable Verification URL (Complete - Feb 10, 2026)
-- [x] New frontend-only helper `/app/frontend/src/lib/proofLink.js` — `encodeProofToLinkParam` / `decodeProofFromLinkParam` / `buildVerifyUrl` using standards-compliant base64url (`+→-`, `/→_`, strip `=`) via TextEncoder+btoa; threshold `MAX_URL_PROOF_LENGTH=2000`
-- [x] Dashboard Evidence section: `Copy Verification Link` button builds `/verify?proof=<base64url>`, copies to clipboard. Security note: "This link contains the full proof artifact. Share only with intended recipients."
-- [x] Too-large fallback: if built URL > 2000 chars, opens Dialog "Proof too large for link — use file sharing" with `Copy JSON` + `Download Proof` buttons
-- [x] `/verify?proof=<…>` auto-loads: base64url→JSON decode, pretty-prints into textarea, shows "Proof loaded from link" banner, auto-runs verification; decode errors surface as "Invalid or corrupted proof in URL"
-- [x] Manual edit after auto-load works; Clear also strips the `?proof=` param from the URL so subsequent reloads don't re-load stale data
-- [x] Backend completely untouched in this iteration
-- [x] 12/12 frontend scenarios pass (iteration_6.json); zero issues found
-
-### Phase 7: Independent Verification (Signed Downloadable Artifact) (Complete - Feb 10, 2026)
-- [x] New endpoint `POST /api/demo/artifact` — builds a standalone Ed25519-signed proof artifact (schema v1), returns canonical JSON with `Content-Type: application/pfp-proof+json;v=1` + attachment filename
-- [x] New endpoint `POST /api/demo/artifact/verify` — independent verification: strict schema + no-extra-fields, canonical ordering, normalization, timestamp skew (≤5 min future), constant-time `proof_id` compare (hmac.compare_digest), `kid` lookup with revocation check, Ed25519 signature verify with `PFP_ARTIFACT_V1::` domain separator
-- [x] Key registry supports `active` / `retired` / `revoked` status (extended `PublicKeyInfo.status` Literal); artifact service reads key status live from DB (cache-bypass) so revocation takes effect without restart
-- [x] Existing `/api/demo/issue` and `/api/demo/verify/{proof_id}` untouched
-- [x] Frontend: new `/verify` route (`PublicVerifyPage.jsx`) with drag-drop, file upload, clipboard paste, textarea, and three result states (Valid compliant / Valid non-compliant flagged / Invalid with reason) + extracted KYC/AML/Limits/Timestamp/Key ID
-- [x] Dashboard Evidence section gained `Download Proof` button (triggers browser download of signed JSON) and a link to `/verify`
-- [x] React Router (v7) wired in App.js: `/` → TransactionFlow, `/verify` → PublicVerifyPage
-- [x] Tamper coverage verified: amount/txid/compliance/timestamp/signature/kid modifications all rejected; missing + extra fields rejected; unsupported version/algorithm rejected; revoked key rejected; retired key still verifies
-- [x] 20/20 backend tests passing after revoked-key bug fix; all frontend flows passed (iteration_5.json)
-
-## Prioritized Backlog
-
-### P1 (Important)
-- Full key rotation workflow with admin endpoint
-- Batch FEA generation endpoint
-
-### P2 (Nice to have)
-- Webhook notifications for FEA generation events
-- Production deployment configuration
-- FEA export (PDF certificates)
-- Analytics dashboard
-- Multi-tenant support
-
-## Key API Endpoints
-- POST /api/fea/generate - Generate FEA (requires X-API-Key)
-- POST /api/fea/verify - Verify FEA (requires X-API-Key)
-- GET /api/public/verify/{fea_id} - Public verify (no auth)
-- GET /api/public/keys - Key registry (no auth)
-- POST /api/demo/proof - Stateless normalize + SHA-256 hash (no auth)
-- POST /api/demo/issue - Issue compliance-aware proof + persist (no auth)
-- GET  /api/demo/verify/{proof_id} - Auditor lookup + integrity re-verify (no auth)
-- POST /api/demo/artifact - Build+sign downloadable Ed25519 artifact (no auth)
-- POST /api/demo/artifact/verify - Independent artifact verification (no auth)
-- GET /api/config - Test API key (no auth)
-- GET /api/health - Health check
+## Remaining backlog (to reach 10/10 Production)
+- P1: HSM / native-KMS-sign provider behind existing KMS interface.
+- P1: External time anchor (RFC-3161 TSA / transparency log) — wire the abstraction.
+- P1: Third-party penetration test + crypto audit.
+- P2: Cluster-wide rate limiting (Redis/gateway store).
+- P2: SOC 2 / ISO 27001 evidence collection.
+- P3: Strict RFC-8785 canonicalization as fea_version 2.0.
+- UI: optional admin/tenant dashboard (key & webhook management) in the frontend.
 
 ## DB Schema
-- **feas**: fea_id (unique), idempotency_key, canonical_payload_hash, transaction_payload_hash, fea_payload, signature, signature_version, public_key_id, created_at
-  - Indexes: fea_id (unique), idempotency_key, (transaction_id + timestamp) compound unique
-- **key_registry**: public_key_id (unique), public_key, algorithm, created_at, status
-- **api_keys**: key_id, key_hash, created_at
+Prod DB: feas (tenant-scoped, v1.1 payload), key_registry, api_keys, users,
+tenants, audit_log (hash chain), webhooks. Demo DB (isolated): demo_proofs,
+key_registry (demo key).
