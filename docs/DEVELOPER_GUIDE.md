@@ -41,7 +41,7 @@ Concretely, PFP gives integrators:
 | Environment | URL |
 |---|---|
 | **Production** | `https://demo.pfprotocol.com` |
-| **Staging / sandbox** | `https://proof-fabric.preview.emergentagent.com` |
+| **Staging / sandbox** | `https://pfp-evidence.preview.emergentagent.com` |
 
 All endpoints are prefixed with **`/api`**.
 

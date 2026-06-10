@@ -10,7 +10,7 @@
       "key": "base_url",
       "value": "https://demo.pfprotocol.com",
       "type": "string",
-      "description": "Production base URL. Override with staging: https://proof-fabric.preview.emergentagent.com"
+      "description": "Production base URL. Override with staging: https://pfp-evidence.preview.emergentagent.com"
     },
     {
       "key": "api_key",
