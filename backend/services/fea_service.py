@@ -52,18 +52,29 @@ def validate_timestamp_bounds(timestamp_str: str) -> Tuple[bool, Optional[str]]:
         return False, f"Invalid timestamp: {timestamp_str}"
 
 
-def build_fea_payload(request: GenerateFEARequest) -> Dict[str, Any]:
+def build_fea_payload(request: GenerateFEARequest, tenant_id: str = "default") -> Dict[str, Any]:
     """
     Build the FEA payload - THIS IS WHAT GETS SIGNED.
+
+    v1.1 adds issuance-proof + tenant-binding fields INSIDE the signed payload:
+      - iat        : issuance time (when PFP signed it), ISO-8601 UTC
+      - jti        : unique proof identifier (nonce)
+      - tenant_id  : owning tenant (cryptographically bound)
+      - algorithm  : explicit signature algorithm (algorithm-confusion defense)
     """
     issuer_id = os.environ.get('ISSUER_ID', 'pfp-issuer-001')
     public_key_id = get_public_key_id()
     normalized_ts = normalize_timestamp(request.timestamp)
+    iat = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
     fea_payload = {
-        "fea_version": "1.0",
+        "fea_version": "1.1",
+        "algorithm": "Ed25519",
         "issuer_id": issuer_id,
+        "tenant_id": tenant_id,
         "public_key_id": public_key_id,
+        "iat": iat,
+        "jti": str(uuid.uuid4()),
         "transaction_summary": {
             "transaction_id": request.transaction_id,
             "timestamp": normalized_ts,
@@ -89,7 +100,7 @@ def compute_fea_hash(fea_payload: Dict[str, Any]) -> str:
     return compute_sha256(canonical_json)
 
 
-def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = False) -> Tuple[FEAResponse, FEADocument]:
+def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = False, tenant_id: str = "default") -> Tuple[FEAResponse, FEADocument]:
     """
     Generate a Financial Evidence Artifact.
     
@@ -97,6 +108,7 @@ def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = 
     - Domain prefix "PFP_V2::" for cross-protocol attack prevention
     - Timestamp boundary validation
     - Deterministic signing
+    - Tenant-bound, issuance-stamped signed payload (v1.1)
     """
     # Validate timestamp bounds (can be skipped for testing)
     if not skip_timestamp_validation:
@@ -105,7 +117,7 @@ def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = 
             raise ValueError(error)
 
     # Build fea_payload
-    fea_payload = build_fea_payload(request)
+    fea_payload = build_fea_payload(request, tenant_id=tenant_id)
 
     # Compute fea_hash
     fea_hash = compute_fea_hash(fea_payload)
@@ -157,6 +169,7 @@ def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = 
     document = FEADocument(
         fea_id=fea_id,
         idempotency_key=request.idempotency_key,
+        tenant_id=tenant_id,
         canonical_payload_hash=canonical_payload_hash,
         transaction_payload_hash=transaction_payload_hash,
         fea_payload=fea_payload,

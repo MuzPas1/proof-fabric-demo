@@ -1,0 +1,39 @@
+version: "3.9"
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-pfp}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-changeme}
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    environment:
+      ENVIRONMENT: production
+      MONGO_URL: "mongodb://${MONGO_USER:-pfp}:${MONGO_PASSWORD:-changeme}@mongo:27017/?authSource=admin"
+      DB_NAME: pfp_prod
+      DEMO_DB_NAME: pfp_demo
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      KMS_PROVIDER: ${KMS_PROVIDER:-local}
+      PRIVATE_KEY: ${PRIVATE_KEY}
+      DEMO_PRIVATE_KEY: ${DEMO_PRIVATE_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      ISSUER_ID: pfp-issuer-001
+      ACCEPT_LEGACY_V1: "false"
+    ports:
+      - "8001:8001"
+
+volumes:
+  mongo_data:

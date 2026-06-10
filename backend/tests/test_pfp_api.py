@@ -101,9 +101,13 @@ class TestFEAGeneration:
         assert "public_key_id" in data
         assert "created_at" in data
         
-        # Validate fea_payload structure
+        # Validate fea_payload structure (v1.1: tenant-bound + issuance-stamped)
         fea_payload = data["fea_payload"]
-        assert fea_payload["fea_version"] == "1.0"
+        assert fea_payload["fea_version"] == "1.1"
+        assert fea_payload["algorithm"] == "Ed25519"
+        assert "tenant_id" in fea_payload
+        assert "iat" in fea_payload
+        assert "jti" in fea_payload
         assert "transaction_summary" in fea_payload
         assert fea_payload["transaction_summary"]["transaction_id"] == valid_payload["transaction_id"]
         assert fea_payload["transaction_summary"]["amount"] == valid_payload["amount"]

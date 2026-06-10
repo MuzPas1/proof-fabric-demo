@@ -1,663 +1,1708 @@
-openapi: 3.0.3
-
+openapi: 3.1.0
 info:
   title: Proof Fabric Protocol (PFP) API
-  version: "1.0.0"
-  description: |
-    The **Proof Fabric Protocol (PFP)** transforms financial transactions into
-    deterministic, cryptographically verifiable Financial Evidence Artifacts
-    (FEAs). Each FEA is signed with Ed25519, content-addressed by SHA-256, and
-    can be re-verified by any third party using only the public key registry —
-    no shared secret required.
-
-    ## Why PFP
-    - **Immutable evidence** — every FEA carries a tamper-evident signature.
-    - **Independent verification** — auditors verify without trusting the issuer.
-    - **Replay protection** — `(transaction_id, timestamp)` is globally unique.
-    - **Idempotent issuance** — same idempotency key + same payload returns the same FEA.
-
-    ## Security model
-    - Signing: Ed25519 (libsodium / `nacl.signing`).
-    - Hashing: SHA-256 over deterministic JSON canonicalization
-      (sorted keys, UTF-8, no whitespace).
-    - Public keys are resolved via `public_key_id` (kid) from `/api/public/keys`.
-    - Keys can be `active`, `retired`, or `revoked`. Revoked keys fail verification.
-
-  contact:
-    name: PFP Integrations
-    email: support@pfprotocol.com
-  license:
-    name: Proprietary
-
-servers:
-  - url: https://demo.pfprotocol.com
-    description: Production (live demo)
-  - url: https://pfp-evidence.preview.emergentagent.com
-    description: Staging / sandbox
-
-tags:
-  - name: FEA
-    description: Authenticated FEA generation and verification (production integration).
-  - name: Public
-    description: Unauthenticated verification + key registry (auditor-friendly).
-  - name: System
-    description: Health, root, and sandbox configuration.
-  - name: Demo
-    description: |
-      Demo-only endpoints powering the public-facing transaction flow
-      (`demo.pfprotocol.com`). Useful for prototyping; production
-      integrations should use the **FEA** endpoints instead.
-
-security:
-  - ApiKeyAuth: []
-
+  description: Cryptographically verifiable Financial Evidence Artifacts — enterprise
+    control plane.
+  version: 2.0.0
 paths:
   /api/fea/generate:
     post:
-      tags: [FEA]
-      summary: Generate a Financial Evidence Artifact
-      description: |
-        Generates a new, signed FEA for a financial transaction.
-
-        **Dual-layer replay protection:**
-        1. **Idempotency** — same `idempotency_key` + identical payload returns
-           the existing FEA (HTTP 200). Same key + different payload → `409`.
-        2. **Transaction uniqueness** — `(transaction_id, timestamp)` is enforced
-           globally unique. Same pair + identical payload → existing FEA.
-           Same pair + different payload → `409`.
-
-        **Amounts** are integers in the smallest currency unit (e.g. paise, cents).
-      security:
-        - ApiKeyAuth: []
+      tags:
+      - FEA
+      summary: Generate Fea Endpoint
+      description: Generate a Financial Evidence Artifact (tenant-bound, dual-layer
+        replay protection).
+      operationId: generate_fea_endpoint_api_fea_generate_post
       requestBody:
-        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/GenerateFEARequest' }
-            examples:
-              standard:
-                summary: A typical INR transaction
-                value:
-                  idempotency_key: "idem-2026-02-10-9f3a"
-                  transaction_id: "TXN-8F2C-2026-00418"
-                  timestamp: "2026-02-10T14:23:00Z"
-                  amount: 245000
-                  currency: "INR"
-                  payer_id: "sha256:7b9c…"
-                  payee_id: "sha256:a14d…"
-                  metadata:
-                    channel: "upi"
-                    rail: "NPCI"
+            schema:
+              $ref: '#/components/schemas/GenerateFEARequest'
+        required: true
       responses:
         '200':
-          description: FEA issued (or existing FEA returned for idempotent retries).
+          description: Successful Response
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/FEAResponse' }
-              examples:
-                issued:
-                  value:
-                    fea_id: "f1c2c45e-9c91-4f12-8e7c-2c5c5b1a4b0e"
-                    fea_payload:
-                      fea_version: "1.0"
-                      issuer_id: "pfp-issuer-001"
-                      public_key_id: "key_0c6c7071b3086f1a"
-                      transaction_summary:
-                        transaction_id: "TXN-8F2C-2026-00418"
-                        timestamp: "2026-02-10T14:23:00Z"
-                        amount: 245000
-                        currency: "INR"
-                      parties:
-                        payer_hash: "sha256:7b9c…"
-                        payee_hash: "sha256:a14d…"
-                      metadata_hash: "8d51b…"
-                      fea_hash: "9e2c4…"
-                    signature: "MEUCIQDp…base64…"
-                    signature_version: "v2"
-                    public_key_id: "key_0c6c7071b3086f1a"
-                    created_at: "2026-02-10T14:23:01.221Z"
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '409': { $ref: '#/components/responses/Conflict' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-        '429': { $ref: '#/components/responses/RateLimited' }
+              schema:
+                $ref: '#/components/schemas/FEAResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - APIKeyHeader: []
+  /api/fea/batch:
+    post:
+      tags:
+      - FEA
+      summary: Batch Generate Fea
+      description: 'Generate up to 500 FEAs in a single call. Each item is processed
 
+        independently; partial failures are reported per-item.'
+      operationId: batch_generate_fea_api_fea_batch_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchGenerateRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchGenerateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - APIKeyHeader: []
   /api/fea/verify:
     post:
-      tags: [FEA]
-      summary: Verify an FEA payload + signature
-      description: |
-        Verifies a signed FEA. Accepts both current (signature outside payload)
-        and legacy (signature_version inside payload) formats for backward
-        compatibility. Resolves the public key via `public_key_id` from the
-        on-chain key registry.
-      security:
-        - ApiKeyAuth: []
+      tags:
+      - FEA
+      summary: Verify Fea Endpoint
+      description: Verify an FEA payload and signature.
+      operationId: verify_fea_endpoint_api_fea_verify_post
       requestBody:
-        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/VerifyFEARequest' }
-            examples:
-              currentFormat:
-                value:
-                  fea_payload:
-                    fea_version: "1.0"
-                    issuer_id: "pfp-issuer-001"
-                    public_key_id: "key_0c6c7071b3086f1a"
-                    transaction_summary:
-                      transaction_id: "TXN-8F2C-2026-00418"
-                      timestamp: "2026-02-10T14:23:00Z"
-                      amount: 245000
-                      currency: "INR"
-                    parties:
-                      payer_hash: "sha256:7b9c…"
-                      payee_hash: "sha256:a14d…"
-                    fea_hash: "9e2c4…"
-                  signature: "MEUCIQDp…base64…"
-                  signature_version: "v2"
+            schema:
+              $ref: '#/components/schemas/VerifyFEARequest'
+        required: true
       responses:
         '200':
-          description: Verification result.
+          description: Successful Response
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/VerifyFEAResponse' }
-              examples:
-                valid:
-                  value: { valid: true, reason: null, signature_version: "v2", verified_at: "2026-02-10T14:23:02.001Z" }
-                invalid:
-                  value: { valid: false, reason: "Signature mismatch", signature_version: "v2", verified_at: "2026-02-10T14:23:02.001Z" }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '422': { $ref: '#/components/responses/ValidationError' }
-        '429': { $ref: '#/components/responses/RateLimited' }
-
+              schema:
+                $ref: '#/components/schemas/VerifyFEAResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - APIKeyHeader: []
+  /api/fea:
+    get:
+      tags:
+      - FEA
+      summary: List Feas
+      description: List the authenticated tenant's FEAs (paginated).
+      operationId: list_feas_api_fea_get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: skip
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Skip
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FEAListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/fea/{fea_id}:
+    get:
+      tags:
+      - FEA
+      summary: Get Fea
+      description: Authenticated single-FEA fetch (tenant scoped).
+      operationId: get_fea_api_fea__fea_id__get
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: fea_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Fea Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FEAResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/public/verify/{fea_id}:
     get:
-      tags: [Public]
-      summary: Public verification of an FEA by ID
-      description: |
-        Independent verification path: given a stored `fea_id`, returns the
-        full FEA payload, its signature, the resolved signature version, and a
-        re-computed `signature_valid` flag. No authentication required.
-      security: []
+      tags:
+      - Public
+      summary: Public Verify Fea
+      description: 'Public verification of an FEA by ID.
+
+        No authentication required.'
+      operationId: public_verify_fea_api_public_verify__fea_id__get
       parameters:
-        - in: path
-          name: fea_id
-          required: true
-          schema: { type: string, format: uuid }
-          description: The `fea_id` returned at issuance time.
+      - name: fea_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Fea Id
       responses:
         '200':
-          description: Verification result + full payload.
+          description: Successful Response
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/PublicVerifyResponse' }
-        '404':
-          description: Unknown `fea_id`.
+              schema:
+                $ref: '#/components/schemas/PublicVerifyResponse'
+        '422':
+          description: Validation Error
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/public/keys:
     get:
-      tags: [Public]
-      summary: Public key registry
-      description: |
-        Returns all public keys with their lifecycle status. Active + retired
-        keys are returned to support verification of historical FEAs. Revoked
-        keys are excluded from issuance but may still appear here for audit.
-      security: []
-      responses:
-        '200':
-          description: Key registry snapshot.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/KeyRegistryResponse' }
+      tags:
+      - Public
+      summary: Get Key Registry
+      description: 'Get all public keys in the registry.
 
-  /api/:
-    get:
-      tags: [System]
-      summary: API root / liveness
-      security: []
+        No authentication required.
+
+
+        Returns both active and retired keys to support
+
+        verification of historical FEAs.'
+      operationId: get_key_registry_api_public_keys_get
       responses:
         '200':
-          description: API metadata.
+          description: Successful Response
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  name: { type: string }
-                  version: { type: string }
-                  status: { type: string }
-                  timestamp: { type: string, format: date-time }
-
-  /api/health:
-    get:
-      tags: [System]
-      summary: Health check
-      security: []
-      responses:
-        '200':
-          description: Service healthy.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status: { type: string, enum: [healthy] }
-
-  /api/config:
-    get:
-      tags: [System]
-      summary: Sandbox configuration
-      description: |
-        Returns the **sandbox** test API key and the issuer ID. **Disable or
-        restrict this endpoint in production** — it is intended for the
-        dev console and integration testing only.
-      security: []
-      responses:
-        '200':
-          description: Sandbox configuration.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  test_api_key: { type: string, example: "pfp_test_…" }
-                  issuer_id: { type: string, example: "pfp-issuer-001" }
-                  endpoints:
-                    type: object
-                    additionalProperties: { type: string }
-
-  /api/demo/issue:
-    post:
-      tags: [Demo]
-      summary: (Demo) Issue compliance-aware proof
-      description: |
-        Demo endpoint powering `demo.pfprotocol.com`. Persists a proof with
-        embedded compliance state. **Not** for production integration — use
-        `POST /api/fea/generate` instead.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/IssueRequest' }
-      responses:
-        '200':
-          description: Issued proof.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/IssueResponse' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-
-  /api/demo/verify/{proof_id}:
-    get:
-      tags: [Demo]
-      summary: (Demo) Verify proof by ID
-      security: []
-      parameters:
-        - in: path
-          name: proof_id
-          required: true
-          schema: { type: string, pattern: '^[0-9a-f]{64}$' }
-      responses:
-        '200':
-          description: Verification result with compliance breakdown.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/VerifyByIdResponse' }
-
-  /api/demo/artifact:
-    post:
-      tags: [Demo]
-      summary: (Demo) Build downloadable Ed25519-signed artifact
-      description: |
-        Returns a standalone, signed JSON artifact with media type
-        `application/pfp-proof+json;v=1` and an attachment filename. The
-        artifact can be verified anywhere via `/api/demo/artifact/verify`.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/ArtifactRequest' }
-      responses:
-        '200':
-          description: Signed canonical JSON artifact.
-          content:
-            application/pfp-proof+json;v=1:
-              schema: { $ref: '#/components/schemas/SignedArtifact' }
-
-  /api/demo/artifact/verify:
-    post:
-      tags: [Demo]
-      summary: (Demo) Independently verify a signed artifact
-      description: |
-        Strict schema validation, canonical-ordering enforcement, normalization,
-        timestamp skew (≤ 5 min future), constant-time `proof_id` compare,
-        `kid` lookup including revocation, Ed25519 signature verify.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/SignedArtifact' }
-      responses:
-        '200':
-          description: Verification result.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ArtifactVerifyResult' }
-
+                $ref: '#/components/schemas/KeyRegistryResponse'
   /api/demo/proof:
     post:
-      tags: [Demo]
-      summary: (Demo) Stateless proof hash
-      description: Normalize + canonical SHA-256 hash of a party record. Stateless.
-      security: []
+      tags:
+      - Demo
+      summary: Generate Party Proof
+      description: "Generate a deterministic proof for a party record.\n\nSteps:\n\
+        \  1. Normalize fields (trim, casing, amount format, timestamp format)\n \
+        \ 2. Canonicalize to a deterministic JSON string (sorted keys)\n  3. SHA-256\
+        \ hash the canonical JSON\n\nTwo parties applying these same steps to logically-identical\
+        \ records\nwill produce identical `proof_hash` values — enabling proof-based\n\
+        consistency comparison without exposing raw data."
+      operationId: generate_party_proof_api_demo_proof_post
       requestBody:
-        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/PartyRecord' }
+            schema:
+              $ref: '#/components/schemas/PartyRecord'
+        required: true
       responses:
         '200':
-          description: Proof hash + normalized payload.
+          description: Successful Response
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ProofResponse' }
+              schema:
+                $ref: '#/components/schemas/ProofResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/demo/issue:
+    post:
+      tags:
+      - Demo
+      summary: Issue Proof
+      description: 'Issue a compliance-aware proof for a transaction and persist it
+        so it can
 
+        be verified later by an auditor using only the Proof ID.'
+      operationId: issue_proof_api_demo_issue_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssueResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/demo/verify/{proof_id}:
+    get:
+      tags:
+      - Demo
+      summary: Verify Proof By Id
+      description: 'Look up a stored proof and re-verify its integrity by re-canonicalizing
+
+        and re-hashing the persisted payload. Returns the compliance state that
+
+        was embedded when the proof was issued.'
+      operationId: verify_proof_by_id_api_demo_verify__proof_id__get
+      parameters:
+      - name: proof_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Proof Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyByIdResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/demo/artifact:
+    post:
+      tags:
+      - Demo
+      summary: Build Downloadable Artifact
+      description: "Build and sign a standalone proof artifact that can be downloaded,\n\
+        shared, and independently verified anywhere.\n\nResponse:\n  - Body: canonical\
+        \ JSON of the signed artifact\n  - Content-Type: application/pfp-proof+json;v=1\n\
+        \  - Content-Disposition: attachment (suggested filename with proof_id)"
+      operationId: build_downloadable_artifact_api_demo_artifact_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArtifactRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/demo/artifact/verify:
+    post:
+      tags:
+      - Demo
+      summary: Verify Downloadable Artifact
+      description: 'Independently verify an uploaded/pasted signed proof artifact.
+
+
+        Runs strict schema checks, canonical-ordering enforcement, normalization,
+
+        timestamp skew, constant-time proof_id comparison, kid lookup (including
+
+        revocation), and Ed25519 signature verification.'
+      operationId: verify_downloadable_artifact_api_demo_artifact_verify_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              type: object
+              title: Artifact
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactVerifyResult'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/auth/login:
+    post:
+      tags:
+      - Auth
+      summary: Login
+      operationId: login_api_auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/auth/me:
+    get:
+      tags:
+      - Auth
+      summary: Me
+      operationId: me_api_auth_me_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+  /api/auth/refresh:
+    post:
+      tags:
+      - Auth
+      summary: Refresh Token
+      operationId: refresh_token_api_auth_refresh_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/auth/logout:
+    post:
+      tags:
+      - Auth
+      summary: Logout
+      operationId: logout_api_auth_logout_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+  /api/admin/api-keys/create:
+    post:
+      tags:
+      - Admin
+      summary: Create Api Key
+      operationId: create_api_key_api_admin_api_keys_create_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateApiKeyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/admin/api-keys:
+    get:
+      tags:
+      - Admin
+      summary: List Api Keys
+      operationId: list_api_keys_api_admin_api_keys_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: tenant_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/admin/api-keys/revoke:
+    post:
+      tags:
+      - Admin
+      summary: Revoke Api Key
+      operationId: revoke_api_key_api_admin_api_keys_revoke_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: key_id
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Key Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/admin/keys/create:
+    post:
+      tags:
+      - Admin
+      summary: Create Signing Key
+      description: Register an externally-generated public key in the registry.
+      operationId: create_signing_key_api_admin_keys_create_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateKeyRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/admin/keys/rotate:
+    post:
+      tags:
+      - Admin
+      summary: Rotate Signing Key
+      description: 'Generate a new keypair, register its public key as active, retire
+        the
+
+        previous active key(s). Returns the new private seed ONCE — the operator
+
+        must deploy it to the KMS/secret store and restart for new issuance to use
+        it.'
+      operationId: rotate_signing_key_api_admin_keys_rotate_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+  /api/admin/keys/revoke:
+    post:
+      tags:
+      - Admin
+      summary: Revoke Signing Key
+      operationId: revoke_signing_key_api_admin_keys_revoke_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: public_key_id
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Public Key Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/admin/keys/retire:
+    post:
+      tags:
+      - Admin
+      summary: Retire Signing Key
+      operationId: retire_signing_key_api_admin_keys_retire_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: public_key_id
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Public Key Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/admin/tenants:
+    get:
+      tags:
+      - Admin
+      summary: List Tenants
+      operationId: list_tenants_api_admin_tenants_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+    post:
+      tags:
+      - Admin
+      summary: Create Tenant
+      operationId: create_tenant_api_admin_tenants_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenantRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
+  /api/admin/audit:
+    get:
+      tags:
+      - Admin
+      summary: Get Audit
+      operationId: get_audit_api_admin_audit_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: tenant_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Id
+      - name: action
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Action
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: skip
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Skip
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/admin/audit/verify:
+    get:
+      tags:
+      - Admin
+      summary: Verify Audit
+      description: Verify the integrity of the audit hash chain.
+      operationId: verify_audit_api_admin_audit_verify_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+  /api/webhooks/subscribe:
+    post:
+      tags:
+      - Webhooks
+      summary: Subscribe
+      operationId: subscribe_api_webhooks_subscribe_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubscribeRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - APIKeyHeader: []
+  /api/webhooks:
+    get:
+      tags:
+      - Webhooks
+      summary: List Subscriptions
+      operationId: list_subscriptions_api_webhooks_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - APIKeyHeader: []
+  /api/webhooks/test:
+    post:
+      tags:
+      - Webhooks
+      summary: Test Webhook
+      operationId: test_webhook_api_webhooks_test_post
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: webhook_id
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Webhook Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/webhooks/{webhook_id}:
+    delete:
+      tags:
+      - Webhooks
+      summary: Delete Webhook
+      operationId: delete_webhook_api_webhooks__webhook_id__delete
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: webhook_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Webhook Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/:
+    get:
+      summary: Root
+      operationId: root_api__get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/health:
+    get:
+      summary: Health Check
+      description: 'Deep health check: validates DB, key registry, and signing service.'
+      operationId: health_check_api_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/metrics:
+    get:
+      summary: Metrics
+      description: Prometheus metrics endpoint.
+      operationId: metrics_api_metrics_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /api/config:
+    get:
+      summary: Get Config
+      description: 'Public configuration.
+
+
+        The sandbox API key is exposed ONLY outside production (dev/sandbox) for the
+
+        developer console. In production, no key is returned — keys are provisioned
+
+        via the admin control plane (POST /api/admin/api-keys/create).'
+      operationId: get_config_api_config_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
 components:
-  securitySchemes:
-    ApiKeyAuth:
-      type: apiKey
-      in: header
-      name: X-API-Key
-      description: |
-        Sandbox keys can be fetched from `GET /api/config` (sandbox only).
-        Production keys are provisioned by the PFP team — contact
-        support@pfprotocol.com.
-
-  responses:
-    BadRequest:
-      description: Malformed request.
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-    Unauthorized:
-      description: Missing or invalid `X-API-Key` header.
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-    Conflict:
-      description: Replay or idempotency conflict.
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-    ValidationError:
-      description: Pydantic schema validation failure.
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ValidationErrorResponse' }
-    RateLimited:
-      description: Too many requests. See `Retry-After` header.
-
   schemas:
-    GenerateFEARequest:
+    ArtifactRequest:
+      properties:
+        transaction_id:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Transaction Id
+        user_id:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: User Id
+        amount:
+          anyOf:
+          - type: string
+          - type: number
+          - type: integer
+          title: Amount
+        compliance:
+          $ref: '#/components/schemas/ComplianceResult'
+        timestamp:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Timestamp
       type: object
-      required: [idempotency_key, transaction_id, timestamp, amount, currency, payer_id, payee_id]
+      required:
+      - transaction_id
+      - user_id
+      - amount
+      - compliance
+      title: ArtifactRequest
+    ArtifactVerifyResult:
+      properties:
+        valid:
+          type: boolean
+          title: Valid
+        status:
+          type: string
+          title: Status
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        extracted:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Extracted
+      type: object
+      required:
+      - valid
+      - status
+      title: ArtifactVerifyResult
+    BatchGenerateRequest:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/GenerateFEARequest'
+          type: array
+          maxItems: 500
+          minItems: 1
+          title: Items
+      type: object
+      required:
+      - items
+      title: BatchGenerateRequest
+    BatchGenerateResponse:
+      properties:
+        total:
+          type: integer
+          title: Total
+        succeeded:
+          type: integer
+          title: Succeeded
+        failed:
+          type: integer
+          title: Failed
+        results:
+          items:
+            $ref: '#/components/schemas/BatchItemResult'
+          type: array
+          title: Results
+      type: object
+      required:
+      - total
+      - succeeded
+      - failed
+      - results
+      title: BatchGenerateResponse
+    BatchItemResult:
+      properties:
+        index:
+          type: integer
+          title: Index
+        success:
+          type: boolean
+          title: Success
+        fea_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Fea Id
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - index
+      - success
+      title: BatchItemResult
+    ComplianceResult:
+      properties:
+        kyc:
+          type: string
+          pattern: ^(Pass|Fail)$
+          title: Kyc
+        aml:
+          type: string
+          pattern: ^(Pass|Fail)$
+          title: Aml
+        limits:
+          type: string
+          pattern: ^(Within allowed range|Exceeded)$
+          title: Limits
+        status:
+          type: string
+          pattern: ^(COMPLIANT|NON-COMPLIANT)$
+          title: Status
+      type: object
+      required:
+      - kyc
+      - aml
+      - limits
+      - status
+      title: ComplianceResult
+    CreateApiKeyRequest:
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Name
+        tenant_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Id
+        customer_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Customer Id
+        scopes:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Scopes
+        expires_in_days:
+          anyOf:
+          - type: integer
+            maximum: 3650.0
+            minimum: 1.0
+          - type: 'null'
+          title: Expires In Days
+      type: object
+      required:
+      - name
+      title: CreateApiKeyRequest
+    CreateApiKeyResponse:
+      properties:
+        key_id:
+          type: string
+          title: Key Id
+        api_key:
+          type: string
+          title: Api Key
+        name:
+          type: string
+          title: Name
+        tenant_id:
+          type: string
+          title: Tenant Id
+        scopes:
+          items:
+            type: string
+          type: array
+          title: Scopes
+        expires_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Expires At
+      type: object
+      required:
+      - key_id
+      - api_key
+      - name
+      - tenant_id
+      - scopes
+      title: CreateApiKeyResponse
+    CreateKeyRequest:
+      properties:
+        public_key_b64:
+          type: string
+          minLength: 10
+          title: Public Key B64
+        public_key_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Public Key Id
+      type: object
+      required:
+      - public_key_b64
+      title: CreateKeyRequest
+    CreateTenantRequest:
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Name
+        tenant_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Id
+      type: object
+      required:
+      - name
+      title: CreateTenantRequest
+    FEAListItem:
+      properties:
+        fea_id:
+          type: string
+          title: Fea Id
+        transaction_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Transaction Id
+        created_at:
+          type: string
+          title: Created At
+        public_key_id:
+          type: string
+          title: Public Key Id
+      type: object
+      required:
+      - fea_id
+      - created_at
+      - public_key_id
+      title: FEAListItem
+    FEAListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/FEAListItem'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        limit:
+          type: integer
+          title: Limit
+        skip:
+          type: integer
+          title: Skip
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - skip
+      title: FEAListResponse
+    FEAResponse:
+      properties:
+        fea_id:
+          type: string
+          title: Fea Id
+        fea_payload:
+          additionalProperties: true
+          type: object
+          title: Fea Payload
+        signature:
+          type: string
+          title: Signature
+        signature_version:
+          type: string
+          title: Signature Version
+          default: v2
+        public_key_id:
+          type: string
+          title: Public Key Id
+        created_at:
+          type: string
+          title: Created At
+      type: object
+      required:
+      - fea_payload
+      - signature
+      - public_key_id
+      title: FEAResponse
+      description: 'Response from FEA generation.
+
+
+        Structure separates:
+
+        - fea_payload: the signed data
+
+        - signature: cryptographic signature
+
+        - signature_version: signature metadata (NOT signed)
+
+        - created_at: response metadata (NOT signed)'
+    GenerateFEARequest:
       properties:
         idempotency_key:
           type: string
           minLength: 1
-          description: Unique per logical request. Safe to retry with the same value.
-          example: "idem-2026-02-10-9f3a"
+          title: Idempotency Key
         transaction_id:
           type: string
           minLength: 1
-          example: "TXN-8F2C-2026-00418"
+          title: Transaction Id
         timestamp:
           type: string
-          format: date-time
-          description: ISO-8601 UTC. Used in the replay-uniqueness compound key.
-          example: "2026-02-10T14:23:00Z"
+          title: Timestamp
+          description: ISO 8601 UTC timestamp
         amount:
           type: integer
-          minimum: 0
-          description: Smallest currency unit (paise, cents).
-          example: 245000
+          minimum: 0.0
+          title: Amount
+          description: Amount in smallest unit (e.g., paise)
         currency:
           type: string
-          minLength: 3
           maxLength: 3
-          example: "INR"
+          minLength: 3
+          title: Currency
         payer_id:
           type: string
-          description: Hashed / tokenized payer identifier — never raw PII.
-          example: "sha256:7b9c…"
+          title: Payer Id
+          description: Hashed/tokenized payer identifier
         payee_id:
           type: string
-          example: "sha256:a14d…"
+          title: Payee Id
+          description: Hashed/tokenized payee identifier
         metadata:
-          type: object
-          additionalProperties: true
-          description: Optional metadata; its SHA-256 hash is committed via `metadata_hash`.
-
-    FEAPayload:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Metadata
       type: object
-      required: [fea_version, issuer_id, public_key_id, transaction_summary, parties, fea_hash]
-      properties:
-        fea_version: { type: string, example: "1.0" }
-        issuer_id: { type: string, example: "pfp-issuer-001" }
-        public_key_id: { type: string, example: "key_0c6c7071b3086f1a" }
-        transaction_summary:
-          type: object
-          required: [transaction_id, timestamp, amount, currency]
-          properties:
-            transaction_id: { type: string }
-            timestamp: { type: string, format: date-time }
-            amount: { type: integer }
-            currency: { type: string }
-        parties:
-          type: object
-          required: [payer_hash, payee_hash]
-          properties:
-            payer_hash: { type: string }
-            payee_hash: { type: string }
-        metadata_hash: { type: string, nullable: true }
-        fea_hash: { type: string, description: "SHA-256 of the canonical payload (excluding fea_hash itself)." }
-
-    FEAResponse:
-      type: object
-      required: [fea_id, fea_payload, signature, signature_version, public_key_id, created_at]
-      properties:
-        fea_id: { type: string, format: uuid }
-        fea_payload: { $ref: '#/components/schemas/FEAPayload' }
-        signature: { type: string, description: "Pure base64 Ed25519 signature over the canonical fea_payload." }
-        signature_version: { type: string, example: "v2" }
-        public_key_id: { type: string, example: "key_0c6c7071b3086f1a" }
-        created_at: { type: string, format: date-time }
-
-    VerifyFEARequest:
-      type: object
-      required: [fea_payload, signature]
-      properties:
-        fea_payload: { $ref: '#/components/schemas/FEAPayload' }
-        signature: { type: string }
-        signature_version:
-          type: string
-          nullable: true
-          description: Provide externally for current format. May be omitted for legacy payloads that embed it.
-
-    VerifyFEAResponse:
-      type: object
-      required: [valid, signature_version, verified_at]
-      properties:
-        valid: { type: boolean }
-        reason: { type: string, nullable: true }
-        signature_version: { type: string }
-        verified_at: { type: string, format: date-time }
-
-    PublicVerifyResponse:
-      type: object
-      required: [fea_id, fea_payload, signature, signature_version, signature_valid, issuer_id, created_at]
-      properties:
-        fea_id: { type: string, format: uuid }
-        fea_payload: { $ref: '#/components/schemas/FEAPayload' }
-        signature: { type: string }
-        signature_version: { type: string }
-        signature_valid: { type: boolean }
-        issuer_id: { type: string }
-        created_at: { type: string, format: date-time }
-
-    PublicKeyInfo:
-      type: object
-      required: [public_key_id, public_key, algorithm, created_at, status]
-      properties:
-        public_key_id: { type: string, example: "key_0c6c7071b3086f1a" }
-        public_key: { type: string, description: "Base64 of the raw Ed25519 public key." }
-        algorithm: { type: string, enum: [Ed25519] }
-        created_at: { type: string, format: date-time }
-        status: { type: string, enum: [active, retired, revoked] }
-
-    KeyRegistryResponse:
-      type: object
-      properties:
-        keys:
-          type: array
-          items: { $ref: '#/components/schemas/PublicKeyInfo' }
-        total: { type: integer }
-        active_count: { type: integer }
-        retired_count: { type: integer }
-
-    # ----- Demo schemas -----
-    IssueRequest:
-      type: object
-      required: [transaction_id, user_id, amount, created_at, compliance]
-      properties:
-        transaction_id: { type: string }
-        user_id: { type: string }
-        amount: { oneOf: [{ type: string }, { type: number }] }
-        created_at: { type: string, format: date-time }
-        compliance:
-          type: object
-          required: [kyc, aml, limits, status]
-          properties:
-            kyc: { type: string, enum: [Pass, Fail] }
-            aml: { type: string, enum: [Pass, Fail] }
-            limits: { type: string, enum: ["Within allowed range", "Exceeded"] }
-            status: { type: string, enum: [COMPLIANT, NON-COMPLIANT] }
-
-    IssueResponse:
-      type: object
-      properties:
-        proof_id: { type: string }
-        proof_hash: { type: string }
-        transaction_id: { type: string }
-        issued_at: { type: string, format: date-time }
-        metadata:
-          type: object
-          properties:
-            algorithm: { type: string }
-            canonicalization: { type: string }
-            generated_at: { type: string, format: date-time }
-
-    VerifyByIdResponse:
-      type: object
-      properties:
-        valid: { type: boolean }
-        proof_id: { type: string }
-        transaction_id: { type: string, nullable: true }
-        compliance: { type: object, nullable: true }
-        issued_at: { type: string, format: date-time, nullable: true }
-        reason: { type: string, nullable: true }
-
-    ArtifactRequest:
-      type: object
-      required: [transaction_id, user_id, amount, compliance]
-      properties:
-        transaction_id: { type: string }
-        user_id: { type: string }
-        amount: { oneOf: [{ type: string }, { type: number }] }
-        compliance: { $ref: '#/components/schemas/IssueRequest/properties/compliance' }
-        timestamp: { type: string, nullable: true }
-
-    SignedArtifact:
-      type: object
-      required: [version, transaction_id, user_id, amount, compliance, timestamp, proof_id, algorithm, kid, signature]
-      properties:
-        version: { type: integer, enum: [1] }
-        transaction_id: { type: string }
-        user_id: { type: string }
-        amount: { type: string }
-        compliance:
-          type: object
-          properties:
-            kyc: { type: string, enum: [Pass, Fail] }
-            aml: { type: string, enum: [Pass, Fail] }
-            limits: { type: string, enum: ["Within allowed range", "Exceeded"] }
-        timestamp: { type: string, format: date-time }
-        proof_id: { type: string, pattern: '^[0-9a-f]{64}$' }
-        algorithm: { type: string, enum: [Ed25519] }
-        kid: { type: string }
-        signature: { type: string }
-
-    ArtifactVerifyResult:
-      type: object
-      properties:
-        valid: { type: boolean }
-        status: { type: string, enum: [valid_compliant, valid_non_compliant, invalid] }
-        reason: { type: string, nullable: true }
-        extracted:
-          type: object
-          nullable: true
-          properties:
-            transaction_id: { type: string }
-            compliance: { type: object }
-            timestamp: { type: string, format: date-time }
-            kid: { type: string }
-            key_status: { type: string }
-
-    PartyRecord:
-      type: object
-      required: [transaction_id, user_id, amount, created_at]
-      properties:
-        transaction_id: { type: string }
-        user_id: { type: string }
-        amount: { oneOf: [{ type: string }, { type: number }] }
-        created_at: { type: string, format: date-time }
-
-    ProofResponse:
-      type: object
-      properties:
-        proof_hash: { type: string, pattern: '^[0-9a-f]{64}$' }
-        normalized_payload: { type: object }
-        metadata:
-          type: object
-          properties:
-            algorithm: { type: string, enum: ["SHA-256"] }
-            canonicalization: { type: string }
-            generated_at: { type: string, format: date-time }
-
-    # ----- Errors -----
-    ErrorResponse:
-      type: object
-      required: [detail]
-      properties:
-        detail: { type: string, example: "Invalid API key" }
-
-    ValidationErrorResponse:
-      type: object
+      required:
+      - idempotency_key
+      - transaction_id
+      - timestamp
+      - amount
+      - currency
+      - payer_id
+      - payee_id
+      title: GenerateFEARequest
+      description: Input for FEA generation - POST /generate-fea.
+    HTTPValidationError:
       properties:
         detail:
-          type: array
           items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    IndustryCheck:
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        desc:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Desc
+        status:
+          type: string
+          pattern: ^(Pass|Fail)$
+          title: Status
+      type: object
+      required:
+      - name
+      - desc
+      - status
+      title: IndustryCheck
+      description: A single industry-specific compliance check executed before proof
+        issuance.
+    IndustryContext:
+      properties:
+        id:
+          type: string
+          maxLength: 50
+          minLength: 1
+          title: Id
+        label:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Label
+        checks:
+          items:
+            $ref: '#/components/schemas/IndustryCheck'
+          type: array
+          maxItems: 20
+          minItems: 1
+          title: Checks
+      type: object
+      required:
+      - id
+      - label
+      - checks
+      title: IndustryContext
+      description: 'Optional industry-aware metadata describing which checks were
+        executed.
+
+
+        When present, this object is embedded in the canonical payload so the
+
+        exact list of industry-specific checks (and their outcomes) is
+
+        cryptographically proven by the issued proof_id. The cryptographic
+
+        primitives (canonicalize → SHA-256 → Ed25519) are unchanged; only the
+
+        input dict gains an additional, well-defined field.'
+    IssueRequest:
+      properties:
+        transaction_id:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Transaction Id
+        user_id:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: User Id
+        amount:
+          anyOf:
+          - type: string
+          - type: number
+          - type: integer
+          title: Amount
+        created_at:
+          type: string
+          minLength: 1
+          title: Created At
+        compliance:
+          $ref: '#/components/schemas/ComplianceResult'
+        industry:
+          anyOf:
+          - $ref: '#/components/schemas/IndustryContext'
+          - type: 'null'
+      type: object
+      required:
+      - transaction_id
+      - user_id
+      - amount
+      - created_at
+      - compliance
+      title: IssueRequest
+    IssueResponse:
+      properties:
+        proof_id:
+          type: string
+          title: Proof Id
+        proof_hash:
+          type: string
+          title: Proof Hash
+        transaction_id:
+          type: string
+          title: Transaction Id
+        issued_at:
+          type: string
+          title: Issued At
+        metadata:
+          $ref: '#/components/schemas/ProofMetadata'
+      type: object
+      required:
+      - proof_id
+      - proof_hash
+      - transaction_id
+      - issued_at
+      - metadata
+      title: IssueResponse
+    KeyRegistryResponse:
+      properties:
+        keys:
+          items:
+            $ref: '#/components/schemas/PublicKeyInfo'
+          type: array
+          title: Keys
+        total:
+          type: integer
+          title: Total
+          default: 0
+        active_count:
+          type: integer
+          title: Active Count
+          default: 0
+        retired_count:
+          type: integer
+          title: Retired Count
+          default: 0
+      type: object
+      required:
+      - keys
+      title: KeyRegistryResponse
+      description: Response from key registry endpoint.
+    LoginRequest:
+      properties:
+        email:
+          type: string
+          title: Email
+        password:
+          type: string
+          title: Password
+      type: object
+      required:
+      - email
+      - password
+      title: LoginRequest
+    PartyRecord:
+      properties:
+        transaction_id:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Transaction Id
+        user_id:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: User Id
+        amount:
+          anyOf:
+          - type: string
+          - type: number
+          - type: integer
+          title: Amount
+        created_at:
+          type: string
+          minLength: 1
+          title: Created At
+      type: object
+      required:
+      - transaction_id
+      - user_id
+      - amount
+      - created_at
+      title: PartyRecord
+    ProofMetadata:
+      properties:
+        algorithm:
+          type: string
+          title: Algorithm
+        canonicalization:
+          type: string
+          title: Canonicalization
+        generated_at:
+          type: string
+          title: Generated At
+      type: object
+      required:
+      - algorithm
+      - canonicalization
+      - generated_at
+      title: ProofMetadata
+    ProofResponse:
+      properties:
+        proof_hash:
+          type: string
+          title: Proof Hash
+        normalized_payload:
+          additionalProperties: true
+          type: object
+          title: Normalized Payload
+        metadata:
+          $ref: '#/components/schemas/ProofMetadata'
+      type: object
+      required:
+      - proof_hash
+      - normalized_payload
+      - metadata
+      title: ProofResponse
+    PublicKeyInfo:
+      properties:
+        public_key_id:
+          type: string
+          title: Public Key Id
+        public_key:
+          type: string
+          title: Public Key
+        algorithm:
+          type: string
+          title: Algorithm
+          default: Ed25519
+        created_at:
+          type: string
+          title: Created At
+        status:
+          type: string
+          enum:
+          - active
+          - retired
+          - revoked
+          title: Status
+          default: active
+      type: object
+      required:
+      - public_key_id
+      - public_key
+      - created_at
+      title: PublicKeyInfo
+      description: Public key information for verification.
+    PublicVerifyResponse:
+      properties:
+        fea_id:
+          type: string
+          title: Fea Id
+        fea_payload:
+          additionalProperties: true
+          type: object
+          title: Fea Payload
+        signature:
+          type: string
+          title: Signature
+        signature_version:
+          type: string
+          title: Signature Version
+        signature_valid:
+          type: boolean
+          title: Signature Valid
+        issuer_id:
+          type: string
+          title: Issuer Id
+        created_at:
+          type: string
+          title: Created At
+      type: object
+      required:
+      - fea_id
+      - fea_payload
+      - signature
+      - signature_version
+      - signature_valid
+      - issuer_id
+      - created_at
+      title: PublicVerifyResponse
+      description: Response from public verification - GET /public/verify/{fea_id}.
+    SubscribeRequest:
+      properties:
+        url:
+          type: string
+          maxLength: 2083
+          minLength: 1
+          format: uri
+          title: Url
+        events:
+          items:
+            type: string
+          type: array
+          title: Events
+      type: object
+      required:
+      - url
+      title: SubscribeRequest
+    TokenResponse:
+      properties:
+        access_token:
+          type: string
+          title: Access Token
+        refresh_token:
+          type: string
+          title: Refresh Token
+        token_type:
+          type: string
+          title: Token Type
+          default: bearer
+        role:
+          type: string
+          title: Role
+        tenant_id:
+          type: string
+          title: Tenant Id
+        email:
+          type: string
+          title: Email
+      type: object
+      required:
+      - access_token
+      - refresh_token
+      - role
+      - tenant_id
+      - email
+      title: TokenResponse
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    VerifyByIdResponse:
+      properties:
+        valid:
+          type: boolean
+          title: Valid
+        proof_id:
+          type: string
+          title: Proof Id
+        transaction_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Transaction Id
+        compliance:
+          anyOf:
+          - additionalProperties: true
             type: object
-            properties:
-              loc:
-                type: array
-                items: { oneOf: [{ type: string }, { type: integer }] }
-              msg: { type: string }
-              type: { type: string }
+          - type: 'null'
+          title: Compliance
+        industry:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Industry
+        issued_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Issued At
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+      type: object
+      required:
+      - valid
+      - proof_id
+      title: VerifyByIdResponse
+    VerifyFEARequest:
+      properties:
+        fea_payload:
+          additionalProperties: true
+          type: object
+          title: Fea Payload
+        signature:
+          type: string
+          title: Signature
+        signature_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Signature Version
+      type: object
+      required:
+      - fea_payload
+      - signature
+      title: VerifyFEARequest
+      description: 'Input for FEA verification - POST /verify-fea.
+
+
+        Supports both:
+
+        - New format: fea_payload + signature + signature_version (external)
+
+        - Legacy format: fea_payload with signature_version inside + signature'
+    VerifyFEAResponse:
+      properties:
+        valid:
+          type: boolean
+          title: Valid
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        signature_version:
+          type: string
+          title: Signature Version
+          default: unknown
+        verified_at:
+          type: string
+          title: Verified At
+      type: object
+      required:
+      - valid
+      title: VerifyFEAResponse
+      description: Response from FEA verification.
+  securitySchemes:
+    APIKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    HTTPBearer:
+      type: http
+      scheme: bearer
+servers:
+- url: https://pfp-evidence.preview.emergentagent.com
+  description: Sandbox/preview
+- url: https://api.pfprotocol.com
+  description: Production

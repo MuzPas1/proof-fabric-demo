@@ -1,0 +1,32 @@
+# ConfigMap (non-secret) — apply with: kubectl apply -f config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pfp-config
+data:
+  ENVIRONMENT: "production"
+  DB_NAME: "pfp_prod"
+  DEMO_DB_NAME: "pfp_demo"
+  KMS_PROVIDER: "aws"
+  ISSUER_ID: "pfp-issuer-001"
+  CORS_ORIGINS: "https://app.pfprotocol.com"
+  ACCEPT_LEGACY_V1: "false"
+  ENFORCE_VERIFY_TIMESTAMP: "true"
+  MAX_REQUEST_BYTES: "1048576"
+  DEFAULT_TENANT_ID: "default"
+---
+# Secret TEMPLATE — DO NOT commit real values. Use sealed-secrets / external-secrets
+# / cloud secret manager in production. Reference KMS, not raw keys, when KMS_PROVIDER!=local.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pfp-secrets
+type: Opaque
+stringData:
+  MONGO_URL: "mongodb+srv://USER:PASS@cluster.example.net/?tls=true&authSource=admin"
+  JWT_SECRET: "REPLACE_WITH_64_HEX"
+  ADMIN_EMAIL: "admin@pfprotocol.com"
+  ADMIN_PASSWORD: "REPLACE_STRONG_PASSWORD"
+  # For KMS_PROVIDER=aws, set the secret reference instead of raw seeds:
+  AWS_KEY_REF_PRODUCTION: "arn:aws:secretsmanager:...:secret:pfp/prod/signing"
+  AWS_KEY_REF_DEMO: "arn:aws:secretsmanager:...:secret:pfp/demo/signing"

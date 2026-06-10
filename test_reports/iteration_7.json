@@ -1,0 +1,40 @@
+{
+  "summary": "Enterprise hardening backend test pass. Created /app/backend/tests/test_enterprise_api.py with 30 tests covering ALL new endpoints + security controls and ran existing regression (test_pfp_api.py 19/19 + test_crypto_unit.py 7/7). Results: 30/30 enterprise pass, 26/26 regression pass = 56/56 (100%). Verified: GET /api/config exposes test_api_key in dev; GET /api/health returns status=healthy with checks.{database,key_registry,signing_service,demo_db} all true; GET /api/metrics returns Prometheus text containing pfp_http_requests_total; POST /api/auth/login with admin@pfprotocol.com/PfpAdmin!2026 returns access_token + role=super_admin + tenant_id=default (NOTE: role/tenant_id are FLAT fields on the login response, not nested under a user object — /api/auth/me returns the full user object); wrong password → 401; admin endpoint w/o token → 401/403; POST /api/admin/api-keys/create returns raw api_key + scopes + expires_at + key_id, listing contains the new key, /revoke succeeds; POST /api/admin/keys/rotate returns new_public_key_id + new_private_seed_b64; GET /api/admin/audit returns hash-chained entries and /audit/verify returns intact:true; POST /api/fea/generate produces fea_payload with fea_version='1.1', algorithm='Ed25519', tenant_id='default', iat, jti, signature_version='v2', valid signature; missing X-API-Key → 401; idempotency (same key+payload→same fea_id, same key+different payload→409); replay (different idem+same txn/timestamp+same payload→same fea_id, different payload→409 with exact text 'Transaction replay detected with conflicting data'); /api/fea/verify returns valid:true for fresh FEA, valid:false for tampered signature, valid:false when signature_version='v1' is forced (legacy rejection); GET /api/fea?limit=5 paginates ≤5; GET /api/fea/{id} returns the FEA; unknown id → 404; POST /api/fea/batch with 2 valid items returns succeeded=2; batch with idem-key conflict reports succeeded=1+failed=1 without aborting; GET /api/public/verify/{id} → signature_valid:true; GET /api/public/keys lists Ed25519 keys; webhooks subscribe returns webhook_id+secret, list contains it (under 'subscriptions' key), POST /api/webhooks/test returns a structured delivery result (example.com fails — acceptable), DELETE removes it; demo /issue returns proof_id and /verify/{id} → valid:true; demo /artifact returns signed artifact whose kid starts with 'demo_key_' and /artifact/verify returns status='valid_compliant'; oversized POST body (>1MB) → 413; X-Frame-Options=DENY and X-Content-Type-Options=nosniff present on responses.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/webhooks/subscribe", "issue": "Silent event-name coercion: subscribing with events=['fea.created'] is persisted/returned as ['fea.generated'] without any 400/422 or warning. If the server only supports 'fea.generated', it should either accept it as canonical and document the alias, or reject unknown event names. Not failing tests but worth normalizing in docs."},
+      {"endpoint": "POST /api/auth/login", "issue": "Response shape exposes role/tenant_id as flat top-level keys (not under a 'user' object), while /api/auth/me returns the full user. Slightly inconsistent — consider also embedding a 'user' object in the login response for client-side parity with /me."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_enterprise_api.py",
+    "/app/backend/tests/test_pfp_api.py",
+    "/app/backend/tests/test_crypto_unit.py",
+    "/app/test_reports/pytest/enterprise_results.xml",
+    "/app/test_reports/pytest/regression_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: harmonize webhook event aliases (fea.created → fea.generated) — either accept both explicitly or 422 on unknown event names with a list of supported events.",
+    "OPTIONAL: include a 'user' object in /api/auth/login response (mirror /api/auth/me) so clients don't have to parse both shapes.",
+    "Carry-forward from iteration 5/6 (still open and out-of-scope this round): extend backend/models/key_registry.py PublicKeyInfo.status Literal to include 'revoked' so /api/demo/artifact/verify against a revoked key returns 'Key revoked' rather than 500."
+  ],
+  "critical_code_review_comments": [
+    "Excellent enterprise expansion — 34 endpoints with consistent auth model (X-API-Key for data plane scopes, JWT Bearer for admin). RBAC scopes are enforced at route level via require_scope/require_permission.",
+    "FEA v1.1 contract is clean: fea_version + algorithm + tenant_id + iat + jti are all present and stable; signature_version='v2' is enforced and legacy 'v1' is properly rejected by verification_service.",
+    "Hash-chained audit log + /audit/verify is a strong tamper-evidence primitive — consider exposing the genesis hash and chain length in the verify response for downstream attestation.",
+    "Replay-detection error message string is matched by tests verbatim ('Transaction replay detected with conflicting data') — keep this string stable as it's now part of the public contract.",
+    "Separate demo signing key (KMS abstraction) + demo_db isolation correctly prevents demo data from contaminating prod key registry / FEA store. demo_key_ kid prefix makes provenance immediately obvious in any auditor UI.",
+    "Security middleware: 413 on >1MB body works, X-Frame-Options/X-Content-Type-Options present. Consider also setting Referrer-Policy and Strict-Transport-Security in addition.",
+    "Webhook event name aliasing is silent (see minor issue). Also recommend documenting/exposing the supported event taxonomy via GET /api/webhooks/events or in /api/config."
+  ],
+  "updated_files": ["/app/backend/tests/test_enterprise_api.py"],
+  "success_rate": {"backend": "100% (56/56: 30 enterprise + 19 regression + 7 crypto unit)", "frontend": "N/A (backend-only request)"},
+  "test_credentials": "Admin JWT: admin@pfprotocol.com / PfpAdmin!2026 → POST /api/auth/login → Bearer access_token; Sandbox X-API-Key: pfp_sandbox_a5fb2bad1924d788c128edf6a31bf1aaa107a9a4 (also from GET /api/config in dev).",
+  "seed_data_creation": "All test data is prefixed TEST_ (idempotency_key, transaction_id, api-key names). No production data modified. Note: tests create real FEAs, API keys, webhook subs, and rotate the signing key; admin/audit chain grows by ~10 entries per full run. Rate limits (120/min generate, 30/min batch, 240/min verify, 60/min demo) were not hit at 56-test volume.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use /app/backend/tests/test_enterprise_api.py + test_pfp_api.py + test_crypto_unit.py as the canonical regression set. Key gotchas: (1) /api/auth/login returns role/tenant_id as FLAT keys, not under 'user' — use /api/auth/me to get the full user object; (2) /api/webhooks GET returns items under the 'subscriptions' key, not 'items' or 'webhooks'; (3) /api/demo/issue and /api/demo/artifact require user_id (not payer/payee) and ComplianceResult with strict patterns: kyc/aml ∈ {'Pass','Fail'}, limits ∈ {'Within allowed range','Exceeded'}, status ∈ {'COMPLIANT','NON-COMPLIANT'} (with hyphen, not underscore); (4) Replay-attack error string is exactly 'Transaction replay detected with conflicting data' — used in match assertion; (5) Each rotate call retires the previous active key — running rotate many times will grow the registry — fine but worth being aware. Carry-forward bug: PublicKeyInfo.status Literal in models/key_registry.py is missing 'revoked' (iteration 5/6).",
+  "rca of the issue": "N/A — no defects found. Initial 4 test failures were test-side schema/shape assumptions (login response shape, webhook list key, demo schema) that I corrected against the real API contract; server behaviour was correct in all four cases."
+}

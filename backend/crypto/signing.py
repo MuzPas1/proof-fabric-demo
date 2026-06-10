@@ -25,20 +25,21 @@ LEGACY_V2_PREFIX = "v2:"
 DOMAIN_PREFIX_V2 = "PFP_V2::"
 
 
-def get_private_key() -> bytes:
-    """Get Ed25519 private key from environment (base64 encoded)."""
-    key_b64 = os.environ.get('PRIVATE_KEY')
-    if not key_b64:
-        raise ValueError("PRIVATE_KEY environment variable not set")
-    return base64.b64decode(key_b64)
-
-
 def get_signing_key() -> SigningKey:
-    """Get Ed25519 signing key from environment."""
-    seed = get_private_key()
-    if len(seed) == 64:
-        seed = seed[:32]
-    return SigningKey(seed)
+    """Get the production Ed25519 signing key via the KMS abstraction layer.
+
+    The key material is never read directly here — it is resolved through the
+    configured KMS provider (local/aws/gcp/azure). The local provider reads the
+    ``PRIVATE_KEY`` env seed for development; production deployments use a cloud
+    secret store so no plaintext key sits on disk.
+    """
+    from core.kms import get_kms
+    return get_kms().get_signing_key("production")
+
+
+def get_private_key() -> bytes:
+    """Return the raw production seed bytes (compat helper)."""
+    return bytes(get_signing_key())
 
 
 def get_public_key() -> bytes:
@@ -151,3 +152,29 @@ def verify_signature(
 def get_public_key_b64() -> str:
     """Get public key as base64 string."""
     return base64.b64encode(get_public_key()).decode('utf-8')
+
+
+# ---------------------------------------------------------------------------
+# Demo signing key (separate from production key — used for demo artifacts)
+# ---------------------------------------------------------------------------
+def get_demo_signing_key() -> SigningKey:
+    """Resolve the DEMO Ed25519 signing key via the KMS abstraction layer.
+
+    This key is intentionally distinct from the production key so demo /
+    sandbox artifacts can never be confused with production-issued FEAs.
+    """
+    from core.kms import get_kms
+    return get_kms().get_signing_key("demo")
+
+
+def get_demo_public_key() -> bytes:
+    return bytes(get_demo_signing_key().verify_key)
+
+
+def get_demo_public_key_b64() -> str:
+    return base64.b64encode(get_demo_public_key()).decode("utf-8")
+
+
+def get_demo_public_key_id() -> str:
+    key_hash = hashlib.sha256(get_demo_public_key()).hexdigest()[:16]
+    return f"demo_key_{key_hash}"

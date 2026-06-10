@@ -1,0 +1,59 @@
+name: PFP CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports: ["27017:27017"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install deps
+        run: |
+          pip install -r backend/requirements.txt
+          pip install prometheus-client
+      - name: Unit tests (crypto + canonicalization parity)
+        env:
+          MONGO_URL: mongodb://localhost:27017
+          DB_NAME: pfp_ci
+          DEMO_DB_NAME: pfp_ci_demo
+          JWT_SECRET: ci-secret-ci-secret-ci-secret-ci-secret-0000000000000000
+          ADMIN_EMAIL: admin@pfprotocol.com
+          ADMIN_PASSWORD: ci-admin-pass
+          PRIVATE_KEY: "8vU9cBlfDyl7lnuubAUtxAPlZQ5uAuGtHShS6OhwZ9Y="
+          DEMO_PRIVATE_KEY: "QcFX/GCV2fy9sOFXsoBSla9JD/SbEZMw9HSmmESCQhM="
+          KMS_PROVIDER: local
+        run: |
+          cd backend && python -m pytest tests/test_crypto_unit.py -v
+
+  build-and-scan:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -f deploy/Dockerfile -t pfp-backend:${{ github.sha }} .
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: pfp-backend:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Helm upgrade (placeholder — wire to your cluster credentials)
+        run: echo "helm upgrade --install pfp deploy/helm/pfp --namespace pfp"

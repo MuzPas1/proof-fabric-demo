@@ -24,7 +24,7 @@ from crypto.signing import (
 
 
 # Supported FEA versions
-SUPPORTED_FEA_VERSIONS = {"1.0"}
+SUPPORTED_FEA_VERSIONS = {"1.0", "1.1"}
 
 # Timestamp validation bounds
 MAX_FUTURE_SECONDS = 300  # 5 minutes
@@ -113,17 +113,25 @@ def verify_fea(
     if not valid:
         return False, reason, "unknown"
 
-    # Step 2: Validate timestamp (optional, for new verifications)
+    # Step 2: Validate timestamp bounds
     if not skip_timestamp_validation:
         ts = fea_payload.get('transaction_summary', {}).get('timestamp')
         if ts:
             valid, reason = validate_timestamp(ts)
             if not valid:
-                # Log warning but don't fail - timestamp validation is advisory
-                pass  # Allow for backward compatibility
+                from core.config import settings
+                if settings.ENFORCE_VERIFY_TIMESTAMP:
+                    return False, reason, "unknown"
+                # else advisory only (backward compatibility)
 
     # Step 3: Detect signature version
     sig_version = detect_signature_version(signature, fea_payload, external_signature_version)
+
+    # Policy: reject legacy v1 signatures unless explicitly allowed
+    if sig_version == SIGNATURE_VERSION_V1:
+        from core.config import settings
+        if not settings.ACCEPT_LEGACY_V1:
+            return False, "Legacy v1 signatures are not accepted (set ACCEPT_LEGACY_V1=true to allow)", sig_version
 
     # Step 4: Clean payload
     clean_payload = clean_payload_for_verification(fea_payload)
@@ -189,8 +197,13 @@ async def verify_fea_with_registry(
     if not public_key_id:
         return False, "Missing public_key_id in payload", "unknown"
 
+    # Live revocation check — read status straight from DB (no stale cache).
+    from services.key_service import get_public_key_bytes_by_id, get_key_status_live
+    live_status = await get_key_status_live(public_key_id)
+    if live_status == "revoked":
+        return False, f"Key {public_key_id} has been revoked", "unknown"
+
     # Resolve key from persistent registry
-    from services.key_service import get_public_key_bytes_by_id
     public_key_bytes = await get_public_key_bytes_by_id(public_key_id)
 
     if not public_key_bytes:

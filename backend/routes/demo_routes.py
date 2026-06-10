@@ -11,7 +11,7 @@ Public, unauthenticated demo endpoints:
 Crypto logic (canonicalization + hashing) is untouched; issue/verify only add
 persistence + lookup on top of the existing primitives.
 """
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from typing import Union, Optional, Any, Dict, List
 from datetime import datetime, timezone
@@ -19,6 +19,7 @@ import json
 
 from crypto.canonicalize import canonicalize_to_json, normalize_timestamp
 from crypto.hashing import compute_sha256
+from core.ratelimit import limiter
 
 
 router = APIRouter(prefix="/demo", tags=["Demo"])
@@ -96,7 +97,8 @@ def normalize_party_record(record: PartyRecord) -> dict:
 
 
 @router.post("/proof", response_model=ProofResponse)
-async def generate_party_proof(record: PartyRecord):
+@limiter.limit("60/minute")
+async def generate_party_proof(request: Request, record: PartyRecord):
     """
     Generate a deterministic proof for a party record.
 
@@ -222,12 +224,13 @@ def _build_canonical_payload(
 
 
 @router.post("/issue", response_model=IssueResponse)
-async def issue_proof(req: IssueRequest):
+@limiter.limit("60/minute")
+async def issue_proof(request: Request, req: IssueRequest):
     """
     Issue a compliance-aware proof for a transaction and persist it so it can
     be verified later by an auditor using only the Proof ID.
     """
-    from server import db as database
+    from server import demo_db as database
 
     record = PartyRecord(
         transaction_id=req.transaction_id,
@@ -276,7 +279,7 @@ async def verify_proof_by_id(proof_id: str):
     and re-hashing the persisted payload. Returns the compliance state that
     was embedded when the proof was issued.
     """
-    from server import db as database
+    from server import demo_db as database
 
     proof_id = proof_id.strip().lower()
     if len(proof_id) != 64 or not all(c in "0123456789abcdef" for c in proof_id):
@@ -337,7 +340,8 @@ class ArtifactVerifyResult(BaseModel):
 
 
 @router.post("/artifact")
-async def build_downloadable_artifact(req: ArtifactRequest):
+@limiter.limit("60/minute")
+async def build_downloadable_artifact(request: Request, req: ArtifactRequest):
     """
     Build and sign a standalone proof artifact that can be downloaded,
     shared, and independently verified anywhere.
@@ -347,7 +351,7 @@ async def build_downloadable_artifact(req: ArtifactRequest):
       - Content-Type: application/pfp-proof+json;v=1
       - Content-Disposition: attachment (suggested filename with proof_id)
     """
-    from server import db as database
+    from server import demo_db as database
     from services.artifact_service import build_signed_artifact
 
     try:
@@ -386,7 +390,7 @@ async def verify_downloadable_artifact(artifact: Dict[str, Any]):
     timestamp skew, constant-time proof_id comparison, kid lookup (including
     revocation), and Ed25519 signature verification.
     """
-    from server import db as database
+    from server import demo_db as database
     from services.artifact_service import verify_signed_artifact
 
     result = await verify_signed_artifact(database, artifact)

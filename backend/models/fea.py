@@ -104,6 +104,7 @@ class FEADocument(BaseModel):
     
     fea_id: str
     idempotency_key: str
+    tenant_id: str = "default"
     canonical_payload_hash: str
     transaction_payload_hash: str = ""  # Hash of transaction data only (for replay protection)
     fea_payload: Dict[str, Any]  # Only the signed payload

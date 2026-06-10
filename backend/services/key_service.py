@@ -133,6 +133,48 @@ async def retire_key(public_key_id: str) -> bool:
     return result.modified_count > 0
 
 
+async def revoke_key(public_key_id: str) -> bool:
+    """Revoke a key. Revoked keys FAIL verification (unlike retired)."""
+    global _db, _key_cache
+    if _db is None:
+        return False
+    result = await _db.key_registry.update_one(
+        {"public_key_id": public_key_id},
+        {"$set": {"status": "revoked"}},
+    )
+    if public_key_id in _key_cache:
+        _key_cache[public_key_id].status = "revoked"
+    return result.modified_count > 0
+
+
+async def get_key_status_live(public_key_id: str) -> Optional[str]:
+    """Read key status directly from the DB (bypasses cache) so revocation /
+    retirement take effect immediately for verification — no restart needed."""
+    global _db
+    if _db is None:
+        return None
+    doc = await _db.key_registry.find_one(
+        {"public_key_id": public_key_id}, {"_id": 0, "status": 1}
+    )
+    return doc.get("status") if doc else None
+
+
+def generate_new_keypair() -> dict:
+    """Generate a fresh Ed25519 keypair for rotation. Returns the seed (b64),
+    public key (b64) and derived kid. The operator deploys the seed to the KMS /
+    secret store and restarts; the public key is registered immediately."""
+    import base64 as _b64
+    import hashlib as _hashlib
+    from nacl.signing import SigningKey
+
+    sk = SigningKey.generate()
+    seed_b64 = _b64.b64encode(bytes(sk)).decode("ascii")
+    pub = bytes(sk.verify_key)
+    pub_b64 = _b64.b64encode(pub).decode("ascii")
+    kid = "key_" + _hashlib.sha256(pub).hexdigest()[:16]
+    return {"seed_b64": seed_b64, "public_key_b64": pub_b64, "public_key_id": kid}
+
+
 async def rotate_key(new_public_key_id: str, new_public_key: str) -> PublicKeyInfo:
     """
     Rotate to a new key:

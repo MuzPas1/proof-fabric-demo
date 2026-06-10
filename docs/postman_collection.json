@@ -1,180 +1,532 @@
 {
   "info": {
-    "_postman_id": "pfp-collection-v1",
-    "name": "Proof Fabric Protocol (PFP) — API",
-    "description": "Production-grade Financial Evidence Artifact (FEA) API + public verification + key registry. Built for cryptographically verifiable transactions. See /docs/DEVELOPER_GUIDE.md for the full integration story.",
+    "_postman_id": "2525bad3-0911-4041-8671-d3fa38a8419d",
+    "name": "Proof Fabric Protocol (PFP) v2.0.0",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "base_url",
-      "value": "https://demo.pfprotocol.com",
-      "type": "string",
-      "description": "Production base URL. Override with staging: https://pfp-evidence.preview.emergentagent.com"
+      "value": "https://pfp-evidence.preview.emergentagent.com"
     },
     {
       "key": "api_key",
-      "value": "pfp_test_REPLACE_ME",
-      "type": "string",
-      "description": "X-API-Key. In sandbox: GET /api/config returns one. In prod: contact support@pfprotocol.com."
+      "value": "pfp_sandbox_..."
     },
     {
-      "key": "fea_id",
-      "value": "",
-      "type": "string",
-      "description": "Captured automatically by the Generate FEA test script."
+      "key": "jwt",
+      "value": ""
     }
   ],
-  "auth": {
-    "type": "apikey",
-    "apikey": [
-      { "key": "key", "value": "X-API-Key", "type": "string" },
-      { "key": "value", "value": "{{api_key}}", "type": "string" },
-      { "key": "in", "value": "header", "type": "string" }
-    ]
-  },
   "item": [
     {
-      "name": "00 — Sandbox bootstrap",
+      "name": "Admin",
       "item": [
         {
-          "name": "GET /api/config (fetch sandbox key)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const data = pm.response.json();",
-                  "if (data.test_api_key) {",
-                  "  pm.collectionVariables.set('api_key', data.test_api_key);",
-                  "  console.log('Sandbox key stored in {{api_key}}:', data.test_api_key);",
-                  "}"
-                ]
+          "name": "POST /api/admin/api-keys/create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}"
               }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/api-keys/create",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "api-keys",
+                "create"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
             }
-          ],
-          "request": {
-            "method": "GET",
-            "auth": { "type": "noauth" },
-            "url": "{{base_url}}/api/config"
           }
         },
         {
-          "name": "GET /api/health",
+          "name": "GET /api/admin/api-keys",
           "request": {
             "method": "GET",
-            "auth": { "type": "noauth" },
-            "url": "{{base_url}}/api/health"
-          }
-        }
-      ]
-    },
-    {
-      "name": "01 — FEA (authenticated)",
-      "item": [
-        {
-          "name": "POST /api/fea/generate",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
-                  "const data = pm.response.json();",
-                  "pm.test('Has fea_id', () => pm.expect(data.fea_id).to.be.a('string'));",
-                  "pm.test('Has signature', () => pm.expect(data.signature).to.be.a('string'));",
-                  "pm.collectionVariables.set('fea_id', data.fea_id);"
-                ]
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}"
               }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/api-keys",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "api-keys"
+              ]
             }
-          ],
+          }
+        },
+        {
+          "name": "POST /api/admin/api-keys/revoke",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": "{{base_url}}/api/fea/generate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/api-keys/revoke",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "api-keys",
+                "revoke"
+              ]
+            },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"idempotency_key\": \"idem-{{$timestamp}}-{{$randomUUID}}\",\n  \"transaction_id\": \"TXN-{{$randomUUID}}\",\n  \"timestamp\": \"2026-02-10T14:23:00Z\",\n  \"amount\": 245000,\n  \"currency\": \"INR\",\n  \"payer_id\": \"sha256:7b9cabd2b7a1e9c1f4a0d3b8e2f5a1c0\",\n  \"payee_id\": \"sha256:a14d8c2f9b4e5d6a1c8f2e3b9d0a5f7c\",\n  \"metadata\": { \"channel\": \"upi\", \"rail\": \"NPCI\" }\n}"
+              "raw": "{}"
             }
           }
         },
         {
-          "name": "POST /api/fea/generate — idempotent replay (200, same FEA)",
+          "name": "POST /api/admin/keys/create",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": "{{base_url}}/api/fea/generate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/keys/create",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "keys",
+                "create"
+              ]
+            },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"idempotency_key\": \"idem-fixed-001\",\n  \"transaction_id\": \"TXN-IDEM-001\",\n  \"timestamp\": \"2026-02-10T14:23:00Z\",\n  \"amount\": 100000,\n  \"currency\": \"INR\",\n  \"payer_id\": \"sha256:aaa\",\n  \"payee_id\": \"sha256:bbb\"\n}"
-            },
-            "description": "Send twice — second call returns the SAME fea_id."
+              "raw": "{}"
+            }
           }
         },
         {
-          "name": "POST /api/fea/generate — replay attack (409)",
+          "name": "POST /api/admin/keys/rotate",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": "{{base_url}}/api/fea/generate",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/keys/rotate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "keys",
+                "rotate"
+              ]
+            },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"idempotency_key\": \"idem-fixed-002\",\n  \"transaction_id\": \"TXN-IDEM-001\",\n  \"timestamp\": \"2026-02-10T14:23:00Z\",\n  \"amount\": 999999,\n  \"currency\": \"INR\",\n  \"payer_id\": \"sha256:aaa\",\n  \"payee_id\": \"sha256:bbb\"\n}"
-            },
-            "description": "Same (transaction_id, timestamp) with DIFFERENT amount → expect 409 Conflict."
+              "raw": "{}"
+            }
           }
         },
         {
-          "name": "POST /api/fea/verify",
+          "name": "POST /api/admin/keys/revoke",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": "{{base_url}}/api/fea/verify",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/keys/revoke",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "keys",
+                "revoke"
+              ]
+            },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fea_payload\": { \"fea_version\": \"1.0\", \"issuer_id\": \"pfp-issuer-001\", \"public_key_id\": \"key_xxx\", \"transaction_summary\": { \"transaction_id\": \"TXN-001\", \"timestamp\": \"2026-02-10T14:23:00Z\", \"amount\": 245000, \"currency\": \"INR\" }, \"parties\": { \"payer_hash\": \"sha256:aaa\", \"payee_hash\": \"sha256:bbb\" }, \"fea_hash\": \"…\" },\n  \"signature\": \"PASTE_BASE64_SIGNATURE\",\n  \"signature_version\": \"v2\"\n}"
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "POST /api/admin/keys/retire",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/keys/retire",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "keys",
+                "retire"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/admin/tenants",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/tenants",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "tenants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api/admin/tenants",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/tenants",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "tenants"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/admin/audit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/audit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "audit"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/admin/audit/verify",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/admin/audit/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "audit",
+                "verify"
+              ]
             }
           }
         }
       ]
     },
     {
-      "name": "02 — Public verification (no auth)",
+      "name": "Auth",
       "item": [
         {
-          "name": "GET /api/public/verify/{fea_id}",
+          "name": "POST /api/auth/login",
           "request": {
-            "method": "GET",
-            "auth": { "type": "noauth" },
-            "url": "{{base_url}}/api/public/verify/{{fea_id}}",
-            "description": "Verify by ID using only the public registry. Independent of issuer auth."
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
           }
         },
         {
-          "name": "GET /api/public/keys",
+          "name": "GET /api/auth/me",
           "request": {
             "method": "GET",
-            "auth": { "type": "noauth" },
-            "url": "{{base_url}}/api/public/keys"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api/auth/refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/refresh",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "refresh"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "POST /api/auth/logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
           }
         }
       ]
     },
     {
-      "name": "03 — Demo flow (powers demo.pfprotocol.com)",
+      "name": "Demo",
       "item": [
+        {
+          "name": "POST /api/demo/proof",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/demo/proof",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "demo",
+                "proof"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
         {
           "name": "POST /api/demo/issue",
           "request": {
             "method": "POST",
-            "auth": { "type": "noauth" },
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": "{{base_url}}/api/demo/issue",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/demo/issue",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "demo",
+                "issue"
+              ]
+            },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"transaction_id\": \"TXN-DEMO-001\",\n  \"user_id\": \"user_demo\",\n  \"amount\": \"2450.00\",\n  \"created_at\": \"2026-02-10T14:23:00Z\",\n  \"compliance\": { \"kyc\": \"Pass\", \"aml\": \"Pass\", \"limits\": \"Within allowed range\", \"status\": \"COMPLIANT\" }\n}"
+              "raw": "{}"
             }
           }
         },
@@ -182,20 +534,50 @@
           "name": "GET /api/demo/verify/{proof_id}",
           "request": {
             "method": "GET",
-            "auth": { "type": "noauth" },
-            "url": "{{base_url}}/api/demo/verify/REPLACE_WITH_PROOF_ID"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/demo/verify/{proof_id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "demo",
+                "verify",
+                "{proof_id}"
+              ]
+            }
           }
         },
         {
-          "name": "POST /api/demo/artifact (downloadable)",
+          "name": "POST /api/demo/artifact",
           "request": {
             "method": "POST",
-            "auth": { "type": "noauth" },
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": "{{base_url}}/api/demo/artifact",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/demo/artifact",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "demo",
+                "artifact"
+              ]
+            },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"transaction_id\": \"TXN-DEMO-001\",\n  \"user_id\": \"user_demo\",\n  \"amount\": \"2450.00\",\n  \"compliance\": { \"kyc\": \"Pass\", \"aml\": \"Pass\", \"limits\": \"Within allowed range\", \"status\": \"COMPLIANT\" }\n}"
+              "raw": "{}"
             }
           }
         },
@@ -203,12 +585,442 @@
           "name": "POST /api/demo/artifact/verify",
           "request": {
             "method": "POST",
-            "auth": { "type": "noauth" },
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": "{{base_url}}/api/demo/artifact/verify",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/demo/artifact/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "demo",
+                "artifact",
+                "verify"
+              ]
+            },
             "body": {
               "mode": "raw",
-              "raw": "{ /* paste the JSON returned by /api/demo/artifact */ }"
+              "raw": "{}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "FEA",
+      "item": [
+        {
+          "name": "POST /api/fea/generate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/fea/generate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "fea",
+                "generate"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "POST /api/fea/batch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/fea/batch",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "fea",
+                "batch"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "POST /api/fea/verify",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/fea/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "fea",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/fea",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/fea",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "fea"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/fea/{fea_id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/fea/{fea_id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "fea",
+                "{fea_id}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "General",
+      "item": [
+        {
+          "name": "GET /api/",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/metrics",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "metrics"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/config",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/config",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "config"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public",
+      "item": [
+        {
+          "name": "GET /api/public/verify/{fea_id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/public/verify/{fea_id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "public",
+                "verify",
+                "{fea_id}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/public/keys",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/public/keys",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "public",
+                "keys"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "POST /api/webhooks/subscribe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/webhooks/subscribe",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "subscribe"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/webhooks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/webhooks",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "webhooks"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api/webhooks/test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/webhooks/test",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "test"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/webhooks/{webhook_id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/webhooks/{webhook_id}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "{webhook_id}"
+              ]
             }
           }
         }

@@ -50,11 +50,10 @@ from nacl.exceptions import BadSignatureError
 
 from crypto.canonicalize import canonicalize_to_json, normalize_timestamp
 from crypto.signing import (
-    get_signing_key,
-    get_public_key_id,
-    get_public_key_b64,
+    get_demo_signing_key,
+    get_demo_public_key_id,
+    get_demo_public_key_b64,
 )
-from services.key_service import register_key
 
 
 ARTIFACT_VERSION = 1
@@ -156,13 +155,27 @@ def _base_payload(
 async def ensure_demo_signing_key(db: AsyncIOMotorDatabase) -> str:
     """
     Ensure an active Ed25519 signing key is registered for the demo artifact.
-    Reuses the existing server private key (from PRIVATE_KEY env) and registers
-    its public key in the key registry. Returns the active kid.
+    Uses a DEDICATED demo signing key (separate from the production key) and
+    writes it directly into the provided (demo) database's key_registry so the
+    demo trust domain is fully isolated from production keys.
+    Returns the active demo kid.
     """
-    kid = get_public_key_id()
+    from datetime import datetime as _dt, timezone as _tz
+    kid = get_demo_public_key_id()
+    await db.key_registry.create_index("public_key_id", unique=True)
     existing = await db.key_registry.find_one({"public_key_id": kid}, {"_id": 0})
     if existing is None:
-        await register_key(kid, get_public_key_b64(), status="active")
+        await db.key_registry.update_one(
+            {"public_key_id": kid},
+            {"$setOnInsert": {
+                "public_key_id": kid,
+                "public_key": get_demo_public_key_b64(),
+                "algorithm": "Ed25519",
+                "created_at": _dt.now(_tz.utc).isoformat(),
+                "status": "active",
+            }},
+            upsert=True,
+        )
     return kid
 
 
@@ -189,7 +202,7 @@ async def _get_public_key_and_status(
 # ---------------------------------------------------------------------------
 
 def _sign_bytes(canonical_json: str) -> str:
-    signing_key: SigningKey = get_signing_key()
+    signing_key: SigningKey = get_demo_signing_key()
     message = ARTIFACT_DOMAIN_PREFIX + canonical_json.encode("utf-8")
     signed = signing_key.sign(message)
     return base64.b64encode(signed.signature).decode("ascii")

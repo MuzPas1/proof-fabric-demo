@@ -1,0 +1,9 @@
+{
+  "name": "@pfp/sdk",
+  "version": "2.0.0",
+  "description": "Proof Fabric Protocol (PFP) JavaScript SDK — client + independent verification (zero dependencies, Node 18+)",
+  "main": "index.js",
+  "engines": { "node": ">=18" },
+  "license": "Proprietary",
+  "files": ["index.js", "canonicalize.js", "README.md"]
+}
