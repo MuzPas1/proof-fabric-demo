@@ -1,6 +1,7 @@
 import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
+import { ReadOnlyBadge } from "./ui";
 import {
   LayoutDashboard, Building2, KeyRound, Webhook, ScrollText,
   Fingerprint, FileSearch, ShieldCheck, LogOut, ExternalLink,
@@ -60,6 +61,7 @@ export default function Layout({ children }) {
         <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-10">
           <div className="text-sm text-slate-500">Enterprise Administration</div>
           <div className="flex items-center gap-4">
+            {!["super_admin", "tenant_admin"].includes(user?.role) && <ReadOnlyBadge />}
             <div className="text-right">
               <div className="text-sm font-medium text-slate-900 leading-none" data-testid="current-user-email">{user?.email}</div>
               <div className="text-[11px] text-slate-400 leading-none mt-0.5">

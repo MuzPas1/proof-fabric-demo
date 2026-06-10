@@ -103,6 +103,20 @@ async def startup_event():
     await tenant_service.ensure_tenant(db, settings.DEFAULT_TENANT_ID, "Default Tenant")
     await user_service.seed_admin(db, settings.ADMIN_EMAIL, settings.ADMIN_PASSWORD, settings.DEFAULT_TENANT_ID)
 
+    # External Reviewer (Read Only) evaluation account — separate from super-admin.
+    # View-only role + a read-only API key (fea:read, webhooks:read) for data-plane views.
+    if settings.EVAL_EMAIL and settings.EVAL_PASSWORD:
+        await user_service.seed_user(
+            db, settings.EVAL_EMAIL, settings.EVAL_PASSWORD,
+            "external_reviewer", settings.DEFAULT_TENANT_ID,
+        )
+        if settings.EVAL_READONLY_API_KEY:
+            await api_key_service.ensure_static_key(
+                db, settings.EVAL_READONLY_API_KEY, "external-reviewer-readonly",
+                settings.DEFAULT_TENANT_ID, ["fea:read", "webhooks:read"], "system",
+            )
+        logger.info("External reviewer (read-only) account seeded")
+
     # Sandbox API key (dev only) — persisted in DB so all workers share it
     if settings.SANDBOX_API_KEY and not settings.is_production:
         await api_key_service.ensure_sandbox_key(db, settings.SANDBOX_API_KEY, settings.DEFAULT_TENANT_ID)

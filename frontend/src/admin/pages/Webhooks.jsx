@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { api } from "../api";
-import { PageHeader, Panel, StatusBadge, Empty, Mono } from "../ui";
+import { PageHeader, Panel, StatusBadge, Empty, Mono, canWrite } from "../ui";
+import { useAuth } from "../AuthContext";
 import TenantConnect from "../TenantConnect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,8 @@ import { Plus, Send, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Webhooks() {
+  const { user } = useAuth();
+  const writable = canWrite(user?.role);
   const [conn, setConn] = useState(null);
   const [subs, setSubs] = useState(null);
   const [url, setUrl] = useState("");
@@ -47,6 +50,7 @@ export default function Webhooks() {
 
       {conn && (
         <>
+          {writable && (
           <Panel title="New subscription" className="mb-4">
             <div className="p-4 flex items-end gap-3">
               <div className="flex-1">
@@ -60,6 +64,7 @@ export default function Webhooks() {
               </Button>
             </div>
           </Panel>
+          )}
 
           <Panel>
             {subs === null ? <Empty>Loading…</Empty> : subs.length === 0 ? <Empty>No webhooks for this tenant</Empty> : (
@@ -69,7 +74,7 @@ export default function Webhooks() {
                     <th className="px-4 py-2.5 font-medium">URL</th>
                     <th className="px-4 py-2.5 font-medium">Events</th>
                     <th className="px-4 py-2.5 font-medium">Status</th>
-                    <th className="px-4 py-2.5 font-medium text-right">Actions</th>
+                    {writable && <th className="px-4 py-2.5 font-medium text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -78,6 +83,7 @@ export default function Webhooks() {
                       <td className="px-4 py-2.5 text-slate-800 break-all">{w.url}</td>
                       <td className="px-4 py-2.5"><Mono>{(w.events || []).join(", ")}</Mono></td>
                       <td className="px-4 py-2.5"><StatusBadge status={w.status} /></td>
+                      {writable && (
                       <td className="px-4 py-2.5 text-right space-x-2">
                         <Button variant="outline" size="sm" className="h-7" onClick={() => test(w.webhook_id)}
                           data-testid={`webhook-test-${w.webhook_id}`}><Send className="h-3.5 w-3.5 mr-1" />Test</Button>
@@ -85,6 +91,7 @@ export default function Webhooks() {
                           onClick={() => del(w.webhook_id)} data-testid={`webhook-delete-${w.webhook_id}`}>
                           <Trash2 className="h-3.5 w-3.5" /></Button>
                       </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

@@ -43,7 +43,7 @@ async def subscribe(
 
 
 @router.get("")
-async def list_subscriptions(key: ApiKeyRecord = Depends(require_scope("webhooks:manage"))):
+async def list_subscriptions(key: ApiKeyRecord = Depends(require_scope("webhooks:read"))):
     subs = await webhook_service.list_subscriptions(_db(), key.tenant_id)
     for s in subs:
         s.pop("secret", None)

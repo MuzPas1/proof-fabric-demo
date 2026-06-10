@@ -55,11 +55,20 @@ async def seed_admin(
     db: AsyncIOMotorDatabase, email: str, password: str, tenant_id: str
 ) -> None:
     """Idempotent admin seeding; updates password hash if env password changed."""
-    if not password:
+    await seed_user(db, email, password, Role.SUPER_ADMIN.value, tenant_id)
+
+
+async def seed_user(
+    db: AsyncIOMotorDatabase, email: str, password: str, role: str, tenant_id: str
+) -> None:
+    """Idempotent user seeding for any role. Creates the user if missing;
+    refreshes the password hash if the env password changed. Never downgrades
+    or alters an existing user's role here (role stays as first seeded)."""
+    if not password or not email:
         return
     existing = await db.users.find_one({"email": email.lower()})
     if existing is None:
-        await create_user(db, email, password, Role.SUPER_ADMIN.value, tenant_id)
+        await create_user(db, email, password, role, tenant_id)
     elif not verify_password(password, existing.get("password_hash", "")):
         await db.users.update_one(
             {"email": email.lower()},

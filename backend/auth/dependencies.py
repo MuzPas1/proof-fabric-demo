@@ -78,9 +78,17 @@ async def require_api_key(api_key: Optional[str] = Depends(api_key_header)) -> A
     return record
 
 
+# A higher scope implies the corresponding read scope.
+SCOPE_IMPLICATIONS = {
+    "fea:read": {"fea:write"},
+    "webhooks:read": {"webhooks:manage"},
+}
+
+
 def require_scope(scope: str):
     async def _dep(key: ApiKeyRecord = Depends(require_api_key)) -> ApiKeyRecord:
-        if scope not in key.scopes:
+        allowed = {scope} | SCOPE_IMPLICATIONS.get(scope, set())
+        if not (set(key.scopes) & allowed):
             raise HTTPException(
                 status.HTTP_403_FORBIDDEN, f"API key missing scope '{scope}'"
             )

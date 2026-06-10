@@ -103,13 +103,23 @@ async def list_api_keys(
 
 async def ensure_sandbox_key(db: AsyncIOMotorDatabase, raw_key: str, tenant_id: str) -> None:
     """Idempotently seed the sandbox key (dev only) into the DB store."""
+    await ensure_static_key(db, raw_key, "sandbox", tenant_id, DEFAULT_SCOPES, "system")
+
+
+async def ensure_static_key(
+    db: AsyncIOMotorDatabase,
+    raw_key: str,
+    name: str,
+    tenant_id: str,
+    scopes: List[str],
+    created_by: str = "system",
+) -> None:
+    """Idempotently seed a deterministic key (from config) with explicit scopes."""
+    if not raw_key:
+        return
     existing = await db.api_keys.find_one({"key_hash": hash_api_key(raw_key)})
     if existing is None:
         await create_api_key(
-            db,
-            name="sandbox",
-            tenant_id=tenant_id,
-            scopes=DEFAULT_SCOPES,
-            created_by="system",
-            raw_key=raw_key,
+            db, name=name, tenant_id=tenant_id, scopes=scopes,
+            created_by=created_by, raw_key=raw_key,
         )

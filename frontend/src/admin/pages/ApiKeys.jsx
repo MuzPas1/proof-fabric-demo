@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, tenantKeys } from "../api";
-import { PageHeader, Panel, StatusBadge, Empty, Mono } from "../ui";
+import { PageHeader, Panel, StatusBadge, Empty, Mono, canWrite } from "../ui";
+import { useAuth } from "../AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,8 @@ import { Plus, Loader2, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 
 export default function ApiKeys() {
+  const { user } = useAuth();
+  const writable = canWrite(user?.role);
   const [keys, setKeys] = useState(null);
   const [tenants, setTenants] = useState([]);
   const [open, setOpen] = useState(false);
@@ -61,7 +64,7 @@ export default function ApiKeys() {
   return (
     <div data-testid="api-keys-page">
       <PageHeader title="API Keys" description="Data-plane credentials. Tenant-scoped, hashed at rest (shown once)."
-        actions={
+        actions={writable &&
           <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : closeDialog())}>
             <DialogTrigger asChild>
               <Button className="bg-slate-900 hover:bg-slate-800" data-testid="create-key-open">
@@ -144,7 +147,7 @@ export default function ApiKeys() {
                   <td className="px-4 py-2.5"><StatusBadge status={k.status} /></td>
                   <td className="px-4 py-2.5 text-slate-500">{k.expires_at ? String(k.expires_at).slice(0, 10) : "—"}</td>
                   <td className="px-4 py-2.5 text-right">
-                    {k.status === "active" && (
+                    {writable && k.status === "active" && (
                       <Button variant="outline" size="sm" onClick={() => revoke(k.key_id)}
                         className="text-red-600 border-red-200 hover:bg-red-50 h-7"
                         data-testid={`revoke-key-${k.key_id}`}>Revoke</Button>

@@ -54,3 +54,15 @@ export function Empty({ children }) {
 export function Mono({ children }) {
   return <span className="font-mono text-xs text-slate-600">{children}</span>;
 }
+
+// Roles permitted to perform write operations in the UI. Backend enforces too.
+export const canWrite = (role) => ["super_admin", "tenant_admin"].includes(role);
+
+export function ReadOnlyBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600"
+      data-testid="readonly-badge">
+      Read-only
+    </span>
+  );
+}

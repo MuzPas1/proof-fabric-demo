@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api";
-import { PageHeader, Panel, StatusBadge, Empty, Mono } from "../ui";
+import { PageHeader, Panel, StatusBadge, Empty, Mono, canWrite } from "../ui";
+import { useAuth } from "../AuthContext";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -9,6 +10,8 @@ import { RefreshCw, Loader2, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SigningKeys() {
+  const { user } = useAuth();
+  const writable = canWrite(user?.role);
   const [keys, setKeys] = useState(null);
   const [rotated, setRotated] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -35,7 +38,7 @@ export default function SigningKeys() {
   return (
     <div data-testid="signing-keys-page">
       <PageHeader title="Signing Keys" description="Ed25519 key registry. Retired keys still verify history; revoked keys fail verification."
-        actions={
+        actions={writable &&
           <Button onClick={rotate} disabled={busy} className="bg-slate-900 hover:bg-slate-800" data-testid="rotate-key-btn">
             {busy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1.5" />} Rotate Key
           </Button>
@@ -61,16 +64,17 @@ export default function SigningKeys() {
                   <td className="px-4 py-2.5"><StatusBadge status={k.status} /></td>
                   <td className="px-4 py-2.5 text-slate-500">{k.created_at ? String(k.created_at).slice(0, 10) : "—"}</td>
                   <td className="px-4 py-2.5 text-right space-x-2">
-                    {k.status === "active" && (
+                    {writable && k.status === "active" && (
                       <Button variant="outline" size="sm" className="h-7 text-amber-700 border-amber-200 hover:bg-amber-50"
                         onClick={() => act(api.retireKey, k.public_key_id, "retired")}
                         data-testid={`retire-${k.public_key_id}`}>Retire</Button>
                     )}
-                    {k.status !== "revoked" && (
+                    {writable && k.status !== "revoked" && (
                       <Button variant="outline" size="sm" className="h-7 text-red-600 border-red-200 hover:bg-red-50"
                         onClick={() => act(api.revokeKey, k.public_key_id, "revoked")}
                         data-testid={`revoke-${k.public_key_id}`}>Revoke</Button>
                     )}
+                    {!writable && <span className="text-xs text-slate-400">view only</span>}
                   </td>
                 </tr>
               ))}

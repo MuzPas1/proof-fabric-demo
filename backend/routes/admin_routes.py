@@ -43,7 +43,7 @@ async def create_api_key(
 
 @router.get("/api-keys")
 async def list_api_keys(
-    user: User = Depends(require_permission(Permission.APIKEYS_MANAGE)),
+    user: User = Depends(require_permission(Permission.APIKEYS_READ)),
     tenant_id: Optional[str] = Query(None),
 ):
     scope = resolve_tenant_scope(user, tenant_id)
@@ -154,7 +154,7 @@ async def create_tenant(
 
 
 @router.get("/tenants")
-async def list_tenants(user: User = Depends(require_permission(Permission.TENANTS_MANAGE))):
+async def list_tenants(user: User = Depends(require_permission(Permission.TENANTS_READ))):
     if user.role == Role.SUPER_ADMIN.value:
         tenants = await tenant_service.list_tenants(_db())
     else:

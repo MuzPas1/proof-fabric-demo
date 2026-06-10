@@ -44,6 +44,11 @@ class Settings:
     MAX_REQUEST_BYTES: int = int(os.environ.get("MAX_REQUEST_BYTES", "1048576"))
     SANDBOX_API_KEY: str = os.environ.get("SANDBOX_API_KEY", "")
 
+    # --- External evaluation (read-only) account ---
+    EVAL_EMAIL: str = os.environ.get("EVAL_EMAIL", "")
+    EVAL_PASSWORD: str = os.environ.get("EVAL_PASSWORD", "")
+    EVAL_READONLY_API_KEY: str = os.environ.get("EVAL_READONLY_API_KEY", "")
+
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT in ("production", "prod")
