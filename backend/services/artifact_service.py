@@ -156,16 +156,17 @@ async def ensure_demo_signing_key(db: AsyncIOMotorDatabase) -> str:
     """
     Ensure an active Ed25519 signing key is registered for the demo artifact.
     Uses a DEDICATED demo signing key (separate from the production key) and
-    writes it directly into the provided (demo) database's key_registry so the
-    demo trust domain is fully isolated from production keys.
+    writes it into a dedicated `demo_key_registry` collection so the demo trust
+    domain stays fully isolated from production keys — even within a single
+    physical database.
     Returns the active demo kid.
     """
     from datetime import datetime as _dt, timezone as _tz
     kid = get_demo_public_key_id()
-    await db.key_registry.create_index("public_key_id", unique=True)
-    existing = await db.key_registry.find_one({"public_key_id": kid}, {"_id": 0})
+    await db.demo_key_registry.create_index("public_key_id", unique=True)
+    existing = await db.demo_key_registry.find_one({"public_key_id": kid}, {"_id": 0})
     if existing is None:
-        await db.key_registry.update_one(
+        await db.demo_key_registry.update_one(
             {"public_key_id": kid},
             {"$setOnInsert": {
                 "public_key_id": kid,
@@ -184,7 +185,7 @@ async def _get_public_key_and_status(
 ) -> Tuple[Optional[bytes], Optional[str]]:
     # Read straight from DB so revocation / status changes take effect
     # without needing a backend restart (bypasses the in-memory cache).
-    doc = await db.key_registry.find_one({"public_key_id": kid}, {"_id": 0})
+    doc = await db.demo_key_registry.find_one({"public_key_id": kid}, {"_id": 0})
     if doc is None:
         return None, None
     status_value = doc.get("status", "active")

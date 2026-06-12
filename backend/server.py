@@ -31,10 +31,13 @@ from core.observability import (
 configure_logging()
 logger = logging.getLogger("pfp.server")
 
-# MongoDB connections — production DB + isolated demo DB
+# MongoDB connection — single managed database.
+# Demo data is logically isolated via dedicated collections (demo_proofs,
+# demo_key_registry) within the same database. Using a separate physical
+# database breaks in managed deployments where only DB_NAME is authorized.
 client = AsyncIOMotorClient(settings.MONGO_URL)
 db = client[settings.DB_NAME]
-demo_db = client[settings.DEMO_DB_NAME]
+demo_db = db
 
 app = FastAPI(
     title="Proof Fabric Protocol (PFP)",
