@@ -16,7 +16,6 @@ class Settings:
     # --- Database ---
     MONGO_URL: str = os.environ["MONGO_URL"]
     DB_NAME: str = os.environ["DB_NAME"]
-    DEMO_DB_NAME: str = os.environ.get("DEMO_DB_NAME", "pfp_demo")
 
     # --- Auth ---
     JWT_SECRET: str = os.environ.get("JWT_SECRET", "")

@@ -70,6 +70,24 @@ pfp_sandbox_a5fb2bad1924d788c128edf6a31bf1aaa107a9a4 (dev only). See
 - UI: optional admin/tenant dashboard (key & webhook management) in the frontend.
 
 ## DB Schema
-Prod DB: feas (tenant-scoped, v1.1 payload), key_registry, api_keys, users,
-tenants, audit_log (hash chain), webhooks. Demo DB (isolated): demo_proofs,
-key_registry (demo key).
+Single managed DB (`DB_NAME`). Production collections: feas (tenant-scoped,
+v1.1 payload), key_registry, api_keys, users, tenants, audit_log (hash chain),
+webhooks. Demo collections (logically isolated, same DB): demo_proofs,
+demo_key_registry (dedicated demo signing key — separate trust domain from
+production key_registry).
+
+## Changelog
+### June 12, 2026 — Production demo 500 fix (single-DB consolidation)
+- ROOT CAUSE: demo flow wrote to a separate physical DB (`pfp_demo`); managed
+  production Mongo only authorizes `DB_NAME` → `OperationFailure: not authorized
+  on pfp_demo` → 500 on `/api/demo/issue` (production only; preview's local
+  Mongo allowed any DB so it passed).
+- FIX: `demo_db = db` (single DB). Demo signing key moved to dedicated
+  `demo_key_registry` collection (preserves demo↔prod trust-domain isolation
+  without a second database). Removed all `DEMO_DB_NAME` / `pfp_demo` references
+  (config.py + backend/.env).
+- DEPLOY HYGIENE: rewrote corrupted `.gitignore` (had 8 duplicated blocks
+  ignoring `.env`); `.env` files are now tracked so deploy injects prod values.
+- Verified in preview: demo issue/verify/artifact/artifact-verify all 200,
+  /api/health all-green, UI "Process Transaction" → proof generated.
+- ACTION: user must REDEPLOY to push this fix to https://demo.pfprotocol.com.
