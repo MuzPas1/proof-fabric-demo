@@ -15,13 +15,13 @@ Here's the plan, with the clock running.
 ## 0–5 min · Get a sandbox key
 
 ```bash
-curl https://pfp-evidence.preview.emergentagent.com/api/config
+curl https://transaction-sign-1.preview.emergentagent.com/api/config
 ```
 
 Copy the `test_api_key` field.
 
 ```bash
-export PFP_BASE="https://pfp-evidence.preview.emergentagent.com"
+export PFP_BASE="https://transaction-sign-1.preview.emergentagent.com"
 export PFP_API_KEY="pfp_test_………"   # paste it here
 ```
 

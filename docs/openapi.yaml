@@ -1702,7 +1702,7 @@ components:
       type: http
       scheme: bearer
 servers:
-- url: https://pfp-evidence.preview.emergentagent.com
+- url: https://transaction-sign-1.preview.emergentagent.com
   description: Sandbox/preview
 - url: https://api.pfprotocol.com
   description: Production
