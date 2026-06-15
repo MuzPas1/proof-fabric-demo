@@ -31,7 +31,7 @@ config:
   DB_NAME: pfp_prod
   KMS_PROVIDER: aws
   ISSUER_ID: pfp-issuer-001
-  CORS_ORIGINS: https://pfprotocol.com,https://demo.pfprotocol.com
+  CORS_ORIGINS: https://pfprotocol.com,https://demo.pfprotocol.com,https://api.pfprotocol.com
   ACCEPT_LEGACY_V1: "false"
   ENFORCE_VERIFY_TIMESTAMP: "true"
   MAX_REQUEST_BYTES: "1048576"

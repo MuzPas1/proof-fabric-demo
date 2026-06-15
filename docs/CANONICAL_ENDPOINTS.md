@@ -20,29 +20,54 @@ updated: **2026-06-12**.
 | Public verifier UI | **https://demo.pfprotocol.com/verify** |
 | Admin / control-plane dashboard | **https://demo.pfprotocol.com/admin** (login at `/admin/login`) |
 | Demo + sandbox API base | **https://demo.pfprotocol.com/api** |
+| Interactive API docs (Swagger UI) | **https://demo.pfprotocol.com/api/docs** |
+| ReDoc | **https://demo.pfprotocol.com/api/redoc** |
+| OpenAPI (live JSON) | **https://demo.pfprotocol.com/api/openapi.json** |
+| Developer resource index | **https://demo.pfprotocol.com/api/developer** |
 | Sandbox key bootstrap | `GET https://demo.pfprotocol.com/api/config` → `test_api_key` (non-production only) |
 | Status | 🟢 Live |
 
 > The demo environment exposes the **full API surface** (demo, FEA sandbox,
-> public verification, admin). It is the environment external reviewers and
-> integrators evaluate against.
+> public verification, admin) **plus interactive docs**. It is the environment
+> external reviewers and integrators evaluate against.
 
 ## 3. Production Integration API
 | Item | Value |
 |---|---|
 | Production API base (provisioned/licensed integrators) | **https://api.pfprotocol.com/api** |
+| Interactive API docs (Swagger UI) | **https://api.pfprotocol.com/api/docs** |
+| ReDoc | **https://api.pfprotocol.com/api/redoc** |
+| OpenAPI (live JSON) | **https://api.pfprotocol.com/api/openapi.json** |
+| Developer resource index | **https://api.pfprotocol.com/api/developer** |
 | Ingress host (Helm/K8s) | `api.pfprotocol.com` |
 | Key provisioning | `POST /api/admin/api-keys/create` (admin JWT) — keys shown once |
 | `/api/config` sandbox key | **Not exposed** when `ENVIRONMENT=production` |
-| Status | 🟡 Templated in deploy configs (`deploy/helm`, `deploy/k8s`); provision per customer |
+| Status | 🟡 Code-ready (CORS allow-listed); requires the domain to be linked to the deployment — see §8 |
+
+> **`api.pfprotocol.com` points to the SAME deployment as the demo domain.**
+> There is no separate "API-only" build — the Kubernetes ingress routes `/api/*`
+> to the backend regardless of which domain is attached, so **every endpoint,
+> Swagger, OpenAPI, Postman, SDKs and docs work identically** under whichever
+> domain you link. No code changes are required when the domain is added.
 
 ## 4. API Conventions
 - All routes are prefixed with **`/api`**.
 - **Data plane** (`/api/fea/*`, `/api/webhooks/*`): `X-API-Key: <key>`.
 - **Control plane** (`/api/auth/*`, `/api/admin/*`): `Authorization: Bearer <jwt>`.
 - **Public** (`/api/public/*`, `/api/demo/*`, system): no auth.
-- Machine-readable spec: [`openapi.yaml`](openapi.yaml) / [`openapi.json`](openapi.json).
-  Full route table: [`API_REFERENCE.md`](API_REFERENCE.md).
+- **Interactive docs** (served by the backend, on any attached domain):
+  - Swagger UI — `/api/docs`
+  - ReDoc — `/api/redoc`
+  - OpenAPI JSON (live) — `/api/openapi.json`
+  - Developer resource index (links to all of the below) — `/api/developer`
+- **Hosted developer resources** (read-only static, under `/api/resources/`):
+  - OpenAPI YAML — `/api/resources/docs/openapi.yaml`
+  - Postman collection — `/api/resources/docs/postman_collection.json`
+  - Guides (Quickstart, Developer, Integration, API Reference, this file) —
+    `/api/resources/docs/<NAME>.md`
+  - SDK sources (Python, JavaScript, Java, .NET) — `/api/resources/sdks/<lang>/`
+- Static spec files in-repo: [`openapi.yaml`](openapi.yaml) /
+  [`openapi.json`](openapi.json). Full route table: [`API_REFERENCE.md`](API_REFERENCE.md).
 
 ## 5. SDK References
 | Language | Path | Verification dependency |
@@ -84,3 +109,30 @@ server verifies byte-identically in any language.
 | `https://transaction-sign-1.preview.emergentagent.com` (internal preview pod) | `https://demo.pfprotocol.com` (demo/sandbox) or `https://api.pfprotocol.com` (prod) |
 | `https://app.pfprotocol.com` (placeholder app origin) | `https://pfprotocol.com` and `https://demo.pfprotocol.com` |
 | `DEMO_DB_NAME` / separate `pfp_demo` database | Removed — single DB + `demo_proofs` / `demo_key_registry` collections |
+
+---
+
+## 8. Adding `api.pfprotocol.com` to the deployment
+`api.pfprotocol.com` is an **additional custom domain** on the *same* Emergent
+deployment — not a new build. The code side is already done (CORS allow-list
+includes it; `/api/*`, Swagger, OpenAPI, Postman, SDKs and docs are served on
+any attached domain). Remaining steps are **domain/DNS** actions in the Emergent
+UI:
+
+1. Open the deployment → **Link domain** → type `api.pfprotocol.com` → click
+   **Entri** and follow the on-screen DNS instructions. TLS/SSL is
+   auto-provisioned.
+2. DNS propagation: ~5–15 minutes (up to 24 h globally). If the site isn't up
+   after 15 min, remove any conflicting `A` records and re-link via Entri.
+3. After linking, **redeploy** so the production `CORS_ORIGINS` (which now
+   includes `https://api.pfprotocol.com`) takes effect.
+4. Verify: `https://api.pfprotocol.com/api/health` → `{"status":"healthy"}` and
+   `https://api.pfprotocol.com/api/docs` renders Swagger.
+
+> Whether **multiple** custom domains can attach to one deployment is a platform
+> capability that may need confirmation from Emergent Support
+> (support@emergent.sh) with your job ID. If only one custom domain is allowed
+> per deployment, either (a) keep `demo.pfprotocol.com` as the single public
+> origin (the API already lives at `demo.pfprotocol.com/api`), or (b) stand up a
+> second deployment of this same repo and attach `api.pfprotocol.com` to it.
+> No code differs between the two — same image, same `/api` surface.

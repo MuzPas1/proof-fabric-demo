@@ -15,13 +15,30 @@ SECURITY_HEADERS = {
     "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
 }
 
+# Relaxed CSP for the interactive API docs (Swagger UI / ReDoc), which load
+# assets from the jsDelivr CDN and use inline scripts/styles. Scoped ONLY to the
+# docs routes so the strict CSP still protects every other response.
+_DOCS_CSP = (
+    "default-src 'self'; "
+    "img-src 'self' data: https://fastapi.tiangolo.com https://cdn.jsdelivr.net; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "font-src 'self' https://cdn.jsdelivr.net; "
+    "worker-src 'self' blob:; "
+    "connect-src 'self'"
+)
+_DOCS_PREFIXES = ("/api/docs", "/api/redoc")
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Adds standard security headers to every response. Adds HSTS in prod."""
 
     async def dispatch(self, request: Request, call_next) -> Response:
         response = await call_next(request)
+        is_docs = request.url.path.startswith(_DOCS_PREFIXES)
         for header, value in SECURITY_HEADERS.items():
+            if header == "Content-Security-Policy" and is_docs:
+                value = _DOCS_CSP
             response.headers.setdefault(header, value)
         if settings.is_production:
             response.headers.setdefault(

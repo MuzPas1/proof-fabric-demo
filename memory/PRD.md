@@ -103,3 +103,17 @@ production key_registry).
 - Updated all "separate demo DB" claims to the new single-DB + isolated
   collections model; removed `DEMO_DB_NAME` from deploy configs (k8s, helm,
   docker-compose) and ops/DR env lists.
+
+### June 15, 2026 — Hosted API docs + api.pfprotocol.com readiness
+- Enabled interactive API docs served by the backend on ANY attached domain:
+  Swagger UI `/api/docs`, ReDoc `/api/redoc`, live OpenAPI `/api/openapi.json`.
+  CSP relaxed ONLY for docs routes (allows jsDelivr CDN); strict elsewhere.
+- NEW `GET /api/developer` resource index; static hosting of docs + SDKs under
+  `/api/resources/docs/*` and `/api/resources/sdks/*` (OpenAPI YAML, Postman,
+  guides, SDK sources).
+- Added `https://api.pfprotocol.com` to production `CORS_ORIGINS` (k8s, helm,
+  terraform) so the API domain works once linked. No app code differs per
+  domain — same `/api` surface via ingress. Domain linking is a platform/DNS
+  step (Entri); steps documented in `docs/CANONICAL_ENDPOINTS.md` §8.
+- Verified: Swagger renders (36 ops), FEA generate/verify + public verify OK,
+  CSP strict on non-docs routes.

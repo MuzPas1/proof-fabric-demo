@@ -16,6 +16,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from slowapi import _rate_limit_exceeded_handler
@@ -43,6 +44,9 @@ app = FastAPI(
     title="Proof Fabric Protocol (PFP)",
     description="Cryptographically verifiable Financial Evidence Artifacts — enterprise control plane.",
     version="2.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
 )
 
 app.state.limiter = limiter
@@ -74,6 +78,17 @@ from routes.webhook_routes import router as webhook_router
 
 for r in (fea_router, public_router, demo_router, auth_router, admin_router, webhook_router):
     app.include_router(r, prefix="/api")
+
+# Developer resources hosted under /api so they are reachable on any attached
+# domain (e.g. demo.pfprotocol.com or api.pfprotocol.com) via the /api ingress
+# route. Read-only static serving of docs (OpenAPI, Postman, guides) and SDKs.
+import os as _os
+_DOCS_DIR = _os.path.join(_os.path.dirname(__file__), "..", "docs")
+_SDKS_DIR = _os.path.join(_os.path.dirname(__file__), "..", "sdks")
+if _os.path.isdir(_DOCS_DIR):
+    app.mount("/api/resources/docs", StaticFiles(directory=_DOCS_DIR), name="docs")
+if _os.path.isdir(_SDKS_DIR):
+    app.mount("/api/resources/sdks", StaticFiles(directory=_SDKS_DIR), name="sdks")
 
 
 @app.on_event("startup")
@@ -220,3 +235,43 @@ async def get_config():
         config["test_api_key"] = settings.SANDBOX_API_KEY
         config["sandbox_notice"] = "Sandbox key — development only. Not present in production."
     return config
+
+
+@app.get("/api/developer")
+async def developer_resources(request: Request):
+    """Developer resource index — Swagger, OpenAPI, Postman, docs, and SDKs.
+
+    URLs are built from the request's own base URL, so this works identically on
+    any attached domain (demo.pfprotocol.com or api.pfprotocol.com).
+    """
+    base = str(request.base_url).rstrip("/")
+    return {
+        "name": "Proof Fabric Protocol — Developer Resources",
+        "version": "2.0.0",
+        "api_base": f"{base}/api",
+        "interactive": {
+            "swagger_ui": f"{base}/api/docs",
+            "redoc": f"{base}/api/redoc",
+            "openapi_json": f"{base}/api/openapi.json",
+            "openapi_yaml": f"{base}/api/resources/docs/openapi.yaml",
+            "postman_collection": f"{base}/api/resources/docs/postman_collection.json",
+        },
+        "guides": {
+            "quickstart": f"{base}/api/resources/docs/QUICKSTART.md",
+            "developer_guide": f"{base}/api/resources/docs/DEVELOPER_GUIDE.md",
+            "integration_guide": f"{base}/api/resources/docs/INTEGRATION_GUIDE.md",
+            "api_reference": f"{base}/api/resources/docs/API_REFERENCE.md",
+            "canonical_endpoints": f"{base}/api/resources/docs/CANONICAL_ENDPOINTS.md",
+        },
+        "sdks": {
+            "python": f"{base}/api/resources/sdks/python/",
+            "javascript": f"{base}/api/resources/sdks/javascript/",
+            "java": f"{base}/api/resources/sdks/java/",
+            "dotnet": f"{base}/api/resources/sdks/dotnet/",
+            "readme": f"{base}/api/resources/sdks/README.md",
+        },
+        "auth": {
+            "data_plane": "X-API-Key: <key>  (provisioned via POST /api/admin/api-keys/create)",
+            "control_plane": "Authorization: Bearer <jwt>  (POST /api/auth/login)",
+        },
+    }
