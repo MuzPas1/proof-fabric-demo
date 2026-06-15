@@ -85,7 +85,7 @@ export default function DocsPortal() {
             <kbd className="ml-auto rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-slate-500">⌘K</kbd>
           </button>
 
-          <nav className="ml-auto hidden md:flex items-center gap-1">
+          <nav className="ml-auto hidden lg:flex items-center gap-1">
             {TOP_NAV.map((n) => (
               <a
                 key={n.label}

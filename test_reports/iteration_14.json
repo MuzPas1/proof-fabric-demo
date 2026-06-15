@@ -1,0 +1,30 @@
+{
+  "summary": "Targeted responsive retest of /docs after fix changing docs header nav from 'hidden md:flex' to 'hidden lg:flex'. All 6 measurements (3 viewports x 2 routes) show NO horizontal overflow. Tablet (768): top-nav links hidden, mobile toggle visible & opens drawer. Desktop (1920): top-nav links + sidebar visible. Mobile (390): toggle visible, drawer opens. docs-home renders on /docs, doc-content renders on /docs/architecture across all widths. The MEDIUM bug from iteration_13 is RESOLVED.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fix is correct and minimal: lg:hidden on mobile-toggle pairs with hidden lg:flex on top-nav and hidden lg:block on sidebar — consistent breakpoint usage across all three regions."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "100% (6/6 viewport+route combos, 2/2 drawer toggles)"},
+  "seed_data_creation": "none",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Responsive fix in /app/frontend/src/docs/DocsPortal.jsx verified at 768/1920/390 on /docs and /docs/architecture. Measured scrollWidth == clientWidth on all six combinations (768/768, 1920/1920, 390/390). Mobile drawer toggle opens docs-mobile-drawer on both tablet and mobile. Topnav links visible only at >=1024 (desktop). Sidebar visible only at >=1024.",
+  "test_measurements": {
+    "tablet_768_docs": {"scrollWidth": 768, "clientWidth": 768, "topnav_visible": false, "mobile_toggle": true, "sidebar": false, "docs_home": true},
+    "tablet_768_arch": {"scrollWidth": 768, "clientWidth": 768, "topnav_visible": false, "mobile_toggle": true, "sidebar": false, "doc_content": true},
+    "desktop_1920_docs": {"scrollWidth": 1920, "clientWidth": 1920, "topnav_visible": true, "mobile_toggle": false, "sidebar": true, "docs_home": true},
+    "desktop_1920_arch": {"scrollWidth": 1920, "clientWidth": 1920, "topnav_visible": true, "mobile_toggle": false, "sidebar": true, "doc_content": true},
+    "mobile_390_docs": {"scrollWidth": 390, "clientWidth": 390, "topnav_visible": false, "mobile_toggle": true, "sidebar": false, "docs_home": true},
+    "mobile_390_arch": {"scrollWidth": 390, "clientWidth": 390, "topnav_visible": false, "mobile_toggle": true, "sidebar": false, "doc_content": true},
+    "tablet_drawer_opens": true,
+    "mobile_drawer_opens": true
+  }
+}
