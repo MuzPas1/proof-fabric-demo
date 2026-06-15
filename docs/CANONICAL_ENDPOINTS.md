@@ -118,7 +118,7 @@ server verifies byte-identically in any language.
 ## 7. Deprecated / removed references
 | Old reference | Replace with |
 |---|---|
-| `https://transaction-sign-1.preview.emergentagent.com` (internal preview pod) | `https://demo.pfprotocol.com` (demo/sandbox) or `https://api.pfprotocol.com` (prod) |
+| `https://cryptographic-hub.preview.emergentagent.com` (internal preview pod) | `https://demo.pfprotocol.com` (demo/sandbox) or `https://api.pfprotocol.com` (prod) |
 | `https://app.pfprotocol.com` (placeholder app origin) | `https://pfprotocol.com` and `https://demo.pfprotocol.com` |
 | `DEMO_DB_NAME` / separate `pfp_demo` database | Removed — single DB + `demo_proofs` / `demo_key_registry` collections |
 

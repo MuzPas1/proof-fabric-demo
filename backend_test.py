@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 # External URL from frontend/.env
-BASE_URL = "https://transaction-sign-1.preview.emergentagent.com"
+BASE_URL = "https://cryptographic-hub.preview.emergentagent.com"
 API_URL = f"{BASE_URL}/api"
 
 class PFPAPITester:
