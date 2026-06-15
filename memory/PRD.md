@@ -240,6 +240,40 @@ production key_registry).
   Markdown rendering, deep links, search (doc + heading level, category filter), trust
   overview, release notes, cross-links and mobile drawer all verified. DEPLOYMENT: READY.
 
+### June 15, 2026 — Generic Workflow Builder (primary mode) + template rename
+- **Rename (display only):** industry `change_release` label → **"Release Readiness
+  Evaluation"** (key, proof engine, verification, existing artifacts UNCHANGED).
+  "Change & Release Management" removed from all visible UI.
+- **NEW Generic Workflow Builder** (`generic_builder`) — now the DEFAULT/primary
+  demo mode. Configurable, zero-code proof for ANY workflow (HR, ITSM, Asset,
+  Procurement, Sales, AI Governance, Healthcare, etc.):
+  - Editable **Workflow Name** (not hardcoded), dynamic **custom fields**
+    (label/value, add/remove/edit, start 3), dynamic **checks** (add/remove/
+    rename, start 3), **Simulate Failure** toggle (fails ALL checks).
+  - **Starter template** auto-loaded (Workflow Name=Release; fields REL-2026-001/
+    Production/CAB-APPROVED-2026; checks Test Execution/UAT Completion/CAB Approval)
+    — screen never empty.
+  - **LocalStorage persistence** (`pfp_generic_workflow_v1`): Save / Load Last /
+    Reset. **Share Template** → URL `/demo?config=<b64>` (no backend); navigating
+    to it restores the config. New `/demo` route added (also serves `/`).
+  - **Validation** blocks proof when Workflow Name empty OR no valid field OR no
+    checks (inline message + disabled button). Empty fields (blank label OR value)
+    excluded from the canonical payload.
+  - **Proof output** is industry-agnostic: Workflow Name, Custom Fields, Checks
+    Passed, Proof ID, Timestamp, Ed25519 Signature, Verification Status.
+- **Backend (additive, backward-compatible):** `IndustryCheck.desc` now optional;
+  new `CustomField` model; `IndustryContext.custom_fields` = **ordered list**
+  embedded in the canonical payload (preserves visible field order → field
+  reordering changes the proof_id). Curated industries (desc + context) unchanged.
+- **Proof engine / signing / artifact / proof-id / auditor verification UNCHANGED** —
+  the builder only feeds custom data into the existing architecture.
+- **New files:** `frontend/src/components/WorkflowBuilder.jsx`,
+  `frontend/src/lib/workflowConfig.js`, `backend/tests/test_generic_workflow.py`.
+  Modified: `TransactionFlow.jsx`, `industries.js`, `App.js`, `demo_routes.py`.
+- **Tested:** backend pytest 20/20 (generic_workflow + demo_issue_verify);
+  testing_agent iteration_16 — 100% (13/13 frontend scenarios + Financial &
+  Release Readiness Evaluation regressions). No issues.
+
 ### June 15, 2026 — Industry template: Change & Release Management
 - **New industry template `change_release`** in the Demo Portal Industry selector
   (frontend/src/lib/industries.js). Reuses the existing proof engine, artifact
