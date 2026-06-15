@@ -3,22 +3,22 @@ import { CodeBlock } from "./CodeBlock";
 import { SectionHeader } from "./GetStarted";
 import { DEMO_BASE } from "./data";
 
-const CURL_VERIFY = `# Verify any FEA by id — public, no auth required
-curl ${DEMO_BASE}/api/public/verify/<FEA_ID>
+const CURL_VERIFY = `# Verify any Proof Artifact by id — public, no auth required
+curl ${DEMO_BASE}/api/public/verify/<PROOF_ID>
 
 # Response
 # {
 #   "signature_valid": true,
-#   "key_status": "active",
-#   "canonical_payload_hash": "sha256:…",
-#   "signature_version": "v2"
+#   "signature_version": "v2",
+#   "fea_payload": { "fea_hash": "…", ... },
+#   "created_at": "…"
 # }`;
 
 const SDK_VERIFY = `// Independent, offline verification (JavaScript SDK)
 import { verify } from "@pfp/sdk";
 
-// 'fea' is the artifact you received; verify with only its public key.
-const result = verify(fea, fea.publicKey);
+// 'proof' is the artifact you received; verify with only its public key.
+const result = verify(proof, proof.publicKey);
 
 console.log(result.signatureValid);  // true  → proof is authentic & untampered
 console.log(result.keyStatus);       // "active"`;

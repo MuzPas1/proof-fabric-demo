@@ -80,7 +80,7 @@ export const DevFooter = () => (
           <div className="text-sm text-slate-600">
             <span className="font-semibold text-slate-900 font-['Space_Grotesk']">Proof Fabric Protocol</span>
             <span className="mx-2 text-slate-300">·</span>
-            Cryptographically verifiable Financial Evidence Artifacts
+            General-purpose, cryptographically verifiable Proof Artifacts
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">

@@ -21,8 +21,62 @@ from crypto.canonicalize import canonicalize_to_json, normalize_timestamp
 from crypto.hashing import compute_sha256
 from core.ratelimit import limiter
 
+import secrets
 
 router = APIRouter(prefix="/demo", tags=["Demo"])
+
+
+# ---------------------------------------------------------------------------
+# Public sandbox API key issuance (Developer Portal)
+# ---------------------------------------------------------------------------
+SANDBOX_TENANT_ID = "sandbox"
+SANDBOX_SCOPES = ["fea:write", "fea:read", "fea:verify"]
+
+
+class SandboxKeyResponse(BaseModel):
+    api_key: str
+    key_id: str
+    tenant_id: str
+    scopes: List[str]
+    expires_at: Optional[str] = None
+    environment: str = "sandbox"
+    note: str = (
+        "Sandbox key for evaluation only. Scoped to the sandbox tenant, "
+        "rate-limited and short-lived. Do not use in production."
+    )
+
+
+@router.post("/sandbox-key", response_model=SandboxKeyResponse)
+@limiter.limit("20/hour")
+async def issue_sandbox_key(request: Request):
+    """
+    Issue a real, scoped, short-lived sandbox API key for the Developer Portal.
+
+    The key is a genuine DB-backed credential (only its SHA-256 hash is stored)
+    bound to the isolated `sandbox` tenant with data-plane scopes
+    (fea:write / fea:read / fea:verify) and a 1-day expiry. It can immediately
+    sign and verify Proof Artifacts through the live API.
+    """
+    from server import db as database
+    from services import api_key_service
+
+    raw_key = f"pfp_sandbox_{secrets.token_hex(20)}"
+    record, raw = await api_key_service.create_api_key(
+        database,
+        name="developer-portal-sandbox",
+        tenant_id=SANDBOX_TENANT_ID,
+        scopes=SANDBOX_SCOPES,
+        expires_in_days=1,
+        created_by="developer-portal",
+        raw_key=raw_key,
+    )
+    return SandboxKeyResponse(
+        api_key=raw,
+        key_id=record.key_id,
+        tenant_id=record.tenant_id,
+        scopes=record.scopes,
+        expires_at=record.expires_at,
+    )
 
 
 class PartyRecord(BaseModel):

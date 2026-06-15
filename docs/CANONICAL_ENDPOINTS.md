@@ -29,8 +29,9 @@ updated: **2026-06-12**.
 |---|---|
 | Interactive demo (Transaction Evidence Dashboard) | **https://demo.pfprotocol.com** |
 | Public verifier UI | **https://demo.pfprotocol.com/verify** |
-| Admin / control-plane dashboard | **https://demo.pfprotocol.com/admin** (login at `/admin/login`) |
+| Admin / control-plane dashboard | **https://demo.pfprotocol.com/admin/login** (login) |
 | Demo + sandbox API base | **https://demo.pfprotocol.com/api** |
+| Generate a sandbox key | `POST https://demo.pfprotocol.com/api/demo/sandbox-key` (public, rate-limited; returns a real scoped key) |
 | Interactive API docs (Swagger UI) | **https://demo.pfprotocol.com/api/docs** |
 | ReDoc | **https://demo.pfprotocol.com/api/redoc** |
 | OpenAPI (live JSON) | **https://demo.pfprotocol.com/api/openapi.json** |
@@ -66,6 +67,9 @@ updated: **2026-06-12**.
 - **Data plane** (`/api/fea/*`, `/api/webhooks/*`): `X-API-Key: <key>`.
 - **Control plane** (`/api/auth/*`, `/api/admin/*`): `Authorization: Bearer <jwt>`.
 - **Public** (`/api/public/*`, `/api/demo/*`, system): no auth.
+- **Sandbox key issuance** (`POST /api/demo/sandbox-key`): no auth,
+  rate-limited (20/hour/IP); returns a real, scoped (`fea:write`/`fea:read`/
+  `fea:verify`), 1-day sandbox key bound to the isolated `sandbox` tenant.
 - **Interactive docs** (served by the backend, on any attached domain):
   - Swagger UI — `/api/docs`
   - ReDoc — `/api/redoc`

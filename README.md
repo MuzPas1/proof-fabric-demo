@@ -1,17 +1,20 @@
 # Proof Fabric Protocol (PFP)
 
-Turn financial transactions (and any regulated workflow) into **Financial
-Evidence Artifacts (FEAs)** — deterministic, Ed25519-signed, content-addressed
-proofs that **anyone** can verify with only the public key, without trusting or
-contacting the issuer.
+Turn **any event** — a payment, an AI decision, a credential, a shipment, a
+compliance record — into a **Proof Artifact**: a deterministic, Ed25519-signed,
+content-addressed proof that **anyone** can independently verify with only the
+public key, without trusting or contacting the issuer. PFP is general-purpose
+proof infrastructure, applicable across financial services, AI governance,
+education, telecom, compliance, government, healthcare and supply chain.
 
 ## Links
 | What | URL |
 |---|---|
 | Product website | **https://pfprotocol.com** |
-| Live demo (Transaction Evidence Dashboard) | **https://demo.pfprotocol.com** |
+| Demo platform (Transaction Evidence Dashboard) | **https://demo.pfprotocol.com** |
+| Developer Portal | **https://demo.pfprotocol.com/developers** |
+| Admin portal | **https://demo.pfprotocol.com/admin/login** |
 | Public verifier | **https://demo.pfprotocol.com/verify** |
-| Admin dashboard | **https://demo.pfprotocol.com/admin** |
 | Production API base | **https://api.pfprotocol.com/api** |
 
 > 📍 **Canonical, authoritative endpoint list:**
@@ -23,7 +26,9 @@ contacting the issuer.
   registry, JWT+RBAC control plane, multi-tenancy, API-key data plane,
   webhooks, Prometheus metrics, hash-chained audit log.
 - **Frontend** (`frontend/`): React demo portal (`/`), public verifier
-  (`/verify`), and admin dashboard (`/admin`).
+  (`/verify`), admin dashboard (`/admin`), and a branded **Developer Portal**
+  (`/developers`) with a live in-browser sandbox (generate key → sign proof →
+  verify).
 - **SDKs** (`sdks/`): Python, JavaScript, Java, .NET — client + **independent
   offline verification**.
 - **Docs** (`docs/`): architecture, security, crypto, canonicalization spec,

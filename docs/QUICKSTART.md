@@ -1,28 +1,46 @@
 # Integrate PFP in 30 minutes
 
-A senior engineer can move from zero to a verified FEA in **30 minutes**.
+A senior engineer can move from zero to a verified **Proof Artifact** in
+**30 minutes** — or try the whole lifecycle in your browser in **5 minutes** at
+the **Developer Portal**: **https://demo.pfprotocol.com/developers**.
+
+PFP is general-purpose proof infrastructure: the same flow applies to a
+payment, an AI decision, a credential, a shipment or any compliance event.
 Here's the plan, with the clock running.
 
 | Time | Step |
 |---|---|
 | 0–5 min | Get a sandbox key |
-| 5–15 min | Issue your first FEA |
-| 15–25 min | Verify it (both server-side and as an "auditor") |
+| 5–15 min | Issue your first Proof Artifact |
+| 15–25 min | Verify it (both server-side and as an independent "auditor") |
 | 25–30 min | Wire up production checklist |
+
+### Key portals
+| Portal | URL |
+|---|---|
+| Website | **https://pfprotocol.com** |
+| Demo platform | **https://demo.pfprotocol.com** |
+| Admin portal | **https://demo.pfprotocol.com/admin/login** |
+| Developer Portal | **https://demo.pfprotocol.com/developers** |
 
 ---
 
 ## 0–5 min · Get a sandbox key
 
+Generate a real, scoped, short-lived sandbox key (no auth, rate-limited):
+
 ```bash
-curl https://demo.pfprotocol.com/api/config
+curl -X POST https://demo.pfprotocol.com/api/demo/sandbox-key
 ```
 
-Copy the `test_api_key` field.
+Copy the `api_key` field (or click **Generate Sandbox Key** on the
+[Developer Portal](https://demo.pfprotocol.com/developers)). A non-production
+sandbox key is also exposed via `GET https://demo.pfprotocol.com/api/config`
+(`test_api_key`).
 
 ```bash
 export PFP_BASE="https://demo.pfprotocol.com"
-export PFP_API_KEY="pfp_test_………"   # paste it here
+export PFP_API_KEY="pfp_sandbox_………"   # paste it here
 ```
 
 > **Production?** Email **support@pfprotocol.com** for a live key. Then
@@ -31,7 +49,7 @@ export PFP_API_KEY="pfp_test_………"   # paste it here
 
 ---
 
-## 5–15 min · Issue your first FEA
+## 5–15 min · Issue your first Proof Artifact
 
 ```bash
 curl -sS -X POST "$PFP_BASE/api/fea/generate" \
@@ -39,18 +57,18 @@ curl -sS -X POST "$PFP_BASE/api/fea/generate" \
   -H "X-API-Key: $PFP_API_KEY" \
   -d '{
     "idempotency_key": "idem-quickstart-001",
-    "transaction_id": "TXN-QUICKSTART-001",
+    "transaction_id": "EVT-QUICKSTART-001",
     "timestamp": "2026-02-10T14:23:00Z",
     "amount": 245000,
-    "currency": "INR",
+    "currency": "USD",
     "payer_id": "sha256:7b9cabd2b7a1e9c1",
     "payee_id": "sha256:a14d8c2f9b4e5d6a",
-    "metadata": { "channel": "upi" }
+    "metadata": { "channel": "api" }
   }'
 ```
 
-You'll get back a `FEAResponse`. **Save the entire JSON body** — that's
-your evidence.
+You'll get back a Proof Artifact response. **Save the entire JSON body** —
+that's your evidence.
 
 ```json
 {
@@ -129,7 +147,7 @@ Before you flip your code from sandbox to live:
 
 | You see | Why | Fix |
 |---|---|---|
-| `401 Invalid API key` | Forgot `X-API-Key` or copied the key wrong. | Re-fetch from `/api/config` (sandbox) or your secret manager. |
+| `401 Invalid API key` | Forgot `X-API-Key` or copied the key wrong. | Generate a fresh key from `POST /api/demo/sandbox-key` (sandbox) or your secret manager. |
 | `409 Idempotency key already used with different payload` | Same `idempotency_key`, different body. | Use a **fresh** key, or send the exact same body. |
 | `409 Transaction replay detected` | Same `(transaction_id, timestamp)`, different amount/parties. | Find the original FEA — almost always a business-logic dup. |
 | `422 unprocessable entity` | Bad schema (e.g. `amount` as float). | `amount` must be **integer** in smallest unit. |

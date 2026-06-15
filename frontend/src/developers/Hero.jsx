@@ -23,18 +23,18 @@ export const Hero = () => (
         Build with cryptographic proof.
       </h1>
       <p className="mt-5 max-w-2xl text-base md:text-lg text-slate-600 leading-relaxed">
-        Turn any transaction or regulated event into a deterministic, Ed25519-signed
-        Financial Evidence Artifact — independently verifiable by anyone, with just the
-        public key. APIs, SDKs and docs, all in one place.
+        Turn any event — a payment, an AI decision, a credential, a shipment — into a deterministic,
+        Ed25519-signed Proof Artifact that anyone can verify with only the public key. General-purpose
+        proof infrastructure: APIs, SDKs and docs, all in one place.
       </p>
       <div className="mt-8 flex flex-wrap items-center gap-3">
         <a
-          href="#get-started"
-          onClick={scrollTo("get-started")}
+          href="#playground"
+          onClick={scrollTo("playground")}
           data-testid="hero-get-started-btn"
           className="inline-flex items-center gap-2 bg-blue-600 text-white hover:bg-blue-700 font-medium rounded-lg px-5 py-2.5 transition-colors"
         >
-          <Zap className="h-4 w-4" /> First API call in 15 minutes
+          <Zap className="h-4 w-4" /> Try the live sandbox
         </a>
         <a
           href={`${API}/docs`}
