@@ -117,3 +117,20 @@ production key_registry).
   step (Entri); steps documented in `docs/CANONICAL_ENDPOINTS.md` §8.
 - Verified: Swagger renders (36 ops), FEA generate/verify + public verify OK,
   CSP strict on non-docs routes.
+
+### June 15, 2026 — Branded Developer Portal at /developers
+- New canonical developer entry point: `https://demo.pfprotocol.com/developers`
+  (in-app React route; no separate api.pfprotocol.com deployment needed).
+- Sections: glass sticky header, hero, "First API Call in 15 Minutes" 5-step
+  journey (credentials → generate → verify → integrate → review) with copyable
+  dark code blocks, 9 resource cards (Swagger/ReDoc/OpenAPI/API ref/auth/
+  quickstart/integration/architecture/dev-index), 4 SDK cards + Postman
+  download, verification examples, and a live Platform Status section (6 pills,
+  health-driven).
+- Cross-portal nav added: Demo header `demo-nav-developers`, Admin sidebar
+  `admin-nav-developers`.
+- Design per design_guidelines.json (Swiss/high-contrast, blue-600, Space
+  Grotesk, JetBrains Mono code). Files: frontend/src/developers/* (10 files),
+  App.js route, TransactionFlow.jsx + admin/Layout.jsx nav links.
+- Tested: testing_agent iteration_9 — 67/67 frontend checks pass, all 16
+  backend resource endpoints 200, no regressions.
