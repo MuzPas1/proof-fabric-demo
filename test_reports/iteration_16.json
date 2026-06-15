@@ -1,0 +1,24 @@
+{
+  "summary": "Frontend-only end-to-end testing of the PFP Demo Portal — Generic Workflow Builder (primary mode) + 'Release Readiness Evaluation' rename + Financial Services regression. All 13 requested feature/regression checks passed. Builder loads with starter template (Workflow Name='Release', 3 fields, 3 checks), Workflow Name is editable and propagates to evidence-workflow-name, Add/Remove for fields & checks works, empty fields are excluded from proof (3 evidence rows when 4th was blank), validation blocks Generate Proof when name is empty (button disabled, builder-validation panel + error), Simulate Failure toggle yields 0/N checks passed with NON-COMPLIANT auditor result, Ed25519 signature is non-empty (88 chars), auditor verify works using only the Proof ID and renders custom fields, Save/Load Last/Reset/Share localStorage flows behave correctly (Reset restores 'Release' but localStorage still holds saved 'Procurement'), Share Template copies '/demo?config=...' URL and navigating to it restores the shared workflow. Regression: 'Release Readiness Evaluation' option present with key change_release, the string 'Change & Release Management' is nowhere in the UI, release form + Release Readiness Certificate + auditor verify all work. Financial Services flow generates proof and auditor verify shows VALID. New Transaction button resets back to the Generic Workflow Builder starter ('Release').",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "WorkflowBuilder.jsx and workflowConfig.js are clean, well-scoped and < 300 lines; validateConfig correctly enforces 'empty label OR empty value -> field excluded' and produces user-facing errors that match the test plan.",
+    "industries.js: change_release.label is now 'Release Readiness Evaluation' (display only) while the key change_release is unchanged — exactly matches the requirement; INDUSTRY_ORDER places generic_builder first and DEFAULT_INDUSTRY = 'generic_builder'.",
+    "Sharing uses btoa+TextEncoder which is safe for unicode workflow names; decoding falls back through sanitizeConfig so a malformed config does not crash the builder.",
+    "Minor (non-blocking) suggestion: TransactionFlow.jsx is the only large file in this feature area — keep an eye on its growth; consider extracting the builder-evidence rendering block when adding new modes."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per request)", "frontend": "100% (13/13 scenarios passed)"},
+  "test_credentials": "Not required — public demo at '/'.",
+  "seed_data_creation": "None. localStorage key pfp_generic_workflow_v1 is created during the Save Template step of the test and is left as 'Procurement' on the test browser session only.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 13 scenarios in the latest review_request passed against the public REACT_APP_BACKEND_URL. The builder default state loads at both '/' and '/demo'. Share template returns a URL of the form '<origin>/demo?config=<b64>'; clipboard read worked under Playwright after grant_permissions(['clipboard-read','clipboard-write']). Simulate Failure produced a valid Ed25519-signed proof that the auditor flags NON-COMPLIANT (10 NON-COMPLIANT markers in the result section). Release Readiness Evaluation option uses data-testid='industry-option-change_release' (key unchanged) and the string 'Change & Release Management' is absent from the UI."
+}

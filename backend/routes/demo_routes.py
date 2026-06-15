@@ -194,8 +194,22 @@ class ComplianceResult(BaseModel):
 class IndustryCheck(BaseModel):
     """A single industry-specific compliance check executed before proof issuance."""
     name: str = Field(..., min_length=1, max_length=200)
-    desc: str = Field(..., min_length=1, max_length=500)
+    # `desc` is optional: the Generic Workflow Builder issues checks that carry
+    # only a name + status, whereas curated industry templates also carry a
+    # human-readable description.
+    desc: Optional[str] = Field(None, max_length=500)
     status: str = Field(..., pattern="^(Pass|Fail)$")
+
+
+class CustomField(BaseModel):
+    """A single user-defined workflow field (label/value pair).
+
+    Used by the Generic Workflow Builder. Embedded in the canonical payload as
+    an ORDERED list so the exact field order shown on screen is preserved and
+    cryptographically proven.
+    """
+    label: str = Field(..., min_length=1, max_length=200)
+    value: str = Field(..., min_length=1, max_length=2000)
 
 
 class IndustryContext(BaseModel):
@@ -215,8 +229,11 @@ class IndustryContext(BaseModel):
     """
     id: str = Field(..., min_length=1, max_length=50)
     label: str = Field(..., min_length=1, max_length=100)
-    checks: List[IndustryCheck] = Field(..., min_length=1, max_length=20)
+    checks: List[IndustryCheck] = Field(..., min_length=1, max_length=50)
     context: Optional[Dict[str, str]] = None
+    # Ordered, user-defined fields (Generic Workflow Builder). Preserved as a
+    # list so visible field order is retained through canonicalization.
+    custom_fields: Optional[List[CustomField]] = Field(None, max_length=50)
 
 
 class IssueRequest(BaseModel):
@@ -268,22 +285,29 @@ def _build_canonical_payload(
         },
     }
     if industry is not None:
-        payload["industry"] = {
+        ind: Dict[str, Any] = {
             "id": industry.id.strip(),
             "label": industry.label.strip(),
             "checks": [
                 {
                     "name": c.name.strip(),
-                    "desc": c.desc.strip(),
+                    **({"desc": c.desc.strip()} if c.desc and c.desc.strip() else {}),
                     "status": c.status,
                 }
                 for c in industry.checks
             ],
         }
+        if industry.custom_fields:
+            # Ordered list — preserves the on-screen field order.
+            ind["custom_fields"] = [
+                {"label": f.label.strip(), "value": f.value.strip()}
+                for f in industry.custom_fields
+            ]
         if industry.context:
-            payload["industry"]["context"] = {
+            ind["context"] = {
                 str(k).strip(): str(v).strip() for k, v in industry.context.items()
             }
+        payload["industry"] = ind
     return payload
 
 

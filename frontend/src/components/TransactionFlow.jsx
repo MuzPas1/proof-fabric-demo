@@ -33,6 +33,15 @@ import {
   INDUSTRY_ORDER,
   DEFAULT_INDUSTRY,
 } from "@/lib/industries";
+import WorkflowBuilder from "@/components/WorkflowBuilder";
+import {
+  cloneStarter,
+  saveTemplate,
+  loadTemplate,
+  encodeConfig,
+  decodeConfig,
+  validateConfig,
+} from "@/lib/workflowConfig";
 import {
   CheckCircle2,
   ShieldCheck,
@@ -96,6 +105,16 @@ const formatTsUTC = (iso) => {
 };
 
 const shortHash = (h) => (h ? `${h.slice(0, 16)}...${h.slice(-8)}` : "");
+
+/** Read a shared workflow config from the current URL (?config=...). */
+const readUrlConfig = () => {
+  try {
+    const c = new URLSearchParams(window.location.search).get("config");
+    return c ? decodeConfig(c) : null;
+  } catch {
+    return null;
+  }
+};
 
 /* --------------------------------- UI bits -------------------------------- */
 
@@ -207,12 +226,14 @@ function ComplianceCheckRow({ name, desc, status = "success", testId }) {
           <div className="text-sm font-medium text-gray-900 leading-snug">
             {name}
           </div>
-          <div
-            className="text-xs text-gray-500 mt-0.5 leading-relaxed"
-            data-testid={`${testId}-desc`}
-          >
-            {desc}
-          </div>
+          {desc && (
+            <div
+              className="text-xs text-gray-500 mt-0.5 leading-relaxed"
+              data-testid={`${testId}-desc`}
+            >
+              {desc}
+            </div>
+          )}
         </div>
       </div>
       <StatusPill
@@ -232,9 +253,16 @@ export default function TransactionFlow() {
   const [processing, setProcessing] = useState(false);
 
   // Industry context (presentation-only — backend payload is unchanged)
-  const [industryId, setIndustryId] = useState(DEFAULT_INDUSTRY);
+  const [industryId, setIndustryId] = useState(() =>
+    readUrlConfig() ? "generic_builder" : DEFAULT_INDUSTRY
+  );
   const industry = INDUSTRIES[industryId] || INDUSTRIES[DEFAULT_INDUSTRY];
   const isCustomForm = Array.isArray(industry.fields) && industry.fields.length > 0;
+  const isBuilder = industry.builder === true;
+
+  // Generic Workflow Builder config (starter template, or shared URL config).
+  const [builder, setBuilder] = useState(() => readUrlConfig() || cloneStarter());
+  const builderValidation = isBuilder ? validateConfig(builder) : null;
 
   // Custom (industry-specific) form values — e.g. Change & Release Management.
   const buildExtraDefaults = (ind) => {
@@ -258,7 +286,7 @@ export default function TransactionFlow() {
   // Consistency + exception
   const [mismatch, setMismatch] = useState(false);
 
-  const complianceState = simulateComplianceFail
+  const complianceState = (isBuilder ? builder.simulateFailure : simulateComplianceFail)
     ? {
         kyc: "Fail",
         aml: "Pass",
@@ -274,11 +302,31 @@ export default function TransactionFlow() {
 
   const isCompliant = complianceState.status === "COMPLIANT";
 
+  // Effective "simulate failure" flag — the Generic Workflow Builder carries
+  // its own toggle in its config; other industries use the section toggle.
+  const effectiveFail = isBuilder ? builder.simulateFailure : simulateComplianceFail;
+
+  // Checks shown in the "Checks" section. For the Generic Workflow Builder
+  // these come from the live builder config; otherwise from the industry preset.
+  const displayedChecks = isBuilder
+    ? (builderValidation?.validChecks || []).map((c) => ({
+        name: c.name.trim(),
+        desc: "",
+      }))
+    : industry.checks;
+
   // Canonical record sent to the proof engine. For custom-form industries the
   // industry fields are mapped onto the same {transaction_id,user_id,amount}
   // contract so the proof engine, artifact structure and Proof ID generation
   // are completely unchanged.
   const currentRecord = () => {
+    if (isBuilder) {
+      return {
+        transaction_id: builder.workflowName.trim() || "workflow",
+        user_id: "generic-workflow",
+        amount: "0.00",
+      };
+    }
     if (isCustomForm) {
       const mt = industry.mapTo || {};
       return {
@@ -294,7 +342,9 @@ export default function TransactionFlow() {
     };
   };
 
-  const canProcess = isCustomForm
+  const canProcess = isBuilder
+    ? builderValidation.valid
+    : isCustomForm
     ? industry.fields.every((f) => String(extra[f.key] ?? "").trim())
     : form.transaction_id.trim() &&
       form.user_id.trim() &&
@@ -321,6 +371,51 @@ export default function TransactionFlow() {
     invalidateDownstream();
   };
 
+  // Generic Workflow Builder: edit + browser-only persistence + share.
+  const updateBuilder = (next) => {
+    setBuilder(next);
+    invalidateDownstream();
+  };
+
+  const handleSaveTemplate = () => {
+    if (saveTemplate(builder)) toast.success("Template saved to this browser");
+    else toast.error("Unable to save template");
+  };
+
+  const handleLoadTemplate = () => {
+    const c = loadTemplate();
+    if (!c) {
+      toast.error("No saved template found in this browser");
+      return;
+    }
+    updateBuilder(c);
+    toast.success("Last saved template loaded");
+  };
+
+  const handleResetTemplate = () => {
+    updateBuilder(cloneStarter());
+    toast.message("Template reset to starter");
+  };
+
+  const handleShareTemplate = async () => {
+    const enc = encodeConfig(builder);
+    if (!enc) {
+      toast.error("Unable to build a share link");
+      return;
+    }
+    const url = `${window.location.origin}/demo?config=${enc}`;
+    if (url.length > 6000) {
+      toast.error("Workflow is too large to share via link");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Share link copied to clipboard");
+    } catch {
+      toast.error("Unable to copy link");
+    }
+  };
+
   const processTransaction = async () => {
     if (!canProcess) {
       toast.error("Please fill all fields with valid values.");
@@ -338,23 +433,43 @@ export default function TransactionFlow() {
       // were executed for this industry. The first check fails when
       // "Simulate Compliance Failure" is on (mirrors the kyc/aml/limits
       // semantics carried by `complianceState`).
-      const industryPayload = {
-        id: industry.id,
-        label: industry.label,
-        checks: industry.checks.map((c, idx) => ({
-          name: c.name,
-          desc: c.desc,
-          status: simulateComplianceFail && idx === 0 ? "Fail" : "Pass",
-        })),
-      };
+      let industryPayload;
+      if (isBuilder) {
+        // Generic Workflow Builder → feed custom workflow data into the
+        // unchanged proof engine. Empty/deleted fields are excluded; the
+        // visible field & check order is preserved (sent as ordered lists).
+        const { validFields, validChecks } = builderValidation;
+        industryPayload = {
+          id: "generic_builder",
+          label: builder.workflowName.trim(),
+          checks: validChecks.map((c) => ({
+            name: c.name.trim(),
+            status: effectiveFail ? "Fail" : "Pass",
+          })),
+          custom_fields: validFields.map((f) => ({
+            label: f.label.trim(),
+            value: f.value.trim(),
+          })),
+        };
+      } else {
+        industryPayload = {
+          id: industry.id,
+          label: industry.label,
+          checks: industry.checks.map((c, idx) => ({
+            name: c.name,
+            desc: c.desc,
+            status: effectiveFail && idx === 0 ? "Fail" : "Pass",
+          })),
+        };
 
-      // For custom-form industries, embed descriptive context (e.g. Release
-      // Name / Environment) into the signed payload so it is cryptographically
-      // proven and surfaced to auditors without exposing raw operational data.
-      if (isCustomForm) {
-        industryPayload.context = Object.fromEntries(
-          industry.fields.map((f) => [f.label, String(extra[f.key] ?? "").trim()])
-        );
+        // For custom-form industries, embed descriptive context (e.g. Release
+        // Name / Environment) into the signed payload so it is cryptographically
+        // proven and surfaced to auditors without exposing raw operational data.
+        if (isCustomForm) {
+          industryPayload.context = Object.fromEntries(
+            industry.fields.map((f) => [f.label, String(extra[f.key] ?? "").trim()])
+          );
+        }
       }
 
       const record = currentRecord();
@@ -367,15 +482,15 @@ export default function TransactionFlow() {
         industry: industryPayload,
       });
 
-      // For certificate-style industries, also fetch the signed Ed25519
-      // artifact so the Release Readiness Certificate can show the signature.
+      // For certificate-style industries and the Generic Workflow Builder,
+      // also fetch the signed Ed25519 artifact so a real signature can be shown.
       let signature = null;
-      if (industry.certificate) {
+      if (industry.certificate || isBuilder) {
         try {
           const { jsonText } = await fetchSignedArtifactJson();
           signature = JSON.parse(jsonText)?.signature || null;
         } catch {
-          /* signature is optional for the certificate */
+          /* signature is optional for display */
         }
       }
 
@@ -383,7 +498,9 @@ export default function TransactionFlow() {
       setAuditorProofId(data.proof_id); // pre-fill for demo convenience
       setProcessed(true);
       toast.success(
-        isCustomForm
+        isBuilder
+          ? `Proof generated — ${isCompliant ? "Verified" : "Failed"}`
+          : isCustomForm
           ? `Release Readiness Proof issued (${isCompliant ? "Ready" : "Not Ready"})`
           : `Transaction processed — proof issued (${isCompliant ? "compliant" : "non-compliant"})`
       );
@@ -549,6 +666,7 @@ export default function TransactionFlow() {
   const resetAll = () => {
     setForm(DEFAULTS);
     setExtra(buildExtraDefaults(industry));
+    setBuilder(cloneStarter());
     setProcessed(false);
     setProcessing(false);
     setSimulateComplianceFail(false);
@@ -756,7 +874,17 @@ export default function TransactionFlow() {
             )
           }
         >
-          {isCustomForm ? (
+          {isBuilder ? (
+            <WorkflowBuilder
+              config={builder}
+              onChange={updateBuilder}
+              validation={builderValidation}
+              onSave={handleSaveTemplate}
+              onLoad={handleLoadTemplate}
+              onReset={handleResetTemplate}
+              onShare={handleShareTemplate}
+            />
+          ) : isCustomForm ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="custom-industry-form">
               {industry.fields.map((f) =>
                 f.type === "select" ? (
@@ -832,28 +960,30 @@ export default function TransactionFlow() {
           tone={processed ? (isCompliant ? "success" : "error") : "neutral"}
           rightSlot={
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <Label
-                  htmlFor="compliance-toggle"
-                  className="text-xs text-gray-500"
-                >
-                  {industry.ui?.failToggle || "Simulate Compliance Failure"}
-                </Label>
-                <Switch
-                  id="compliance-toggle"
-                  checked={simulateComplianceFail}
-                  onCheckedChange={(v) => {
-                    setSimulateComplianceFail(v);
-                    if (processed) {
-                      setProcessed(false);
-                      setProof(null);
-                      setAuditorResult(null);
-                      setAuditorProofId("");
-                    }
-                  }}
-                  data-testid="compliance-toggle"
-                />
-              </div>
+              {!isBuilder && (
+                <div className="flex items-center gap-2">
+                  <Label
+                    htmlFor="compliance-toggle"
+                    className="text-xs text-gray-500"
+                  >
+                    {industry.ui?.failToggle || "Simulate Compliance Failure"}
+                  </Label>
+                  <Switch
+                    id="compliance-toggle"
+                    checked={simulateComplianceFail}
+                    onCheckedChange={(v) => {
+                      setSimulateComplianceFail(v);
+                      if (processed) {
+                        setProcessed(false);
+                        setProof(null);
+                        setAuditorResult(null);
+                        setAuditorProofId("");
+                      }
+                    }}
+                    data-testid="compliance-toggle"
+                  />
+                </div>
+              )}
               {processed && (
                 <StatusPill
                   status={isCompliant ? "success" : "error"}
@@ -872,11 +1002,13 @@ export default function TransactionFlow() {
             className="rounded-lg bg-gray-50 border border-gray-100 px-4 py-1"
             data-testid="compliance-checks-list"
           >
-            {industry.checks.map((c, idx) => {
-              // When simulating failure, mark only the first check as failed
-              // so the auditor result still has a clear, single point of
-              // divergence (mirrors the underlying kyc/aml/limits semantics).
-              const failed = simulateComplianceFail && idx === 0;
+            {displayedChecks.map((c, idx) => {
+              // For curated industries, simulating failure marks only the first
+              // check as failed (single, clear point of divergence). For the
+              // Generic Workflow Builder, Simulate Failure fails ALL checks.
+              const failed = isBuilder
+                ? effectiveFail
+                : effectiveFail && idx === 0;
               return (
                 <ComplianceCheckRow
                   key={`${industry.id}-${idx}`}
@@ -894,13 +1026,21 @@ export default function TransactionFlow() {
             }`}
             data-testid="compliance-summary"
           >
-            {isCompliant
+            {isBuilder
+              ? isCompliant
+                ? `All ${displayedChecks.length} checks passed — ${
+                    builder.workflowName.trim() || "workflow"
+                  } is VERIFIED`
+                : `Checks failed — ${
+                    builder.workflowName.trim() || "workflow"
+                  } is NOT VERIFIED`
+              : isCompliant
               ? industry.statusLabels
                 ? `All checks passed — release is ${industry.statusLabels.pass.toUpperCase()}`
                 : "All checks passed — workflow is COMPLIANT"
               : industry.statusLabels
-                ? `${industry.checks[0].name} failed — release is ${industry.statusLabels.fail.toUpperCase()}`
-                : `${industry.checks[0].name} failed — workflow is NON-COMPLIANT`}
+              ? `${industry.checks[0].name} failed — release is ${industry.statusLabels.fail.toUpperCase()}`
+              : `${industry.checks[0].name} failed — workflow is NON-COMPLIANT`}
           </p>
         </SectionCard>
 
@@ -951,6 +1091,41 @@ export default function TransactionFlow() {
           ) : (
             <>
               <div className="rounded-lg bg-gray-50 border border-gray-100 divide-y divide-gray-100">
+                {isBuilder && (
+                  <>
+                    <ProofRow
+                      label="Workflow Name"
+                      value={builder.workflowName.trim() || "—"}
+                      testId="evidence-workflow-name"
+                      valueClass="text-gray-900"
+                    />
+                    {(builderValidation?.validFields || []).map((f, i) => (
+                      <ProofRow
+                        key={`evfield-${i}`}
+                        label={f.label.trim()}
+                        value={f.value.trim()}
+                        testId={`evidence-field-${i}`}
+                        valueClass="text-gray-900"
+                      />
+                    ))}
+                    <ProofRow
+                      label="Checks Passed"
+                      value={`${
+                        effectiveFail
+                          ? 0
+                          : (builderValidation?.validChecks || []).length
+                      }/${(builderValidation?.validChecks || []).length}`}
+                      testId="evidence-checks-passed"
+                      valueClass={isCompliant ? "text-emerald-700" : "text-amber-700"}
+                    />
+                    <ProofRow
+                      label="Status"
+                      value={isCompliant ? "Verified" : "Failed"}
+                      testId="evidence-status"
+                      valueClass={isCompliant ? "text-emerald-700" : "text-red-700"}
+                    />
+                  </>
+                )}
                 {isCustomForm && (
                   <>
                     <ProofRow
@@ -985,11 +1160,13 @@ export default function TransactionFlow() {
                     />
                   </>
                 )}
-                <ProofRow
-                  label={isCustomForm ? "Release ID" : "Transaction ID"}
-                  value={proof.transaction_id}
-                  testId="evidence-transaction-id"
-                />
+                {!isBuilder && (
+                  <ProofRow
+                    label={isCustomForm ? "Release ID" : "Transaction ID"}
+                    value={proof.transaction_id}
+                    testId="evidence-transaction-id"
+                  />
+                )}
                 <ProofRow
                   label={industry.ui?.proofIdLabel || "Proof ID"}
                   value={shortHash(proof.proof_id)}
@@ -1018,6 +1195,21 @@ export default function TransactionFlow() {
                   valueClass="text-gray-700"
                 />
               </div>
+
+              {isBuilder && (
+                <div className="mt-3 rounded-lg bg-gray-950 border border-gray-800 px-4 py-3">
+                  <div className="text-[11px] uppercase tracking-wider text-gray-400">
+                    Cryptographic Signature (Ed25519)
+                  </div>
+                  <div
+                    className="mt-1 font-mono text-[12px] text-gray-200 break-all"
+                    data-testid="evidence-signature"
+                  >
+                    {proof.signature ||
+                      "Signature available in the downloadable proof artifact"}
+                  </div>
+                </div>
+              )}
 
               <div
                 className={`mt-4 flex items-center gap-2 text-sm font-medium ${
@@ -1456,6 +1648,25 @@ function AuditorResult({ result }) {
           ))}
         </div>
       )}
+
+      {valid &&
+        Array.isArray(industry?.custom_fields) &&
+        industry.custom_fields.length > 0 && (
+          <div
+            className="mt-3 rounded-md bg-white/80 border border-white/60 backdrop-blur-sm divide-y divide-gray-100"
+            data-testid="auditor-custom-fields"
+          >
+            {industry.custom_fields.map((f, i) => (
+              <ProofRow
+                key={`auditor-field-${i}`}
+                label={f.label}
+                value={f.value}
+                testId={`auditor-field-${i}`}
+                borderless
+              />
+            ))}
+          </div>
+        )}
 
       {hasIndustryChecks && (
         <div

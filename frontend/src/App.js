@@ -24,6 +24,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<TransactionFlow />} />
+          <Route path="/demo" element={<TransactionFlow />} />
           <Route path="/developers" element={<DevelopersPage />} />
           <Route path="/docs/*" element={<DocsPortal />} />
           <Route path="/verify" element={<PublicVerifyPage />} />

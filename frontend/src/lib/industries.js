@@ -9,6 +9,47 @@
  */
 
 export const INDUSTRIES = {
+  generic_builder: {
+    id: "generic_builder",
+    label: "Generic Workflow Builder",
+    emoji: "\u{1F9F1}", // bricks / building blocks
+    tagline: "Configure any workflow — fields, checks and proof — with zero code.",
+    builder: true,
+    hideConsistency: true,
+    certificate: false,
+    statusLabels: { pass: "Verified", fail: "Failed" },
+    // Checks come from the live builder state, not from this list. Kept empty
+    // so any defensive access stays safe.
+    checks: [],
+    positioning:
+      "Most systems prove one workflow at a time. PFP turns any workflow — release, change, ticket, onboarding, approval, AI decision — into the same independently verifiable proof.",
+    approaches: {
+      traditional: ["Spreadsheets", "Emails", "Screenshots", "Sign-offs", "Trust"],
+      pfp: ["Define", "Validate", "Cryptographic Proof", "Verify"],
+    },
+    ui: {
+      heroTitle: "Turn any workflow into cryptographic proof.",
+      heroSubtitle:
+        "Define your own workflow — name it, add fields and checks — then issue an independently verifiable Proof Artifact. No code, no schema changes.",
+      inputTitle: "Workflow Configuration",
+      inputDesc:
+        "Define the workflow, its fields and its checks. This is the primary demonstration mode.",
+      processBtn: "Generate Proof",
+      checksTitle: "Workflow Checks",
+      checksDesc: "Checks configured for this workflow.",
+      failToggle: "Simulate Failure",
+      evidenceTitle: "Proof Generated",
+      evidenceDesc:
+        "A cryptographically verifiable Proof Artifact has been issued for this workflow.",
+      evidencePlaceholder:
+        "Configure your workflow above and generate the proof. A Proof Artifact (with a Proof ID) will appear here.",
+      artifactLabel: "Proof Artifact",
+      proofIdLabel: "Proof ID",
+      auditorDesc:
+        "Verify a workflow Proof using only its Proof ID — no raw workflow data required.",
+    },
+  },
+
   generic: {
     id: "generic",
     label: "Generic / Universal",
@@ -380,10 +421,10 @@ export const INDUSTRIES = {
 
   change_release: {
     id: "change_release",
-    label: "Change & Release Management",
+    label: "Release Readiness Evaluation",
     emoji: "\u{1F680}", // rocket
     tagline: "Evidence-proof release readiness — not just a report.",
-    workflow: "Change & Release Management",
+    workflow: "Release Readiness Evaluation",
     // Today's release readiness is report-focused. PFP makes it evidence-proof oriented.
     positioning:
       "Today's release readiness is report-focused. PFP makes it evidence-proof oriented.",
@@ -417,7 +458,7 @@ export const INDUSTRIES = {
       inputDesc: "Enter the release details to begin readiness verification.",
       processBtn: "Generate Release Readiness Proof",
       checksTitle: "Release Readiness Checks",
-      checksDesc: "Automated readiness checks for Change & Release Management.",
+      checksDesc: "Automated readiness checks for Release Readiness Evaluation.",
       failToggle: "Simulate Readiness Failure",
       evidenceTitle: "Evidence Generated",
       evidenceDesc: "A Release Readiness Proof Artifact has been issued for this release.",
@@ -443,6 +484,7 @@ export const INDUSTRIES = {
 };
 
 export const INDUSTRY_ORDER = [
+  "generic_builder",
   "generic",
   "financial",
   "telecom",
@@ -455,4 +497,4 @@ export const INDUSTRY_ORDER = [
   "change_release",
 ];
 
-export const DEFAULT_INDUSTRY = "generic";
+export const DEFAULT_INDUSTRY = "generic_builder";
