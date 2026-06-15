@@ -40,9 +40,9 @@ export const MarkdownView = ({ markdown }) => {
   const DocLink = ({ href = "", children }) => {
     const isAnchor = href.startsWith("#");
     const isAbsolute = /^https?:\/\//i.test(href);
-    const file = href.split("/").pop().split("#")[0];
+    const base = href.split("/").pop().split("#")[0]; // flat docs dir → basename
     const hash = href.includes("#") ? "#" + href.split("#")[1] : "";
-    const mdSlug = file && file.toLowerCase().endsWith(".md") ? FILE_TO_SLUG[file.toLowerCase()] : null;
+    const mdSlug = base && base.toLowerCase().endsWith(".md") ? FILE_TO_SLUG[base.toLowerCase()] : null;
 
     if (isAnchor) {
       return <a href={href} className="text-blue-600 hover:text-blue-700 underline underline-offset-2">{children}</a>;
@@ -58,8 +58,8 @@ export const MarkdownView = ({ markdown }) => {
         </a>
       );
     }
-    // Non-md relative file (e.g., openapi.yaml, postman_collection.json) → served resource.
-    const target = isAbsolute ? href : `${DOCS_RES}/${href.replace(/^\.\//, "")}`;
+    // Absolute URL → as-is. Any other relative path → served doc resource (flat dir, by basename).
+    const target = isAbsolute ? href : `${DOCS_RES}/${base}`;
     return (
       <a href={target} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-blue-600 hover:text-blue-700 underline underline-offset-2">
         {children}<ExternalLink className="h-3 w-3" />

@@ -214,3 +214,28 @@ production key_registry).
   46 targeted tests pass; frontend build clean. Trust & Security messaging accurate
   (Current=Ed25519 signing/gen/verify; Readiness=Cloud KMS/HSM; Planned=RFC-3161).
   DEPLOYMENT: READY.
+
+### June 15, 2026 — Documentation Portal at /docs (structured knowledge base)
+- **New `/docs` route** (`frontend/src/docs/DocsPortal.jsx`, registered in App.js as `/docs/*`):
+  a Stripe/Twilio-style documentation hub that complements — does NOT duplicate — the
+  Developer Portal (`/developers`) and API reference (`/api/docs`).
+- **Components created:** docsData.js (IA tree, SLUG_MAP, FILE_TO_SLUG, SEARCHABLE_DOCS,
+  CANONICAL), MarkdownView.jsx (react-markdown + remark-gfm, heading anchors, in-doc link
+  rewriting to internal slugs / served resources, styled tables/code), DocsSidebar.jsx,
+  DocsHome.jsx, DocContent.jsx (fetch + on-page TOC + deep-link scroll), DocsSearch.jsx
+  (lazy full-text index over all docs; title + content + heading-level results; category
+  filter; ⌘K), Releases.jsx, TrustOverview.jsx (live `/api/developer` signing).
+- **Categories:** Getting Started, Developer Documentation, Architecture, Security & Trust,
+  SDKs & Tools, Deployment & Operations, Governance & Compliance, API Specifications,
+  Release Notes — extensible by appending to DOC_TREE (version-ready).
+- **Docs files:** copied README.md → docs/ (served), created docs/RELEASE_NOTES.md (v2.0.0
+  entry). All markdown served at `/api/resources/docs/*.md` (verified 200).
+- **Navigation cross-links added:** Developer Portal nav (`dev-nav-docs`) + footer
+  (`footer-docs-portal`), Demo header (`demo-nav-docs`), Admin sidebar (`admin-nav-docs`),
+  and docs top-nav to Website/Demo/Developers/Admin/API Docs.
+- **Docs updated:** README.md + CANONICAL_ENDPOINTS.md now list the Documentation Portal.
+- **Dependencies:** react-markdown, remark-gfm.
+- **Tested:** testing_agent iteration_13 (12/13; tablet nav overflow) → fixed (header nav
+  `hidden md:flex` → `hidden lg:flex`) → iteration_14 100% (6/6 viewport+route combos).
+  Markdown rendering, deep links, search (doc + heading level, category filter), trust
+  overview, release notes, cross-links and mobile drawer all verified. DEPLOYMENT: READY.

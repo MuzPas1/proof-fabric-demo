@@ -24,6 +24,18 @@ updated: **2026-06-12**.
 > separate `api.pfprotocol.com` deployment). It links to the backend-served docs
 > under `/api` so it works on any attached domain.
 
+## 1b. Documentation Portal (structured knowledge base)
+| Item | Value |
+|---|---|
+| Documentation Portal | **https://demo.pfprotocol.com/docs** |
+| Purpose | Structured, searchable knowledge base: product, architecture, security & trust, SDKs, deployment & operations, governance & compliance, API specs, release notes (`/docs/releases`). Complements (does not duplicate) the Developer Portal and `/api/docs`. |
+| Status | 🟢 Live |
+
+> The Documentation Portal renders the backend-served Markdown docs
+> (`/api/resources/docs/*.md`) with left-nav tree, full-text search, deep links
+> and Markdown rendering. Interactive onboarding stays in `/developers`; endpoint
+> reference stays in `/api/docs`.
+
 ## 2. Demo Environment (live, evaluatable)
 | Item | Value |
 |---|---|
