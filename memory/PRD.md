@@ -239,3 +239,31 @@ production key_registry).
   `hidden md:flex` → `hidden lg:flex`) → iteration_14 100% (6/6 viewport+route combos).
   Markdown rendering, deep links, search (doc + heading level, category filter), trust
   overview, release notes, cross-links and mobile drawer all verified. DEPLOYMENT: READY.
+
+### June 15, 2026 — Industry template: Change & Release Management
+- **New industry template `change_release`** in the Demo Portal Industry selector
+  (frontend/src/lib/industries.js). Reuses the existing proof engine, artifact
+  structure, Proof ID generation, signing and auditor verification flows — NOT a
+  separate app.
+- **10 readiness checks** (Test Execution → Production Monitoring Readiness).
+- **Release-aware input form** (Release Name, Release ID, Environment select
+  Dev/UAT/Production, Application, CAB Reference, Release Window) with enterprise
+  sample data; mapped onto the canonical {transaction_id,user_id,amount} contract.
+- **CRM proof output:** Workflow Type, Release Name, Environment, Status
+  (Ready/Not Ready), Checks Passed (n/10), Release ID, Proof ID, timestamp.
+- **Release Readiness Certificate** view: Release Name, Environment, Readiness
+  Score, Proof ID, Ed25519 signature (via /demo/artifact), Verification Status,
+  Generated timestamp.
+- **Positioning** ("Today's release readiness is report-focused. PFP makes it
+  evidence-proof oriented.") + Traditional (Emails→Checklists→Screenshots→
+  Approvals→Trust) vs PFP (Evidence→Validation→Cryptographic Proof→Verification).
+- **Backend (additive, backward-compatible):** `IndustryContext` gained optional
+  `context` dict, embedded in the signed canonical payload → release metadata is
+  cryptographically proven and returned on verify (no raw data needed).
+- **Auditor verification** surfaces embedded release context for release proofs.
+- **Docs:** new `USE_CASE_CHANGE_RELEASE.md` under a new "Industry Use Cases"
+  category in /docs; RELEASE_NOTES.md v2.1.0 entry.
+- Consistency/Exception sections hidden for CRM (kept for other industries).
+- **Tested:** testing_agent iteration_15 — 100% (10/10 CRM criteria + Financial
+  regression + docs portal). One CRITICAL React crash (React.Fragment without
+  default React import) found & fixed (use named Fragment). Backend pytest 47 pass.
