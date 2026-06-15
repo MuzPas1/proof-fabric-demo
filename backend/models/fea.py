@@ -1,4 +1,4 @@
-"""FEA (Financial Evidence Artifact) data models."""
+"""Proof Artifact data models (stored under the `fea` / `fea_id` contract names)."""
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -21,7 +21,7 @@ class Parties(BaseModel):
 
 class FEAPayload(BaseModel):
     """
-    The canonical FEA payload - THIS IS WHAT GETS SIGNED.
+    The canonical Proof Artifact payload - THIS IS WHAT GETS SIGNED.
     
     Contains ONLY the signed data, no signature metadata.
     """
@@ -35,11 +35,11 @@ class FEAPayload(BaseModel):
 
 
 class GenerateFEARequest(BaseModel):
-    """Input for FEA generation - POST /generate-fea."""
+    """Input for Proof Artifact generation - POST /api/fea/generate."""
     idempotency_key: str = Field(..., min_length=1)
     transaction_id: str = Field(..., min_length=1)
     timestamp: str = Field(..., description="ISO 8601 UTC timestamp")
-    amount: int = Field(..., ge=0, description="Amount in smallest unit (e.g., paise)")
+    amount: int = Field(..., ge=0, description="Amount/quantity in smallest unit (e.g., cents)")
     currency: str = Field(..., min_length=3, max_length=3)
     payer_id: str = Field(..., description="Hashed/tokenized payer identifier")
     payee_id: str = Field(..., description="Hashed/tokenized payee identifier")
@@ -48,7 +48,7 @@ class GenerateFEARequest(BaseModel):
 
 class FEAResponse(BaseModel):
     """
-    Response from FEA generation.
+    Response from Proof Artifact generation.
     
     Structure separates:
     - fea_payload: the signed data
@@ -68,7 +68,7 @@ class FEAResponse(BaseModel):
 
 class VerifyFEARequest(BaseModel):
     """
-    Input for FEA verification - POST /verify-fea.
+    Input for Proof Artifact verification - POST /api/fea/verify.
     
     Supports both:
     - New format: fea_payload + signature + signature_version (external)
@@ -80,7 +80,7 @@ class VerifyFEARequest(BaseModel):
 
 
 class VerifyFEAResponse(BaseModel):
-    """Response from FEA verification."""
+    """Response from Proof Artifact verification."""
     valid: bool
     reason: Optional[str] = None
     signature_version: str = "unknown"
@@ -99,7 +99,7 @@ class PublicVerifyResponse(BaseModel):
 
 
 class FEADocument(BaseModel):
-    """MongoDB document for FEA storage."""
+    """MongoDB document for Proof Artifact storage."""
     model_config = ConfigDict(extra="ignore")
     
     fea_id: str

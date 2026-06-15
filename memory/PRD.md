@@ -192,3 +192,25 @@ production key_registry).
   api_keys, webhooks, tenants, demo_proofs (operational), audit_log, key_registry, users,
   demo_key_registry. Post-cleanup lifecycle verified healthy. NOTE: production DB is separate/
   managed — production cleanup must be run after redeploy.
+
+### June 15, 2026 — Pre-redeploy production review (branding + preview-ref sweep)
+- **Canonical domains confirmed:** pfprotocol.com, demo.pfprotocol.com,
+  /admin/login, /developers, /api/docs, /api/redoc, /api/openapi.json (all 200).
+  Frontend uses REACT_APP_BACKEND_URL (prod injects demo.pfprotocol.com); copy-paste
+  snippets use demo.pfprotocol.com. No per-domain code.
+- **Preview-ref sweep:** ZERO emergent/preview/`fea-crypto` URLs remain in any
+  shipped developer-facing surface (docs, SDKs, OpenAPI, Postman, frontend, portal,
+  nav). Remaining occurrences are only non-shipped internals: test files (env-driven
+  fallback default), test_reports/*.json (historical), memory/PRD.md (changelog), and
+  the CANONICAL_ENDPOINTS "Deprecated/removed" mapping (intentional).
+- **Branding refresh (OpenAPI/Swagger + code):** FastAPI title description, all `/api/fea/*`
+  + public route docstrings, fea_service/models docstrings, admin ProofExplorer dialog,
+  sdks/README, DEVELOPER_GUIDE → "Financial Evidence Artifact" replaced with "Proof Artifact".
+  Regenerated docs/openapi.json + docs/openapi.yaml (36 paths, canonical servers preserved,
+  0 finance phrases). amount description "paise"→"cents". CONTRACT NAMES PRESERVED: `fea_id`,
+  `/api/fea/*`, schema names (FEAResponse/GenerateFEARequest/…), operationIds — no breaking change.
+- **backend_test.py** made env-driven (removed hardcoded preview URL).
+- **Verified:** signatures unchanged; Swagger/ReDoc/OpenAPI render; full lifecycle works;
+  46 targeted tests pass; frontend build clean. Trust & Security messaging accurate
+  (Current=Ed25519 signing/gen/verify; Readiness=Cloud KMS/HSM; Planned=RFC-3161).
+  DEPLOYMENT: READY.

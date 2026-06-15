@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
-  title: Proof Fabric Protocol (PFP) API
-  description: Cryptographically verifiable Financial Evidence Artifacts — enterprise
-    control plane.
+  title: Proof Fabric Protocol (PFP)
+  description: Cryptographically verifiable Proof Artifacts — general-purpose proof
+    infrastructure & enterprise control plane.
   version: 2.0.0
 paths:
   /api/fea/generate:
@@ -10,8 +10,7 @@ paths:
       tags:
       - FEA
       summary: Generate Fea Endpoint
-      description: Generate a Financial Evidence Artifact (tenant-bound, dual-layer
-        replay protection).
+      description: Generate a Proof Artifact (tenant-bound, dual-layer replay protection).
       operationId: generate_fea_endpoint_api_fea_generate_post
       requestBody:
         content:
@@ -39,7 +38,8 @@ paths:
       tags:
       - FEA
       summary: Batch Generate Fea
-      description: 'Generate up to 500 FEAs in a single call. Each item is processed
+      description: 'Generate up to 500 Proof Artifacts in a single call. Each item
+        is processed
 
         independently; partial failures are reported per-item.'
       operationId: batch_generate_fea_api_fea_batch_post
@@ -69,7 +69,7 @@ paths:
       tags:
       - FEA
       summary: Verify Fea Endpoint
-      description: Verify an FEA payload and signature.
+      description: Verify a Proof Artifact payload and signature.
       operationId: verify_fea_endpoint_api_fea_verify_post
       requestBody:
         content:
@@ -97,7 +97,7 @@ paths:
       tags:
       - FEA
       summary: List Feas
-      description: List the authenticated tenant's FEAs (paginated).
+      description: List the authenticated tenant's Proof Artifacts (paginated).
       operationId: list_feas_api_fea_get
       security:
       - APIKeyHeader: []
@@ -137,7 +137,7 @@ paths:
       tags:
       - FEA
       summary: Get Fea
-      description: Authenticated single-FEA fetch (tenant scoped).
+      description: Authenticated single Proof Artifact fetch (tenant scoped).
       operationId: get_fea_api_fea__fea_id__get
       security:
       - APIKeyHeader: []
@@ -166,7 +166,7 @@ paths:
       tags:
       - Public
       summary: Public Verify Fea
-      description: 'Public verification of an FEA by ID.
+      description: 'Public verification of a Proof Artifact by ID.
 
         No authentication required.'
       operationId: public_verify_fea_api_public_verify__fea_id__get
@@ -202,7 +202,7 @@ paths:
 
         Returns both active and retired keys to support
 
-        verification of historical FEAs.'
+        verification of historical Proof Artifacts.'
       operationId: get_key_registry_api_public_keys_get
       responses:
         '200':
@@ -211,6 +211,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/KeyRegistryResponse'
+  /api/demo/sandbox-key:
+    post:
+      tags:
+      - Demo
+      summary: Issue Sandbox Key
+      description: 'Issue a real, scoped, short-lived sandbox API key for the Developer
+        Portal.
+
+
+        The key is a genuine DB-backed credential (only its SHA-256 hash is stored)
+
+        bound to the isolated `sandbox` tenant with data-plane scopes
+
+        (fea:write / fea:read / fea:verify) and a 1-day expiry. It can immediately
+
+        sign and verify Proof Artifacts through the live API.'
+      operationId: issue_sandbox_key_api_demo_sandbox_key_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SandboxKeyResponse'
   /api/demo/proof:
     post:
       tags:
@@ -867,6 +891,24 @@ paths:
           content:
             application/json:
               schema: {}
+  /api/developer:
+    get:
+      summary: Developer Resources
+      description: 'Developer resource index — Swagger, OpenAPI, Postman, docs, and
+        SDKs.
+
+
+        URLs are built from the request''s own base URL, so this works identically
+        on
+
+        any attached domain (demo.pfprotocol.com or api.pfprotocol.com).'
+      operationId: developer_resources_api_developer_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
 components:
   schemas:
     ArtifactRequest:
@@ -1180,7 +1222,7 @@ components:
       - signature
       - public_key_id
       title: FEAResponse
-      description: 'Response from FEA generation.
+      description: 'Response from Proof Artifact generation.
 
 
         Structure separates:
@@ -1210,7 +1252,7 @@ components:
           type: integer
           minimum: 0.0
           title: Amount
-          description: Amount in smallest unit (e.g., paise)
+          description: Amount/quantity in smallest unit (e.g., cents)
         currency:
           type: string
           maxLength: 3
@@ -1240,7 +1282,7 @@ components:
       - payer_id
       - payee_id
       title: GenerateFEARequest
-      description: Input for FEA generation - POST /generate-fea.
+      description: Input for Proof Artifact generation - POST /api/fea/generate.
     HTTPValidationError:
       properties:
         detail:
@@ -1537,6 +1579,43 @@ components:
       - created_at
       title: PublicVerifyResponse
       description: Response from public verification - GET /public/verify/{fea_id}.
+    SandboxKeyResponse:
+      properties:
+        api_key:
+          type: string
+          title: Api Key
+        key_id:
+          type: string
+          title: Key Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        scopes:
+          items:
+            type: string
+          type: array
+          title: Scopes
+        expires_at:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Expires At
+        environment:
+          type: string
+          title: Environment
+          default: sandbox
+        note:
+          type: string
+          title: Note
+          default: Sandbox key for evaluation only. Scoped to the sandbox tenant,
+            rate-limited and short-lived. Do not use in production.
+      type: object
+      required:
+      - api_key
+      - key_id
+      - tenant_id
+      - scopes
+      title: SandboxKeyResponse
     SubscribeRequest:
       properties:
         url:
@@ -1663,7 +1742,7 @@ components:
       - fea_payload
       - signature
       title: VerifyFEARequest
-      description: 'Input for FEA verification - POST /verify-fea.
+      description: 'Input for Proof Artifact verification - POST /api/fea/verify.
 
 
         Supports both:
@@ -1692,7 +1771,7 @@ components:
       required:
       - valid
       title: VerifyFEAResponse
-      description: Response from FEA verification.
+      description: Response from Proof Artifact verification.
   securitySchemes:
     APIKeyHeader:
       type: apiKey

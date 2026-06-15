@@ -1,6 +1,8 @@
 """
 Proof Fabric Protocol (PFP) - Main Server
-Enterprise-grade API for cryptographically verifiable Financial Evidence Artifacts (FEAs).
+Enterprise-grade API for cryptographically verifiable Proof Artifacts —
+general-purpose proof infrastructure (data plane API stores artifacts under the
+historical `fea` / `fea_id` contract names for backward compatibility).
 """
 import sys
 from pathlib import Path
@@ -42,7 +44,7 @@ demo_db = db
 
 app = FastAPI(
     title="Proof Fabric Protocol (PFP)",
-    description="Cryptographically verifiable Financial Evidence Artifacts — enterprise control plane.",
+    description="Cryptographically verifiable Proof Artifacts — general-purpose proof infrastructure & enterprise control plane.",
     version="2.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",

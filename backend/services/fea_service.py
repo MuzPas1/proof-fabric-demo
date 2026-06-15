@@ -1,4 +1,7 @@
-"""FEA generation service.
+"""Proof Artifact generation service.
+
+Internally the artifact and its fields use the `fea` / `fea_id` contract names
+for backward compatibility.
 
 SIGNING MODEL:
 - ONLY the fea_payload is signed
@@ -102,7 +105,7 @@ def compute_fea_hash(fea_payload: Dict[str, Any]) -> str:
 
 def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = False, tenant_id: str = "default") -> Tuple[FEAResponse, FEADocument]:
     """
-    Generate a Financial Evidence Artifact.
+    Generate a Proof Artifact.
     
     SECURITY FEATURES:
     - Domain prefix "PFP_V2::" for cross-protocol attack prevention

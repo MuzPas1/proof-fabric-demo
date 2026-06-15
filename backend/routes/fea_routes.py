@@ -111,7 +111,7 @@ async def generate_fea_endpoint(
     body: GenerateFEARequest,
     key: ApiKeyRecord = Depends(require_scope("fea:write")),
 ):
-    """Generate a Financial Evidence Artifact (tenant-bound, dual-layer replay protection)."""
+    """Generate a Proof Artifact (tenant-bound, dual-layer replay protection)."""
     from server import db as database
 
     response = await _generate_one(database, body, key.tenant_id)
@@ -155,7 +155,7 @@ async def batch_generate_fea(
     body: BatchGenerateRequest,
     key: ApiKeyRecord = Depends(require_scope("fea:write")),
 ):
-    """Generate up to 500 FEAs in a single call. Each item is processed
+    """Generate up to 500 Proof Artifacts in a single call. Each item is processed
     independently; partial failures are reported per-item."""
     from server import db as database
 
@@ -189,7 +189,7 @@ async def verify_fea_endpoint(
     body: VerifyFEARequest,
     key: ApiKeyRecord = Depends(require_scope("fea:verify")),
 ):
-    """Verify an FEA payload and signature."""
+    """Verify a Proof Artifact payload and signature."""
     valid, reason, sig_version = await verify_fea_with_registry(
         body.fea_payload, body.signature, body.signature_version
     )
@@ -223,7 +223,7 @@ async def list_feas(
     limit: int = Query(50, ge=1, le=200),
     skip: int = Query(0, ge=0),
 ):
-    """List the authenticated tenant's FEAs (paginated)."""
+    """List the authenticated tenant's Proof Artifacts (paginated)."""
     from server import db as database
     query = {"tenant_id": key.tenant_id}
     total = await database.feas.count_documents(query)
@@ -241,7 +241,7 @@ async def list_feas(
 
 @router.get("/{fea_id}", response_model=FEAResponse)
 async def get_fea(fea_id: str, key: ApiKeyRecord = Depends(require_scope("fea:read"))):
-    """Authenticated single-FEA fetch (tenant scoped)."""
+    """Authenticated single Proof Artifact fetch (tenant scoped)."""
     from server import db as database
     doc = await database.feas.find_one(
         {"fea_id": fea_id, "tenant_id": key.tenant_id}, {"_id": 0}

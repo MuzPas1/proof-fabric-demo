@@ -1,8 +1,9 @@
 # Proof Fabric Protocol (PFP) — Official SDKs
 
 Production SDKs for integrating PFP and performing **independent, offline
-verification** of Financial Evidence Artifacts (FEAs) and signed proof
-artifacts. All four SDKs implement the **identical** canonicalization
+verification** of Proof Artifacts (signed, content-addressed proofs; stored
+under the `fea` / `fea_id` contract names). All four SDKs implement the
+**identical** canonicalization
 (`PFP-JCS`, see [`docs/CANONICALIZATION_SPEC.md`](../docs/CANONICALIZATION_SPEC.md))
 so a proof signed by the server verifies byte-identically in any language.
 

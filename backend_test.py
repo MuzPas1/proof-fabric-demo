@@ -6,12 +6,14 @@ Tests all endpoints including authentication, FEA generation, verification, and 
 import requests
 import json
 import sys
+import os
 import time
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
-# External URL from frontend/.env
-BASE_URL = "https://cryptographic-hub.preview.emergentagent.com"
+# External base URL — sourced from the environment (REACT_APP_BACKEND_URL),
+# never hardcoded, so it works against preview, demo, or production unchanged.
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "http://localhost:8001").rstrip("/")
 API_URL = f"{BASE_URL}/api"
 
 class PFPAPITester:

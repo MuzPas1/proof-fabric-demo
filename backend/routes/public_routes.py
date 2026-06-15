@@ -12,7 +12,7 @@ router = APIRouter(prefix="/public", tags=["Public"])
 @router.get("/verify/{fea_id}", response_model=PublicVerifyResponse)
 async def public_verify_fea(fea_id: str):
     """
-    Public verification of an FEA by ID.
+    Public verification of a Proof Artifact by ID.
     No authentication required.
     """
     from server import db
@@ -55,7 +55,7 @@ async def get_key_registry():
     No authentication required.
     
     Returns both active and retired keys to support
-    verification of historical FEAs.
+    verification of historical Proof Artifacts.
     """
     keys = await get_all_keys()
     

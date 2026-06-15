@@ -95,7 +95,7 @@ export default function ProofExplorer() {
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader><DialogTitle>FEA detail</DialogTitle>
-            <DialogDescription>Signed Financial Evidence Artifact (read-only).</DialogDescription>
+            <DialogDescription>Signed Proof Artifact (read-only).</DialogDescription>
           </DialogHeader>
           {detail && (
             <pre className="text-xs bg-slate-50 border border-slate-200 rounded-md p-3 overflow-auto max-h-[60vh]"

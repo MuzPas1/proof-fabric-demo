@@ -77,7 +77,7 @@ verify independently.
 
 ### 4.1 `POST /api/fea/generate` — issue an FEA *(auth)*
 
-Issue a new signed Financial Evidence Artifact.
+Issue a new signed Proof Artifact.
 
 **Request body (`GenerateFEARequest`)**
 
