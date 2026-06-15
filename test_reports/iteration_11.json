@@ -1,0 +1,60 @@
+{
+  "summary": "Production-hardening pass on /developers focused on the NEW Trust & Security section, the Security nav item, the KMS migration resource card, clean-session lifecycle (no login/cookies), and full responsiveness (desktop 1920x1080, tablet 768x1024, mobile 390x844). 23/23 desktop checks pass. Full lifecycle (sandbox key -> proof -> verify with 'Proof is authentic & untampered' + 3 PASS checks) succeeds on both desktop and mobile with a fresh, unauthenticated session. All 14 primary resource/doc/SDK/footer links return HTTP 200. ONE responsive bug found: the top nav horizontally overflows at 768px (tablet) viewport (scrollWidth=934 > viewport=768), caused by 7 nav items + 'Demo' + 'Admin' + 'API Docs' cluster.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "DevNav (header navigation)",
+        "issue": "Horizontal overflow at tablet width (768px). Top nav contains 7 section links + Demo + Admin + API Docs button; right cluster extends to right=934, causing the whole page to be horizontally scrollable on tablets in portrait. Screenshot shows 'Demo / Admin / A...' clipped at the right edge. The hidden-sm-inline class for Admin only collapses BELOW 640px; at 768px Admin (right=819) and API Docs (right=934) are both rendered alongside all 7 section links, exceeding viewport.",
+        "selector": "div.flex.items-center.gap-2.shrink-0 (right-side action cluster) inside header / DevNav",
+        "priority": "MEDIUM",
+        "evidence": "viewport=768 scrollW=934 (offender testids: dev-nav-admin right=819, dev-nav-api-docs right=934). Mobile 390 and Desktop 1920 are clean (scrollW===clientW)."
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Tablet (768px) nav header",
+        "issues": ["Right-side action buttons (Demo / Admin / API Docs) push the page width to 934px, producing horizontal scroll. Consider collapsing into a menu below `lg` breakpoint, or hiding Admin/Demo on tablet, or wrapping into a second row."]
+      }
+    ],
+    "testability_gaps": [
+      {
+        "component": "Playground three cards (SandboxKey / FirstProof / VerifyProof)",
+        "issue": "The three playground 'cards' lack outer data-testids (sandbox-key-card / first-proof-card / verify-proof-card not present). Functional content is queryable via the action testids (generate-sandbox-key-btn, generate-proof-btn, verify-proof-btn, *-result), but card-level stacking/responsiveness cannot be asserted by testid.",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "verified_flows": [
+    "CLEAN SESSION (localStorage/sessionStorage cleared, no cookies, no admin login) -> full lifecycle succeeds on DESKTOP 1920x1080: generate-sandbox-key-btn -> sandbox-key-result with key 'pfp_sandbox_f14c3620...'; generate-proof-btn -> first-proof-result with proof-id/hash/signature values; verify-proof-input AUTO-FILLED with that proof id; verify-proof-btn -> verify-outcome contains 'Proof is authentic & untampered'; check-signature / check-hash / check-timestamp all PASS",
+    "CLEAN SESSION lifecycle also succeeds on MOBILE 390x844 end-to-end (key -> proof -> verify-outcome 'Proof is authentic & untampered')",
+    "Trust & Security: dev-trust-architecture present; trust-badges contains exactly 5 capability badges (trust-badge-enterprise-key-management / cloud-kms / hsm-architecture / cryptographic-signing / external-time-anchoring) with statuses Ready/Ready/Ready/Active/Planned",
+    "Three trust columns populated from live /api/developer signing capability: trust-col-current (4 bullets), trust-col-readiness (2 bullets), trust-col-planned (2 bullets). Footer text shows live values: 'Active signing: Ed25519 provider local (seed-env). Config-only migration to: aws, azure, gcp, local.'",
+    "dev-nav-trust ('Security' link) renders in top nav and smooth-scrolls dev-trust-architecture into the viewport",
+    "Resources include resource-kms-migration linking to /api/resources/docs/KMS_MIGRATION_GUIDE.md (200 OK)",
+    "Platform Status: status-api / status-docs / status-sdks / status-verification / status-demo all Operational",
+    "Terminology: 'Financial Evidence Artifact' NOT present anywhere in visible portal copy",
+    "All 14 primary resource/doc/SDK links return HTTP 200 (swagger, redoc, openapi.json, API_REFERENCE.md, DEVELOPER_GUIDE.md, QUICKSTART.md, INTEGRATION_GUIDE.md, ARCHITECTURE.md, KMS_MIGRATION_GUIDE.md, /api/developer, all 4 SDK source files)",
+    "Mobile (390x844): no horizontal overflow (scrollW===clientW=390); trust columns stack vertically (each ~358px wide)",
+    "Tablet (768x1024): trust section renders correctly BUT page has horizontal overflow at 934px due to nav header"
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "FIX (MEDIUM): Resolve tablet (768px) horizontal overflow caused by DevNav right cluster. Suggested options: (a) hide Admin link at <lg breakpoint (it's already 'hidden sm:inline-flex' - bump to 'hidden lg:inline-flex'); (b) collapse the section nav into a hamburger menu below `lg`; (c) hide 'Demo' link below `lg`. Currently scrollWidth=934 vs viewport=768.",
+    "OPTIONAL (LOW): Add data-testid='sandbox-key-card' / 'first-proof-card' / 'verify-proof-card' to the three Playground wrapper containers so responsive stacking can be asserted via testid."
+  ],
+  "critical_code_review_comments": [
+    "DevNav: 'Admin' has 'hidden sm:inline-flex' (visible from 640px+), and the 7 section nav links remain inline at 768px alongside Demo/Admin/API Docs button; combined width exceeds the 768px tablet viewport. The breakpoint strategy should escalate hides to 'lg' (1024px) or introduce a menu collapse below `lg`.",
+    "TrustArchitecture fetches /api/developer on every mount with no caching; if the user toggles between pages frequently it will refetch. Low-impact since payload is tiny.",
+    "TrustArchitecture footer string uses backticks: signing.supported_providers.join(', ') with no fallback when array missing — minor robustness gap."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "96% (24/25 hard checks pass; 1 tablet responsiveness bug)"},
+  "test_credentials": "Not required — verified the entire flow works with NO login, NO cookies, NO prior auth (clean session).",
+  "seed_data_creation": "None — used live backend; generated sandbox keys pfp_sandbox_f14c3620... (desktop) and pfp_sandbox_7f675c94... (mobile).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Trust section fetch URL: GET /api/developer (returns .signing.{current_capability, architecture_readiness, planned_enhancements, algorithm, active_provider, active_mode, supported_providers}). Verified live values: active_provider='local' (seed-env), supported_providers=['aws','azure','gcp','local'], algorithm='Ed25519'. Verify outcome string MUST be exactly 'Proof is authentic & untampered'. Tablet 768px nav overflow is the only outstanding bug.",
+  "rca of the issue": "Tablet horizontal overflow RCA: At viewport=768, DevNav renders the entire 7-item section nav + 'Demo' (testid dev-nav-demo) + 'Admin' (testid dev-nav-admin, hidden only below 640px via 'hidden sm:inline-flex') + 'API Docs' (testid dev-nav-api-docs, always visible). The right action cluster (.flex.items-center.gap-2.shrink-0) stretches from x=685 to x=934, overflowing the 768px viewport by 166px. Reproduction: open https://cryptographic-hub.preview.emergentagent.com/developers at 768x1024 -> body has horizontal scroll. Mitigation: change 'hidden sm:inline-flex' on dev-nav-admin (and optionally dev-nav-demo) to 'hidden lg:inline-flex', OR add a tablet/mobile hamburger menu for the section nav."
+}

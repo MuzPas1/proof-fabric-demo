@@ -9,6 +9,7 @@ import { GetStarted } from "./GetStarted";
 import { Sdks } from "./Sdks";
 import { VerificationExamples } from "./VerificationExamples";
 import { UseCases } from "./UseCases";
+import { TrustArchitecture } from "./TrustArchitecture";
 import { Resources } from "./Resources";
 import { PlatformStatus } from "./PlatformStatus";
 
@@ -30,6 +31,7 @@ export default function DevelopersPage() {
           <Sdks />
           <VerificationExamples />
           <UseCases />
+          <TrustArchitecture />
           <Resources />
           <PlatformStatus />
         </main>

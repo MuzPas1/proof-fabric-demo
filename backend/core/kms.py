@@ -47,6 +47,17 @@ class KMSProvider(ABC):
     """Abstract signing-key provider."""
 
     name: str = "abstract"
+    # How key material is handled by this provider:
+    #   "seed-env"    -> Ed25519 seed read from an environment variable (dev/sandbox)
+    #   "seed-import" -> Ed25519 seed pulled from a cloud secret store, signed locally
+    #   "native"      -> private key never leaves the HSM/KMS; signing is remote
+    mode: str = "seed"
+    algorithm: str = "Ed25519"
+    # True only for providers whose private key never leaves the HSM/KMS.
+    native_sign: bool = False
+
+    # Logical key names the platform expects to resolve.
+    LOGICAL_KEYS = ("production", "demo")
 
     @abstractmethod
     def get_signing_key(self, logical_name: str) -> SigningKey:
@@ -62,13 +73,43 @@ class KMSProvider(ABC):
         return _public_key_id_from_seed(self.get_signing_key(logical_name))
 
     def sign(self, logical_name: str, message: bytes) -> bytes:
+        """Sign ``message`` for ``logical_name``.
+
+        The default implementation materializes the seed and signs locally with
+        libsodium. A future native-HSM provider overrides this so the private
+        key never leaves the secure boundary, WITHOUT any caller changes — all
+        signing in the platform flows through this method.
+        """
         return self.get_signing_key(logical_name).sign(message).signature
+
+    def status(self) -> Dict[str, object]:
+        """Non-secret readiness summary for health/observability surfaces.
+
+        NEVER returns key material — only which logical keys resolve and the
+        provider's capability profile.
+        """
+        keys: Dict[str, bool] = {}
+        for logical in self.LOGICAL_KEYS:
+            try:
+                self.get_signing_key(logical)
+                keys[logical] = True
+            except Exception:
+                keys[logical] = False
+        return {
+            "provider": self.name,
+            "mode": self.mode,
+            "algorithm": self.algorithm,
+            "native_sign": self.native_sign,
+            "logical_keys": keys,
+            "ready": all(keys.values()),
+        }
 
 
 class LocalKMSProvider(KMSProvider):
     """Reads Ed25519 seeds from environment variables. Development only."""
 
     name = "local"
+    mode = "seed-env"
     _ENV_MAP = {"production": "PRIVATE_KEY", "demo": "DEMO_PRIVATE_KEY"}
 
     def __init__(self) -> None:
@@ -94,6 +135,8 @@ class LocalKMSProvider(KMSProvider):
 class _SecretBackedProvider(KMSProvider):
     """Shared logic for cloud providers that fetch an Ed25519 seed (b64) from
     a cloud secret store and sign locally."""
+
+    mode = "seed-import"
 
     def __init__(self) -> None:
         self._cache: Dict[str, SigningKey] = {}
@@ -188,3 +231,30 @@ def get_kms() -> KMSProvider:
             raise KMSNotConfigured(f"Unknown KMS_PROVIDER: {settings.KMS_PROVIDER}")
         _provider_instance = cls()
     return _provider_instance
+
+
+# Capability matrix for evaluator/operator surfaces (no secrets).
+SUPPORTED_PROVIDERS = sorted(_PROVIDERS.keys())
+
+
+def kms_status() -> Dict[str, object]:
+    """Non-secret KMS readiness summary for /api/health and the dev portal.
+
+    Reports the active provider, its capability mode, which logical signing
+    keys resolve, and the set of providers this build can switch to with no
+    code changes (config-only migration).
+    """
+    try:
+        st = get_kms().status()
+    except Exception as e:  # provider misconfigured — surface, don't crash
+        st = {
+            "provider": settings.KMS_PROVIDER,
+            "mode": "unknown",
+            "algorithm": "Ed25519",
+            "native_sign": False,
+            "logical_keys": {},
+            "ready": False,
+            "error": str(e),
+        }
+    st["supported_providers"] = SUPPORTED_PROVIDERS
+    return st

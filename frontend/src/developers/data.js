@@ -17,6 +17,7 @@ export const NAV_SECTIONS = [
   { id: "get-started", label: "Quick Start" },
   { id: "sdks", label: "SDKs" },
   { id: "use-cases", label: "Use Cases" },
+  { id: "trust", label: "Security" },
   { id: "status", label: "Status" },
 ];
 
@@ -248,6 +249,7 @@ export const RESOURCES = [
   { id: "quickstart", icon: "Rocket", title: "Quick Start", desc: "Integrate end-to-end in under 30 minutes.", href: `${DOCS}/QUICKSTART.md`, external: true },
   { id: "integration-guide", icon: "Plug", title: "Integration Guide", desc: "Idempotency, webhooks, batch issuance & best practices.", href: `${DOCS}/INTEGRATION_GUIDE.md`, external: true },
   { id: "architecture", icon: "Network", title: "Architecture Overview", desc: "System design, trust domains & data model.", href: `${DOCS}/ARCHITECTURE.md`, external: true },
+  { id: "kms-migration", icon: "Key", title: "Signing & KMS / HSM Guide", desc: "Signing architecture, Cloud KMS/HSM migration path & RFC-3161 readiness.", href: `${DOCS}/KMS_MIGRATION_GUIDE.md`, external: true },
   { id: "developer-index", icon: "Boxes", title: "Developer Resources (JSON)", desc: "Live index of every doc, spec, SDK & collection.", href: `${API}/developer`, external: true },
 ];
 

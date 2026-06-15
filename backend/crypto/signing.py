@@ -64,13 +64,17 @@ def sign_message(message: str) -> str:
     
     Input: canonical JSON string (UTF-8)
     Output: pure base64-encoded signature
+
+    Signing is delegated to the configured KMS provider's ``sign`` method so a
+    future native-HSM provider (private key never leaves the HSM) can be enabled
+    by configuration alone, with no change to this call site.
     """
-    signing_key = get_signing_key()
+    from core.kms import get_kms
     # Add domain prefix for cross-protocol attack prevention
     prefixed_message = DOMAIN_PREFIX_V2 + message
     message_bytes = prefixed_message.encode('utf-8')
-    signed = signing_key.sign(message_bytes)
-    return base64.b64encode(signed.signature).decode('utf-8')
+    signature = get_kms().sign("production", message_bytes)
+    return base64.b64encode(signature).decode('utf-8')
 
 
 def sign_hash(hash_hex: str) -> str:
@@ -78,10 +82,10 @@ def sign_hash(hash_hex: str) -> str:
     LEGACY (v1): Sign a hash using Ed25519.
     No domain prefix for backward compatibility.
     """
-    signing_key = get_signing_key()
+    from core.kms import get_kms
     hash_bytes = bytes.fromhex(hash_hex)
-    signed = signing_key.sign(hash_bytes)
-    return base64.b64encode(signed.signature).decode('utf-8')
+    signature = get_kms().sign("production", hash_bytes)
+    return base64.b64encode(signature).decode('utf-8')
 
 
 def normalize_signature(signature: str) -> str:

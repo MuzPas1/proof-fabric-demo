@@ -202,7 +202,12 @@ async def health_check():
     except Exception:
         pass
     healthy = all(checks.values())
-    return {"status": "healthy" if healthy else "degraded", "checks": checks}
+    try:
+        from core.kms import kms_status
+        signing = kms_status()
+    except Exception:
+        signing = {"provider": settings.KMS_PROVIDER, "ready": False}
+    return {"status": "healthy" if healthy else "degraded", "checks": checks, "signing": signing}
 
 
 @app.get("/api/metrics")
@@ -274,4 +279,37 @@ async def developer_resources(request: Request):
             "data_plane": "X-API-Key: <key>  (provisioned via POST /api/admin/api-keys/create)",
             "control_plane": "Authorization: Bearer <jwt>  (POST /api/auth/login)",
         },
+        "signing": _signing_capability(),
+    }
+
+
+def _signing_capability() -> dict:
+    """Non-secret signing/KMS capability profile for the developer portal.
+
+    Distinguishes what is ACTIVE today from what the architecture is READY for
+    and what is PLANNED — so the portal can present accurate trust messaging
+    without overstating capabilities.
+    """
+    from core.kms import kms_status
+    st = kms_status()
+    return {
+        "algorithm": st.get("algorithm", "Ed25519"),
+        "active_provider": st.get("provider"),
+        "active_mode": st.get("mode"),
+        "ready": st.get("ready"),
+        "supported_providers": st.get("supported_providers", []),
+        "current_capability": [
+            "Deterministic canonicalization (PFP-JCS) + Ed25519 signing",
+            "Independent, offline verification with the public key",
+            "Pluggable KMS abstraction (single signing call site)",
+            "Multi-tenant key isolation; persistent key registry & rotation",
+        ],
+        "architecture_readiness": [
+            "Cloud KMS ready — AWS Secrets Manager / GCP Secret Manager / Azure Key Vault (config-only switch)",
+            "HSM-ready signing architecture (pluggable provider; no API changes)",
+        ],
+        "planned_enhancements": [
+            "Native HSM signing — private key never leaves the HSM/KMS boundary",
+            "External time anchoring (RFC-3161 / transparency log)",
+        ],
     }

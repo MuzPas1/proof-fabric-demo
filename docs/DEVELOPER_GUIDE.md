@@ -7,31 +7,34 @@
 
 ## 1. What PFP is, and the problem it solves
 
-When a financial transaction is settled across multiple systems (banks,
-processors, ledgers, auditors), each party keeps its own record. Reconciling
-those records later requires trust — auditors must trust that what each party
-shows them today matches what really happened. That trust is brittle, and
-disputes are expensive.
+When an important event happens across multiple systems — a settlement between
+banks, an AI model's decision, a credential issuance, a shipment hand-off — each
+party keeps its own record. Reconciling those records later requires trust:
+others must trust that what each party shows them today matches what really
+happened. That trust is brittle, and disputes are expensive.
 
-**Proof Fabric Protocol (PFP)** replaces that trust with **independently
-verifiable cryptographic evidence**:
+**Proof Fabric Protocol (PFP)** is general-purpose proof infrastructure that
+replaces that trust with **independently verifiable cryptographic evidence**:
 
-- Every transaction is turned into a **Financial Evidence Artifact (FEA)** —
-  a deterministic, canonical JSON document with an Ed25519 signature.
-- The FEA can be **re-verified by anyone**, using only the public key
-  registry. No shared secret. No issuer round-trip required for
-  verification.
-- Replay protection guarantees a transaction can be evidenced **exactly
-  once**. Idempotent issuance makes retries safe.
+- Every event is turned into a **Proof Artifact** — a deterministic, canonical
+  JSON document with an Ed25519 signature. (The data-plane API and storage use
+  the historical identifier `fea` / `fea_id`; it is a stable contract name, not
+  a finance-only scope.)
+- The Proof Artifact can be **re-verified by anyone**, using only the public key
+  registry. No shared secret. No issuer round-trip required for verification.
+- Replay protection guarantees an event can be evidenced **exactly once**.
+  Idempotent issuance makes retries safe.
 
-Concretely, PFP gives integrators:
+PFP applies across financial services, AI governance, education, telecom,
+compliance, government, healthcare and supply chain. Concretely, it gives
+integrators:
 
 | Problem | PFP guarantee |
 |---|---|
-| Two parties show different amounts | Signed FEA pins the canonical record. |
-| Records altered after the fact | Tampered FEAs fail `signature_valid`. |
-| Same transaction issued twice with different data | `409 CONFLICT` on the replay. |
-| Audit needs raw data | Auditor verifies signature against the public key — no data sharing required. |
+| Two parties show different data | Signed Proof Artifact pins the canonical record. |
+| Records altered after the fact | Tampered artifacts fail `signature_valid`. |
+| Same event issued twice with different data | `409 CONFLICT` on the replay. |
+| Audit needs raw data | Verifier checks the signature against the public key — no data sharing required. |
 | Key rotation / compromise | `active` / `retired` / `revoked` status per key; revoked keys fail verification. |
 
 ---
@@ -57,8 +60,10 @@ PFP uses **API key** authentication via the `X-API-Key` HTTP header.
 X-API-Key: pfp_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-- **Sandbox:** `GET /api/config` returns a working `test_api_key`. Use it for
-  development. Do not call this endpoint from production.
+- **Sandbox:** `POST /api/demo/sandbox-key` issues a real, scoped, short-lived
+  sandbox key (no auth, rate-limited) — used by the Developer Portal's
+  "Generate Sandbox Key" button. Outside production, `GET /api/config` also
+  returns a static `test_api_key`. Do not call `/api/config` from production.
 - **Production:** keys are provisioned by the PFP team — email
   **support@pfprotocol.com** to request one.
 
@@ -439,6 +444,19 @@ export async function verifyPublic(feaId: string) {
 - **No raw PII:** PFP never asks for or stores raw payer/payee identifiers
   — only hashed values.
 - **Transport:** TLS 1.2+ on all endpoints.
+
+### 11.1 Signing & key management (pluggable KMS)
+- Signing keys are resolved through a **pluggable KMS abstraction**
+  (`KMS_PROVIDER`): `local` (software, active) and **Cloud-KMS-ready** providers
+  for AWS Secrets Manager, GCP Secret Manager and Azure Key Vault — switchable by
+  configuration with no API or proof-format change. A **native HSM** provider
+  (key never leaves the HSM) is a planned enhancement of the same interface.
+- Production and demo use **separate signing keys** (distinct trust domains).
+- Non-secret signing posture is observable at `GET /api/health` (`signing`) and
+  `GET /api/developer` (`signing` capability profile) — never key material.
+- Full migration steps, security model and **RFC-3161 time-anchoring readiness**
+  are in [`KMS_MIGRATION_GUIDE.md`](./KMS_MIGRATION_GUIDE.md) and
+  [`ARCHITECTURE.md`](./ARCHITECTURE.md) §8.
 
 ---
 
