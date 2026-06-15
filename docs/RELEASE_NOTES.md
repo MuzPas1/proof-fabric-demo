@@ -5,6 +5,54 @@ published by appending a new section to this document.
 
 ---
 
+## v2.1.0 — Change & Release Management use case
+**Release date:** 2026-06-15
+
+### Features added
+- **New industry template: Change & Release Management** in the Demo Portal's
+  Industry selector. Turns release approvals and control checks into an
+  independently verifiable **Release Readiness Proof Artifact** with a
+  **Release Readiness Proof ID**.
+- **10 readiness checks:** Test Execution, UAT Completion, Security Scan,
+  Vulnerability Remediation, CAB Approval, Change Approval, Deployment Approval,
+  Rollback Validation, Compliance Control, Production Monitoring Readiness.
+- **Release-aware input form** (Release Name, Release ID, Environment, Application,
+  CAB Reference, Release Window) with enterprise sample data
+  (REL-2026-001 · Payments Platform · Production · CAB-APPROVED-2026 · Weekend
+  Deployment).
+- **Release Readiness Certificate** view: Release Name, Environment, Readiness
+  Score, Proof ID, cryptographic (Ed25519) signature, verification status and
+  generated timestamp.
+- Proof output surfaces Workflow Type, Release Name, Environment,
+  Status (Ready / Not Ready), checks passed, timestamp, signature and Proof ID.
+- Positioning + approach comparison: *Traditional* (Emails → Checklists →
+  Screenshots → Approvals → Trust) vs *PFP* (Evidence → Validation →
+  Cryptographic Proof → Verification).
+- New documentation page: **Industry Use Cases → Change & Release Management**.
+
+### Improvements
+- Auditor verification now surfaces embedded release context (Release Name,
+  Environment, etc.) for release proofs — verifiable with only the Proof ID.
+
+### Security updates
+- Industry `context` (Release Name, Environment, Release ID, …) is embedded in
+  the **signed canonical payload**, so release metadata is cryptographically
+  proven and tamper-evident — no raw release data is needed to verify.
+
+### Documentation updates
+- Added `USE_CASE_CHANGE_RELEASE.md`; surfaced it in the Documentation Portal
+  under a new **Industry Use Cases** category.
+
+### Breaking changes
+- None. Reuses the existing proof engine, artifact structure, Proof ID
+  generation, signing and auditor verification flows. The `IndustryContext`
+  schema gained an optional, backward-compatible `context` field.
+
+### Migration guidance
+- None required.
+
+---
+
 ## v2.0.0 — Developer Portal, Live Sandbox & Industry-Agnostic Positioning
 **Release date:** 2026-06-15
 

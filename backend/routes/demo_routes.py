@@ -207,10 +207,16 @@ class IndustryContext(BaseModel):
     cryptographically proven by the issued proof_id. The cryptographic
     primitives (canonicalize → SHA-256 → Ed25519) are unchanged; only the
     input dict gains an additional, well-defined field.
+
+    `context` carries optional, industry-specific descriptive metadata
+    (e.g. Release Name / Environment for Change & Release Management). It is
+    embedded in the signed payload too, so it is proven and returned on verify
+    without exposing any raw operational data.
     """
     id: str = Field(..., min_length=1, max_length=50)
     label: str = Field(..., min_length=1, max_length=100)
     checks: List[IndustryCheck] = Field(..., min_length=1, max_length=20)
+    context: Optional[Dict[str, str]] = None
 
 
 class IssueRequest(BaseModel):
@@ -274,6 +280,10 @@ def _build_canonical_payload(
                 for c in industry.checks
             ],
         }
+        if industry.context:
+            payload["industry"]["context"] = {
+                str(k).strip(): str(v).strip() for k, v in industry.context.items()
+            }
     return payload
 
 

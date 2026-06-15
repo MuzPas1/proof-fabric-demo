@@ -99,6 +99,15 @@ export const DOC_TREE = [
     ],
   },
   {
+    id: "use-cases",
+    label: "Industry Use Cases",
+    icon: "Boxes",
+    blurb: "How PFP applies across industries.",
+    items: [
+      { slug: "use-case-change-release", title: "Change & Release Management", file: "USE_CASE_CHANGE_RELEASE.md", type: "doc" },
+    ],
+  },
+  {
     id: "deployment",
     label: "Deployment & Operations",
     icon: "ServerCog",

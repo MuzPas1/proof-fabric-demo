@@ -377,6 +377,69 @@ export const INDUSTRIES = {
       },
     ],
   },
+
+  change_release: {
+    id: "change_release",
+    label: "Change & Release Management",
+    emoji: "\u{1F680}", // rocket
+    tagline: "Evidence-proof release readiness — not just a report.",
+    workflow: "Change & Release Management",
+    // Today's release readiness is report-focused. PFP makes it evidence-proof oriented.
+    positioning:
+      "Today's release readiness is report-focused. PFP makes it evidence-proof oriented.",
+    approaches: {
+      traditional: ["Emails", "Checklists", "Screenshots", "Approvals", "Trust"],
+      pfp: ["Evidence", "Validation", "Cryptographic Proof", "Verification"],
+    },
+    // Industry-specific input form (replaces the default 3-field transaction form).
+    fields: [
+      { key: "release_name", label: "Release Name", default: "Payments Platform v4.2", mono: false },
+      { key: "release_id", label: "Release ID", default: "REL-2026-001", mono: true },
+      { key: "environment", label: "Environment", type: "select", options: ["Dev", "UAT", "Production"], default: "Production" },
+      { key: "application", label: "Application", default: "Payments Platform", mono: false },
+      { key: "cab_reference", label: "CAB Reference", default: "CAB-APPROVED-2026", mono: true },
+      { key: "release_window", label: "Release Window", default: "Weekend Deployment", mono: false },
+    ],
+    // Map custom fields onto the canonical proof payload (engine/contract unchanged).
+    mapTo: { transaction_id: "release_id", user_id: "application" },
+    // UI terminology overrides.
+    workflowField: "release_name",
+    environmentField: "environment",
+    idField: "release_id",
+    statusLabels: { pass: "Ready", fail: "Not Ready" },
+    certificate: true,
+    hideConsistency: true,
+    ui: {
+      heroTitle: "Cryptographic proof of release readiness.",
+      heroSubtitle:
+        "Turn change & release approvals into an independently verifiable Release Readiness Proof Artifact — no screenshots, no email trails.",
+      inputTitle: "Release Details",
+      inputDesc: "Enter the release details to begin readiness verification.",
+      processBtn: "Generate Release Readiness Proof",
+      checksTitle: "Release Readiness Checks",
+      checksDesc: "Automated readiness checks for Change & Release Management.",
+      failToggle: "Simulate Readiness Failure",
+      evidenceTitle: "Evidence Generated",
+      evidenceDesc: "A Release Readiness Proof Artifact has been issued for this release.",
+      evidencePlaceholder:
+        "Enter release details above and generate the proof. A Release Readiness Proof Artifact (with a Release Readiness Proof ID) will appear here.",
+      artifactLabel: "Release Readiness Proof Artifact",
+      proofIdLabel: "Release Readiness Proof ID",
+      auditorDesc: "Verify a Release Readiness Proof using only its Proof ID — no raw release data required.",
+    },
+    checks: [
+      { name: "Test Execution Proof", desc: "Confirms functional and regression test suites executed and passed for this release." },
+      { name: "UAT Completion Proof", desc: "Verifies user acceptance testing was completed and signed off by business stakeholders." },
+      { name: "Security Scan Proof", desc: "Attests that SAST/DAST security scans ran with no unresolved critical findings." },
+      { name: "Vulnerability Remediation Proof", desc: "Confirms identified vulnerabilities were remediated or formally risk-accepted." },
+      { name: "CAB Approval Proof", desc: "Verifies the Change Advisory Board reviewed and approved the release." },
+      { name: "Change Approval Proof", desc: "Confirms the change request was approved per the change-management policy." },
+      { name: "Deployment Approval Proof", desc: "Attests deployment was authorized for the target environment and release window." },
+      { name: "Rollback Validation Proof", desc: "Verifies a tested rollback / back-out plan exists and was validated." },
+      { name: "Compliance Control Proof", desc: "Confirms required compliance and governance controls were satisfied." },
+      { name: "Production Monitoring Readiness Proof", desc: "Verifies monitoring, alerting and observability are in place for go-live." },
+    ],
+  },
 };
 
 export const INDUSTRY_ORDER = [
@@ -389,6 +452,7 @@ export const INDUSTRY_ORDER = [
   "government",
   "ecommerce",
   "manufacturing",
+  "change_release",
 ];
 
 export const DEFAULT_INDUSTRY = "generic";

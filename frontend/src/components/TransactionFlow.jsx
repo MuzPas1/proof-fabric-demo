@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
@@ -50,6 +50,8 @@ import {
   ClipboardCopy,
   Code,
   BookOpen,
+  Sparkles,
+  Award,
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -232,6 +234,15 @@ export default function TransactionFlow() {
   // Industry context (presentation-only — backend payload is unchanged)
   const [industryId, setIndustryId] = useState(DEFAULT_INDUSTRY);
   const industry = INDUSTRIES[industryId] || INDUSTRIES[DEFAULT_INDUSTRY];
+  const isCustomForm = Array.isArray(industry.fields) && industry.fields.length > 0;
+
+  // Custom (industry-specific) form values — e.g. Change & Release Management.
+  const buildExtraDefaults = (ind) => {
+    const o = {};
+    (ind.fields || []).forEach((f) => { o[f.key] = f.default ?? ""; });
+    return o;
+  };
+  const [extra, setExtra] = useState(() => buildExtraDefaults(industry));
 
   // Compliance toggle
   const [simulateComplianceFail, setSimulateComplianceFail] = useState(false);
@@ -263,22 +274,51 @@ export default function TransactionFlow() {
 
   const isCompliant = complianceState.status === "COMPLIANT";
 
-  const canProcess =
-    form.transaction_id.trim() &&
-    form.user_id.trim() &&
-    String(form.amount).trim() &&
-    !isNaN(Number(form.amount));
+  // Canonical record sent to the proof engine. For custom-form industries the
+  // industry fields are mapped onto the same {transaction_id,user_id,amount}
+  // contract so the proof engine, artifact structure and Proof ID generation
+  // are completely unchanged.
+  const currentRecord = () => {
+    if (isCustomForm) {
+      const mt = industry.mapTo || {};
+      return {
+        transaction_id: (extra[mt.transaction_id] || "").trim(),
+        user_id: (extra[mt.user_id] || "").trim(),
+        amount: "0.00",
+      };
+    }
+    return {
+      transaction_id: form.transaction_id,
+      user_id: form.user_id,
+      amount: form.amount,
+    };
+  };
 
-  const handleInput = (key, value) => {
-    setForm((f) => ({ ...f, [key]: value }));
+  const canProcess = isCustomForm
+    ? industry.fields.every((f) => String(extra[f.key] ?? "").trim())
+    : form.transaction_id.trim() &&
+      form.user_id.trim() &&
+      String(form.amount).trim() &&
+      !isNaN(Number(form.amount));
+
+  const invalidateDownstream = () => {
     if (processed) {
-      // edited after processing — invalidate downstream
       setProcessed(false);
       setProof(null);
       setAuditorResult(null);
       setAuditorProofId("");
       setMismatch(false);
     }
+  };
+
+  const handleInput = (key, value) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    invalidateDownstream();
+  };
+
+  const handleExtra = (key, value) => {
+    setExtra((e) => ({ ...e, [key]: value }));
+    invalidateDownstream();
   };
 
   const processTransaction = async () => {
@@ -308,19 +348,44 @@ export default function TransactionFlow() {
         })),
       };
 
+      // For custom-form industries, embed descriptive context (e.g. Release
+      // Name / Environment) into the signed payload so it is cryptographically
+      // proven and surfaced to auditors without exposing raw operational data.
+      if (isCustomForm) {
+        industryPayload.context = Object.fromEntries(
+          industry.fields.map((f) => [f.label, String(extra[f.key] ?? "").trim()])
+        );
+      }
+
+      const record = currentRecord();
       const { data } = await axios.post(`${API}/demo/issue`, {
-        transaction_id: form.transaction_id,
-        user_id: form.user_id,
-        amount: form.amount,
+        transaction_id: record.transaction_id,
+        user_id: record.user_id,
+        amount: record.amount,
         created_at: nowIso(),
         compliance: complianceState,
         industry: industryPayload,
       });
-      setProof({ ...data, compliance: complianceState });
+
+      // For certificate-style industries, also fetch the signed Ed25519
+      // artifact so the Release Readiness Certificate can show the signature.
+      let signature = null;
+      if (industry.certificate) {
+        try {
+          const { jsonText } = await fetchSignedArtifactJson();
+          signature = JSON.parse(jsonText)?.signature || null;
+        } catch {
+          /* signature is optional for the certificate */
+        }
+      }
+
+      setProof({ ...data, compliance: complianceState, signature });
       setAuditorProofId(data.proof_id); // pre-fill for demo convenience
       setProcessed(true);
       toast.success(
-        `Transaction processed — proof issued (${isCompliant ? "compliant" : "non-compliant"})`
+        isCustomForm
+          ? `Release Readiness Proof issued (${isCompliant ? "Ready" : "Not Ready"})`
+          : `Transaction processed — proof issued (${isCompliant ? "compliant" : "non-compliant"})`
       );
     } catch (e) {
       const detail =
@@ -370,12 +435,13 @@ export default function TransactionFlow() {
 
   /** Fetch the signed artifact JSON (raw text). Used by both download + link. */
   const fetchSignedArtifactJson = async () => {
+    const record = currentRecord();
     const { data, headers } = await axios.post(
       `${API}/demo/artifact`,
       {
-        transaction_id: form.transaction_id,
-        user_id: form.user_id,
-        amount: form.amount,
+        transaction_id: record.transaction_id,
+        user_id: record.user_id,
+        amount: record.amount,
         compliance: complianceState,
       },
       { responseType: "text", transformResponse: (t) => t }
@@ -482,6 +548,7 @@ export default function TransactionFlow() {
 
   const resetAll = () => {
     setForm(DEFAULTS);
+    setExtra(buildExtraDefaults(industry));
     setProcessed(false);
     setProcessing(false);
     setSimulateComplianceFail(false);
@@ -490,7 +557,7 @@ export default function TransactionFlow() {
     setAuditorProofId("");
     setAuditorResult(null);
     setMismatch(false);
-    toast.message("New transaction started");
+    toast.message(isCustomForm ? "New release started" : "New transaction started");
   };
 
   return (
@@ -551,14 +618,14 @@ export default function TransactionFlow() {
           className="text-3xl sm:text-4xl font-semibold tracking-tight text-gray-900 font-['Space_Grotesk']"
           data-testid="page-title"
         >
-          Cryptographic proof for any regulated workflow.
+          {industry.ui?.heroTitle || "Cryptographic proof for any regulated workflow."}
         </h1>
         <p
           className="mt-3 text-base text-gray-600 max-w-2xl"
           data-testid="page-subtitle"
         >
-          This demo shows how transactions, records and events are converted
-          into independently verifiable proof artifacts — across industries.
+          {industry.ui?.heroSubtitle ||
+            "This demo shows how transactions, records and events are converted into independently verifiable proof artifacts — across industries."}
         </p>
 
         {/* Industry context selector — primary context, immediately visible */}
@@ -584,6 +651,7 @@ export default function TransactionFlow() {
                 value={industryId}
                 onValueChange={(v) => {
                   setIndustryId(v);
+                  setExtra(buildExtraDefaults(INDUSTRIES[v] || INDUSTRIES[DEFAULT_INDUSTRY]));
                   if (processed) {
                     // changing the displayed compliance ruleset invalidates
                     // the currently issued proof from a UX standpoint
@@ -630,14 +698,52 @@ export default function TransactionFlow() {
             </div>
           </div>
         </div>
+
+        {/* Positioning + approach comparison (industry-specific) */}
+        {industry.positioning && (
+          <div className="mt-5" data-testid="industry-positioning">
+            <div className="rounded-xl border border-blue-200 bg-blue-50/60 px-5 py-4 flex items-start gap-3">
+              <Sparkles className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+              <p className="text-sm text-blue-900 font-medium leading-relaxed">
+                {industry.positioning}
+              </p>
+            </div>
+            {industry.approaches && (
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-gray-200 bg-white px-5 py-4" data-testid="approach-traditional">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">Traditional Approach</div>
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                    {industry.approaches.traditional.map((s, i) => (
+                      <Fragment key={s}>
+                        <span className="inline-flex items-center rounded-md bg-gray-100 text-gray-600 px-2 py-1 text-xs font-medium">{s}</span>
+                        {i < industry.approaches.traditional.length - 1 && <ArrowRight className="w-3 h-3 text-gray-300" />}
+                      </Fragment>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 px-5 py-4" data-testid="approach-pfp">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-emerald-600">PFP Approach</div>
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                    {industry.approaches.pfp.map((s, i) => (
+                      <Fragment key={s}>
+                        <span className="inline-flex items-center rounded-md bg-emerald-100 text-emerald-700 px-2 py-1 text-xs font-medium">{s}</span>
+                        {i < industry.approaches.pfp.length - 1 && <ArrowRight className="w-3 h-3 text-emerald-300" />}
+                      </Fragment>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <main className="max-w-5xl mx-auto px-6 pb-20 space-y-5">
-        {/* 1. Transaction Input */}
+        {/* 1. Input (industry-aware) */}
         <SectionCard
           step="1"
-          title="Transaction"
-          description="Enter the transaction details to begin processing."
+          title={industry.ui?.inputTitle || "Transaction"}
+          description={industry.ui?.inputDesc || "Enter the transaction details to begin processing."}
           testId="section-transaction"
           tone={processed ? "success" : "neutral"}
           rightSlot={
@@ -650,30 +756,56 @@ export default function TransactionFlow() {
             )
           }
         >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <FieldInput
-              label="Transaction ID"
-              value={form.transaction_id}
-              onChange={(v) => handleInput("transaction_id", v)}
-              testId="input-transaction-id"
-              mono
-            />
-            <FieldInput
-              label="User ID"
-              value={form.user_id}
-              onChange={(v) => handleInput("user_id", v)}
-              testId="input-user-id"
-              mono
-            />
-            <FieldInput
-              label="Amount"
-              value={form.amount}
-              onChange={(v) => handleInput("amount", v)}
-              testId="input-amount"
-              mono
-              prefix="₹"
-            />
-          </div>
+          {isCustomForm ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="custom-industry-form">
+              {industry.fields.map((f) =>
+                f.type === "select" ? (
+                  <FieldSelect
+                    key={f.key}
+                    label={f.label}
+                    value={extra[f.key]}
+                    options={f.options}
+                    onChange={(v) => handleExtra(f.key, v)}
+                    testId={`input-${f.key}`}
+                  />
+                ) : (
+                  <FieldInput
+                    key={f.key}
+                    label={f.label}
+                    value={extra[f.key]}
+                    onChange={(v) => handleExtra(f.key, v)}
+                    testId={`input-${f.key}`}
+                    mono={f.mono}
+                  />
+                )
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <FieldInput
+                label="Transaction ID"
+                value={form.transaction_id}
+                onChange={(v) => handleInput("transaction_id", v)}
+                testId="input-transaction-id"
+                mono
+              />
+              <FieldInput
+                label="User ID"
+                value={form.user_id}
+                onChange={(v) => handleInput("user_id", v)}
+                testId="input-user-id"
+                mono
+              />
+              <FieldInput
+                label="Amount"
+                value={form.amount}
+                onChange={(v) => handleInput("amount", v)}
+                testId="input-amount"
+                mono
+                prefix="₹"
+              />
+            </div>
+          )}
           <div className="mt-5 flex items-center justify-end">
             <Button
               onClick={processTransaction}
@@ -686,7 +818,7 @@ export default function TransactionFlow() {
               ) : (
                 <ArrowRight className="w-4 h-4 mr-2" />
               )}
-              Process Transaction
+              {industry.ui?.processBtn || "Process Transaction"}
             </Button>
           </div>
         </SectionCard>
@@ -694,8 +826,8 @@ export default function TransactionFlow() {
         {/* 2. Compliance */}
         <SectionCard
           step="2"
-          title="Compliance Checks"
-          description={`Automated checks for ${industry.label}.`}
+          title={industry.ui?.checksTitle || "Compliance Checks"}
+          description={industry.ui?.checksDesc || `Automated checks for ${industry.label}.`}
           testId="section-compliance"
           tone={processed ? (isCompliant ? "success" : "error") : "neutral"}
           rightSlot={
@@ -705,7 +837,7 @@ export default function TransactionFlow() {
                   htmlFor="compliance-toggle"
                   className="text-xs text-gray-500"
                 >
-                  Simulate Compliance Failure
+                  {industry.ui?.failToggle || "Simulate Compliance Failure"}
                 </Label>
                 <Switch
                   id="compliance-toggle"
@@ -725,7 +857,11 @@ export default function TransactionFlow() {
               {processed && (
                 <StatusPill
                   status={isCompliant ? "success" : "error"}
-                  label={isCompliant ? "Compliant" : "Non-Compliant"}
+                  label={
+                    industry.statusLabels
+                      ? isCompliant ? industry.statusLabels.pass : industry.statusLabels.fail
+                      : isCompliant ? "Compliant" : "Non-Compliant"
+                  }
                   testId="compliance-overall-badge"
                 />
               )}
@@ -759,19 +895,25 @@ export default function TransactionFlow() {
             data-testid="compliance-summary"
           >
             {isCompliant
-              ? "All checks passed — workflow is COMPLIANT"
-              : `${industry.checks[0].name} failed — workflow is NON-COMPLIANT`}
+              ? industry.statusLabels
+                ? `All checks passed — release is ${industry.statusLabels.pass.toUpperCase()}`
+                : "All checks passed — workflow is COMPLIANT"
+              : industry.statusLabels
+                ? `${industry.checks[0].name} failed — release is ${industry.statusLabels.fail.toUpperCase()}`
+                : `${industry.checks[0].name} failed — workflow is NON-COMPLIANT`}
           </p>
         </SectionCard>
 
         {/* 3. Evidence Generated — CORE PRODUCT (always rendered) */}
         <SectionCard
           step="3"
-          title="Evidence Generated"
+          title={industry.ui?.evidenceTitle || "Evidence Generated"}
           description={
             processed && proof
-              ? "A cryptographically verifiable proof artifact has been issued for this transaction."
-              : "A cryptographic proof of the processed transaction will appear here."
+              ? industry.ui?.evidenceDesc ||
+                "A cryptographically verifiable proof artifact has been issued for this transaction."
+              : industry.ui?.evidencePlaceholder ||
+                "A cryptographic proof of the processed transaction will appear here."
           }
           testId="section-evidence"
           tone={
@@ -803,19 +945,53 @@ export default function TransactionFlow() {
               className="rounded-lg border border-dashed border-gray-200 bg-gray-50/60 px-4 py-6 text-sm text-gray-500"
               data-testid="evidence-placeholder"
             >
-              Process a transaction above. Once compliance checks pass, a
-              tamper-resistant proof artifact will be generated here automatically.
+              {industry.ui?.evidencePlaceholder ||
+                "Process a transaction above. Once compliance checks pass, a tamper-resistant proof artifact will be generated here automatically."}
             </div>
           ) : (
             <>
               <div className="rounded-lg bg-gray-50 border border-gray-100 divide-y divide-gray-100">
+                {isCustomForm && (
+                  <>
+                    <ProofRow
+                      label="Workflow Type"
+                      value={industry.workflow || industry.label}
+                      testId="evidence-workflow-type"
+                      valueClass="text-gray-900"
+                    />
+                    <ProofRow
+                      label="Release Name"
+                      value={extra[industry.workflowField] || "—"}
+                      testId="evidence-release-name"
+                      valueClass="text-gray-900"
+                    />
+                    <ProofRow
+                      label="Environment"
+                      value={extra[industry.environmentField] || "—"}
+                      testId="evidence-environment"
+                      valueClass="text-gray-900"
+                    />
+                    <ProofRow
+                      label="Status"
+                      value={isCompliant ? industry.statusLabels.pass : industry.statusLabels.fail}
+                      testId="evidence-status"
+                      valueClass={isCompliant ? "text-emerald-700" : "text-red-700"}
+                    />
+                    <ProofRow
+                      label="Checks Passed"
+                      value={`${simulateComplianceFail ? industry.checks.length - 1 : industry.checks.length}/${industry.checks.length}`}
+                      testId="evidence-checks-passed"
+                      valueClass="text-gray-900"
+                    />
+                  </>
+                )}
                 <ProofRow
-                  label="Transaction ID"
+                  label={isCustomForm ? "Release ID" : "Transaction ID"}
                   value={proof.transaction_id}
                   testId="evidence-transaction-id"
                 />
                 <ProofRow
-                  label="Proof ID"
+                  label={industry.ui?.proofIdLabel || "Proof ID"}
                   value={shortHash(proof.proof_id)}
                   full={proof.proof_id}
                   testId="evidence-proof-id"
@@ -941,11 +1117,69 @@ export default function TransactionFlow() {
           )}
         </SectionCard>
 
+        {/* 3b. Release Readiness Certificate (certificate-style industries) */}
+        {isCustomForm && industry.certificate && processed && proof && (
+          <div
+            className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden"
+            data-testid="release-readiness-certificate"
+          >
+            <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-blue-50/80 to-white">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center">
+                  <Award className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-gray-900 font-['Space_Grotesk']">
+                    Release Readiness Certificate
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    Cryptographically signed · independently verifiable
+                  </div>
+                </div>
+              </div>
+              <StatusPill
+                status={isCompliant ? "success" : "error"}
+                label={isCompliant ? industry.statusLabels.pass : industry.statusLabels.fail}
+                testId="certificate-status-badge"
+              />
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-0 rounded-lg bg-gray-50 border border-gray-100 divide-y sm:divide-y-0 divide-gray-100">
+                <ProofRow label="Release Name" value={extra[industry.workflowField] || "—"} testId="cert-release-name" />
+                <ProofRow label="Environment" value={extra[industry.environmentField] || "—"} testId="cert-environment" />
+                <ProofRow
+                  label="Readiness Score"
+                  value={`${Math.round(((simulateComplianceFail ? industry.checks.length - 1 : industry.checks.length) / industry.checks.length) * 100)}%`}
+                  testId="cert-readiness-score"
+                  valueClass={isCompliant ? "text-emerald-700" : "text-amber-700"}
+                />
+                <ProofRow
+                  label="Verification Status"
+                  value={isCompliant ? "Ready for Production" : "Blocked — Not Ready"}
+                  testId="cert-verification-status"
+                  valueClass={isCompliant ? "text-emerald-700" : "text-red-700"}
+                />
+                <ProofRow label="Proof ID" value={shortHash(proof.proof_id)} full={proof.proof_id} testId="cert-proof-id" />
+                <ProofRow label="Generated (UTC)" value={formatTsUTC(proof.issued_at)} testId="cert-timestamp" />
+              </div>
+              <div className="mt-3 rounded-lg bg-gray-950 border border-gray-800 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-wider text-gray-400">Cryptographic Signature (Ed25519)</div>
+                <div className="mt-1 font-mono text-[12px] text-gray-200 break-all" data-testid="cert-signature">
+                  {proof.signature || "Signature available in the downloadable proof artifact"}
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-gray-500" data-testid="certificate-note">
+                This certificate proves release readiness without exposing raw release data. Anyone can verify it using only the Proof ID.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* 4. Auditor / External Verification */}
         <SectionCard
           step="4"
           title="Auditor Verification"
-          description="Verify any issued proof using only its Proof ID — no transaction data required."
+          description={industry.ui?.auditorDesc || "Verify any issued proof using only its Proof ID — no transaction data required."}
           testId="section-auditor"
           tone={
             auditorResult
@@ -993,7 +1227,7 @@ export default function TransactionFlow() {
         </SectionCard>
 
         {/* 5. Consistency */}
-        {processed && proof && (
+        {processed && proof && !industry.hideConsistency && (
           <SectionCard
             step="5"
             title="Cross-Party Consistency"
@@ -1051,7 +1285,7 @@ export default function TransactionFlow() {
         )}
 
         {/* 6. Exception (only on mismatch) */}
-        {processed && proof && mismatch && (
+        {processed && proof && mismatch && !industry.hideConsistency && (
           <SectionCard
             step="6"
             title="Exception"
@@ -1212,6 +1446,17 @@ function AuditorResult({ result }) {
         </div>
       )}
 
+      {valid && industry?.context && Object.keys(industry.context).length > 0 && (
+        <div
+          className="mt-3 rounded-md bg-white/80 border border-white/60 backdrop-blur-sm divide-y divide-gray-100"
+          data-testid="auditor-context"
+        >
+          {Object.entries(industry.context).map(([k, v]) => (
+            <ProofRow key={k} label={k} value={v} testId={`auditor-context-${k.toLowerCase().replace(/\s+/g, "-")}`} borderless />
+          ))}
+        </div>
+      )}
+
       {hasIndustryChecks && (
         <div
           className="mt-4 rounded-md bg-white/80 border border-white/60 backdrop-blur-sm divide-y divide-gray-100"
@@ -1330,6 +1575,31 @@ function AuditorResult({ result }) {
 }
 
 /* ------------------------------ sub components ---------------------------- */
+
+function FieldSelect({ label, value, options = [], onChange, testId }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+        {label}
+      </Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger
+          className="bg-white border-gray-200 text-gray-900 h-10 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+          data-testid={testId}
+        >
+          <SelectValue placeholder={`Select ${label}`} />
+        </SelectTrigger>
+        <SelectContent className="bg-white border-gray-200">
+          {options.map((opt) => (
+            <SelectItem key={opt} value={opt} data-testid={`${testId}-option-${opt.toLowerCase()}`}>
+              {opt}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
 
 function FieldInput({ label, value, onChange, testId, mono, prefix }) {
   return (
