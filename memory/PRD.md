@@ -134,3 +134,31 @@ production key_registry).
   App.js route, TransactionFlow.jsx + admin/Layout.jsx nav links.
 - Tested: testing_agent iteration_9 — 67/67 frontend checks pass, all 16
   backend resource endpoints 200, no regressions.
+
+### June 15, 2026 — Developer Portal: interactive sandbox + industry-agnostic refresh
+- NEW public endpoint `POST /api/demo/sandbox-key` (rate-limited 20/hr/IP):
+  issues a REAL DB-backed, scoped (fea:write/read/verify), 1-day key bound to
+  the isolated `sandbox` tenant. Reuses `api_key_service.create_api_key`.
+- Interactive in-browser lifecycle on `/developers` (Try It Live / `dev-playground`):
+  Step 1 Generate Sandbox Key → Step 2 Generate a Proof Artifact (live
+  `POST /api/fea/generate`) → Step 3 Verify Proof (live `GET /api/public/verify/{id}`),
+  each step auto-fills the next. Shows Proof ID, timestamp, fea_hash, signature,
+  and PASS/FAIL signature/hash/timestamp checks. React context `SandboxContext`
+  shares the key so Quick Start snippets + SDK examples pre-fill with the live key.
+- New sections: `WhyPfp` (value prop + Event→Proof→Artifact→Verification→Trust
+  lifecycle), `Onboarding` (5-step journey), `UseCases` (8 industries + 6
+  capabilities for non-developer evaluators), tabbed SDK quick examples
+  (Python/JS/Java/.NET), and `PlatformStatus` rebuilt to 5 live checks
+  (API/Docs/SDK/Verification/Demo, health + openapi driven).
+- TERMINOLOGY: industry-agnostic refresh across the portal — "Financial
+  Evidence Artifact (FEA)" → "Proof Artifact" in all visible copy (API field
+  names `fea_id`/`/api/fea/*` unchanged). PFP positioned as general-purpose
+  proof infrastructure.
+- Docs updated: README.md, docs/QUICKSTART.md, docs/CANONICAL_ENDPOINTS.md
+  (added sandbox-key endpoint + Developer Portal, Admin → /admin/login,
+  Proof Artifact terminology, USD examples).
+- New files: SandboxContext.jsx, SandboxKey.jsx, FirstProof.jsx, VerifyProof.jsx,
+  Playground.jsx, WhyPfp.jsx, UseCases.jsx, Onboarding.jsx (+ CopyInline in
+  CodeBlock.jsx). Backend test: tests/test_sandbox_portal.py (4 pass).
+- Tested: testing_agent iteration_10 — 12/12 frontend spec items pass (100%),
+  full live lifecycle verified; backend pytest 4/4 pass. No regressions.

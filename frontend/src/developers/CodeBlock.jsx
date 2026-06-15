@@ -41,7 +41,7 @@ export const CodeBlock = ({ code, lang = "bash", testid }) => {
   };
 
   return (
-    <div className="relative mt-4 rounded-xl border border-slate-800 bg-slate-950 shadow-inner overflow-hidden">
+    <div className="relative mt-4 rounded-xl border border-slate-800 bg-slate-950 shadow-inner overflow-hidden" data-testid={testid}>
       <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800/80">
         <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">
           {lang}
