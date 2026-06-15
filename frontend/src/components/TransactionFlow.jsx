@@ -48,6 +48,7 @@ import {
   ExternalLink,
   Link2,
   ClipboardCopy,
+  Code,
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -512,16 +513,26 @@ export default function TransactionFlow() {
               </div>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={resetAll}
-            className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-            data-testid="new-transaction-btn"
-          >
-            <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-            New Transaction
-          </Button>
+          <div className="flex items-center gap-1">
+            <a
+              href="/developers"
+              data-testid="demo-nav-developers"
+              className="hidden sm:inline-flex items-center text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md px-3 py-1.5 transition-colors"
+            >
+              <Code className="w-3.5 h-3.5 mr-1.5" />
+              Developers
+            </a>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={resetAll}
+              className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              data-testid="new-transaction-btn"
+            >
+              <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+              New Transaction
+            </Button>
+          </div>
         </div>
       </header>
 

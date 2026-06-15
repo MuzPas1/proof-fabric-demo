@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import TransactionFlow from "@/components/TransactionFlow";
 import PublicVerifyPage from "@/components/PublicVerifyPage";
 import AdminApp from "@/admin/AdminApp";
+import DevelopersPage from "@/developers/DevelopersPage";
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<TransactionFlow />} />
+          <Route path="/developers" element={<DevelopersPage />} />
           <Route path="/verify" element={<PublicVerifyPage />} />
           <Route path="/admin/*" element={<AdminApp />} />
         </Routes>

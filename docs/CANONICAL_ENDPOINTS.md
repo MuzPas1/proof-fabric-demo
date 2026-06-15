@@ -13,6 +13,17 @@ updated: **2026-06-12**.
 | Purpose | Product overview, positioning, contact, documentation entry point |
 | Status | 🟢 Live |
 
+## 1a. Developer Portal (canonical developer entry point)
+| Item | Value |
+|---|---|
+| Branded Developer Portal | **https://demo.pfprotocol.com/developers** |
+| Purpose | Single entry point: Quick Start, API docs, Swagger/ReDoc/OpenAPI, Auth guide, SDK downloads, Postman, integration & architecture guides, verification examples, platform status |
+| Status | 🟢 Live |
+
+> The Developer Portal is an in-app React route on the existing deployment (no
+> separate `api.pfprotocol.com` deployment). It links to the backend-served docs
+> under `/api` so it works on any attached domain.
+
 ## 2. Demo Environment (live, evaluatable)
 | Item | Value |
 |---|---|
@@ -87,6 +98,7 @@ server verifies byte-identically in any language.
 | Environment | URL | Role | Status |
 |---|---|---|---|
 | Production website | https://pfprotocol.com | Marketing / docs | 🟢 Live |
+| Developer Portal | https://demo.pfprotocol.com/developers | Canonical developer entry point | 🟢 Live |
 | Demo / sandbox | https://demo.pfprotocol.com | Live demo + evaluation API | 🟢 Live |
 | Production API | https://api.pfprotocol.com | Licensed integration API | 🟡 Deploy template |
 
