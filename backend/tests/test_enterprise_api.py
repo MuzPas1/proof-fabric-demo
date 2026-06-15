@@ -369,7 +369,7 @@ class TestPublic:
 
 class TestWebhooks:
     def test_webhook_lifecycle(self, api_key):
-        sub = {"url": "https://example.com/webhook", "events": ["fea.created"]}
+        sub = {"url": "https://example.com/webhook", "events": ["fea.generated"]}
         r = requests.post(f"{BASE_URL}/api/webhooks/subscribe", json=sub,
                           headers=key_headers(api_key), timeout=10)
         assert r.status_code in (200, 201), r.text

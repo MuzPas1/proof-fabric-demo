@@ -162,3 +162,33 @@ production key_registry).
   CodeBlock.jsx). Backend test: tests/test_sandbox_portal.py (4 pass).
 - Tested: testing_agent iteration_10 — 12/12 frontend spec items pass (100%),
   full live lifecycle verified; backend pytest 4/4 pass. No regressions.
+
+### June 15, 2026 — Production hardening: KMS/HSM readiness, trust positioning, data cleanup
+- **KMS/HSM (#1):** All signing now routes through `core.kms.get_kms().sign(logical, msg)`
+  (signing.py `sign_message`/`sign_hash`), so a future native-HSM provider (key never
+  leaves the HSM) drops in by config with ZERO API/payload/caller changes. Added provider
+  capability profile (`mode`, `algorithm`, `native_sign`, per-logical-key resolution) +
+  module `kms_status()`. Non-secret signing posture exposed at `GET /api/health` (`signing`)
+  and `GET /api/developer` (`signing` capability profile). Signatures byte-identical (crypto
+  tests pass). Local provider active today; aws/gcp/azure ready (config-only).
+- **Portal positioning (#6):** New `TrustArchitecture.jsx` "Trust & Security" section +
+  "Security" nav (`dev-nav-trust`): 5 capability badges + 3 honest columns (Current /
+  Readiness / Planned), live-driven from `/api/developer.signing`. No overstating — Active
+  vs Ready vs Planned clearly labeled. Added `kms-migration` resource card.
+- **Docs (#5) + RFC-3161 readiness (#4):** Updated README, QUICKSTART, CANONICAL_ENDPOINTS,
+  ARCHITECTURE (§8 signing & key-mgmt, §9 future readiness), DEVELOPER_GUIDE (§1 repositioned,
+  §11.1 signing). NEW `docs/KMS_MIGRATION_GUIDE.md`: signing architecture, AWS/GCP/Azure
+  migration steps + rollback, native-HSM path, security/trust model, RFC-3161 external
+  time-anchoring readiness (detached unsigned `time_anchor` envelope, opt-in, backward
+  compatible) — documentation only, no RFC-3161 code.
+- **Verification (#3):** testing_agent iteration_11 (24/25; found tablet nav overflow) →
+  fixed (section nav `hidden md:flex` → `hidden lg:flex`) → iteration_12 100% (4/4).
+  Clean-session (no login/cookies) full lifecycle works desktop + mobile; first-time
+  evaluator needs NO admin access; all portal links 200; no "Financial Evidence Artifact"
+  in visible copy. Fixed pre-existing webhook test (invalid event `fea.created` →
+  `fea.generated`). Backend: 106 pass.
+- **Data cleanup (#2):** Deleted 28,846 stale `tenant_id: null` FEAs from the PREVIEW DB
+  (pre-multi-tenancy load/test data, Mar–Jun 2026). Preserved all 94 tenant-scoped proofs,
+  api_keys, webhooks, tenants, demo_proofs (operational), audit_log, key_registry, users,
+  demo_key_registry. Post-cleanup lifecycle verified healthy. NOTE: production DB is separate/
+  managed — production cleanup must be run after redeploy.
