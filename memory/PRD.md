@@ -91,3 +91,15 @@ production key_registry).
 - Verified in preview: demo issue/verify/artifact/artifact-verify all 200,
   /api/health all-green, UI "Process Transaction" → proof generated.
 - ACTION: user must REDEPLOY to push this fix to https://demo.pfprotocol.com.
+
+### June 12, 2026 — Documentation refresh (production alignment)
+- Canonical URLs standardized repo-wide: website `https://pfprotocol.com`,
+  demo/sandbox `https://demo.pfprotocol.com`, production API
+  `https://api.pfprotocol.com`. Removed all internal preview URLs
+  (`transaction-sign-1.preview.emergentagent.com`) and placeholder
+  `app.pfprotocol.com` from docs/deploy/SDK/OpenAPI/Postman.
+- NEW: `docs/CANONICAL_ENDPOINTS.md` (authoritative endpoints + env status);
+  rewrote root `README.md`.
+- Updated all "separate demo DB" claims to the new single-DB + isolated
+  collections model; removed `DEMO_DB_NAME` from deploy configs (k8s, helm,
+  docker-compose) and ops/DR env lists.

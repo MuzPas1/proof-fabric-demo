@@ -6,10 +6,9 @@ metadata:
 data:
   ENVIRONMENT: "production"
   DB_NAME: "pfp_prod"
-  DEMO_DB_NAME: "pfp_demo"
   KMS_PROVIDER: "aws"
   ISSUER_ID: "pfp-issuer-001"
-  CORS_ORIGINS: "https://app.pfprotocol.com"
+  CORS_ORIGINS: "https://pfprotocol.com,https://demo.pfprotocol.com"
   ACCEPT_LEGACY_V1: "false"
   ENFORCE_VERIFY_TIMESTAMP: "true"
   MAX_REQUEST_BYTES: "1048576"

@@ -1,6 +1,8 @@
 # PFP — API Reference (v2.0.0)
 
-Base URL: `{BASE}` (e.g., `https://api.pfprotocol.com`). All routes are prefixed
+Base URL `{BASE}` — production `https://api.pfprotocol.com`, live demo/sandbox
+`https://demo.pfprotocol.com` (authoritative list:
+[`CANONICAL_ENDPOINTS.md`](CANONICAL_ENDPOINTS.md)). All routes are prefixed
 with `/api`. Machine-readable spec: [`openapi.json`](openapi.json) /
 [`openapi.yaml`](openapi.yaml).
 
@@ -74,11 +76,11 @@ Returns `fea_id`, signed `fea_payload` (v1.1 with `iat/jti/tenant_id/algorithm`)
 
 Delivery header: `X-PFP-Signature: sha256=<hmac-sha256(secret, body)>`.
 
-## Demo (rate-limited, isolated DB, no auth)
+## Demo (rate-limited, isolated collections, no auth)
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/api/demo/proof` | Stateless canonical hash |
-| POST | `/api/demo/issue` | Compliance-aware proof (demo DB) |
+| POST | `/api/demo/issue` | Compliance-aware proof (`demo_proofs` collection) |
 | GET | `/api/demo/verify/{proof_id}` | Lookup + re-hash |
 | POST | `/api/demo/artifact` | Downloadable Ed25519 artifact (demo key) |
 | POST | `/api/demo/artifact/verify` | Independent artifact verification |

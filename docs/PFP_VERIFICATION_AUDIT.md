@@ -6,8 +6,10 @@ treated false until proven. No code modified during this audit (only data
 restored after the destructive revocation demo; only this doc + master index
 created).
 
-Base URL: `https://transaction-sign-1.preview.emergentagent.com` (from
-`frontend/.env REACT_APP_BACKEND_URL`).
+Base URL at audit time: the Emergent pre-production (preview) pod from
+`frontend/.env REACT_APP_BACKEND_URL`. The platform is now live at
+`https://demo.pfprotocol.com` (demo) and `https://pfprotocol.com` (website) —
+see [`CANONICAL_ENDPOINTS.md`](CANONICAL_ENDPOINTS.md).
 
 ---
 
@@ -76,11 +78,12 @@ Base URL: `https://transaction-sign-1.preview.emergentagent.com` (from
 - **/api/config:** in production (`ENVIRONMENT=production`) `expose_sandbox_key ==
   False` → `test_api_key` omitted (`core/config.py:52-54`, `server.py:202-203`).
   In dev it is present (current preview).
-- **Separate databases:** prod DB `test_database` and demo DB `pfp_demo` are
-  distinct (`server.py:36-37`); new demo writes land in `pfp_demo`
-  (`demo_proofs=2`, isolated `key_registry` with `demo_key_eccf371ab3912a16`).
-  *(Residual: a legacy `demo_proofs` collection persists in the prod DB from
-  before isolation — stale, not written to anymore; not purged.)*
+- **Isolated demo trust domain:** as audited (2026-06-10) demo used a separate
+  `pfp_demo` database. **UPDATE (2026-06-12):** to support managed single-DB
+  deployments, demo now uses dedicated collections (`demo_proofs`,
+  `demo_key_registry`) inside the main DB, with a **separate demo signing key**
+  (`demo_key_eccf371ab3912a16`) — preserving trust-domain isolation
+  (`server.py`, `services/artifact_service.py`).
 - **Separate signing keys:** production `key_0c6c7071b3086f1a` vs demo
   `demo_key_eccf371ab3912a16` — differ (`KEYS DIFFER = True`).
 - **Rate limiting:** decorators on write paths (fea generate 120/min, batch
@@ -126,4 +129,4 @@ Base URL: `https://transaction-sign-1.preview.emergentagent.com` (from
   implements them, but only `local` is exercised (no cloud credentials). Cloud
   paths raise `KMSNotConfigured` without config.
 - **Legacy demo_proofs in prod DB — residual.** Not a functional gap; current
-  writes are isolated to `pfp_demo`. No migration/purge was performed.
+  writes are isolated to the `demo_proofs` collection. No migration/purge was performed.

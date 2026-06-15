@@ -54,8 +54,8 @@ GET /api/admin/audit/verify    # must return {"intact": true, ...}
 ## 5. Incident: API abuse / DoS
 1. Identify offending source from metrics/logs.
 2. Block at ingress/WAF; tighten rate limits if needed.
-3. For demo abuse: data is isolated in the demo DB — purge `demo_proofs` safely
-   without touching production.
+3. For demo abuse: data is isolated in the demo collections — purge `demo_proofs`
+   safely without touching production data.
 
 ## 6. Backups
 - MongoDB: daily full + oplog for PITR. Verify restores monthly.
@@ -63,7 +63,7 @@ GET /api/admin/audit/verify    # must return {"intact": true, ...}
   `audit_log`. See `DISASTER_RECOVERY.md`.
 
 ## 7. Configuration reference (env)
-`ENVIRONMENT`, `MONGO_URL`, `DB_NAME`, `DEMO_DB_NAME`, `JWT_SECRET`,
+`ENVIRONMENT`, `MONGO_URL`, `DB_NAME`, `JWT_SECRET`,
 `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `KMS_PROVIDER`, `PRIVATE_KEY`/`DEMO_PRIVATE_KEY`
 (local) or `*_KEY_REF_*` (cloud), `CORS_ORIGINS`, `MAX_REQUEST_BYTES`,
 `ACCEPT_LEGACY_V1`, `ENFORCE_VERIFY_TIMESTAMP`, `SANDBOX_API_KEY` (dev only),

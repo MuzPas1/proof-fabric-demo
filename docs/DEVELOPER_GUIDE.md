@@ -40,10 +40,12 @@ Concretely, PFP gives integrators:
 
 | Environment | URL |
 |---|---|
-| **Production** | `https://demo.pfprotocol.com` |
-| **Staging / sandbox** | `https://transaction-sign-1.preview.emergentagent.com` |
+| **Production API** | `https://api.pfprotocol.com` |
+| **Live demo / sandbox** | `https://demo.pfprotocol.com` |
 
-All endpoints are prefixed with **`/api`**.
+All endpoints are prefixed with **`/api`**. See
+[`CANONICAL_ENDPOINTS.md`](./CANONICAL_ENDPOINTS.md) for the authoritative,
+always-current list of PFP URLs and environment status.
 
 ---
 

@@ -22,7 +22,6 @@ services:
       ENVIRONMENT: production
       MONGO_URL: "mongodb://${MONGO_USER:-pfp}:${MONGO_PASSWORD:-changeme}@mongo:27017/?authSource=admin"
       DB_NAME: pfp_prod
-      DEMO_DB_NAME: pfp_demo
       JWT_SECRET: ${JWT_SECRET}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}

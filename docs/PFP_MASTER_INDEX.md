@@ -3,6 +3,14 @@
 Single source-of-truth index of every artifact produced for the Proof Fabric
 Protocol enterprise hardening. Dates are file last-modified (UTC, June 2026).
 
+> **Environments (authoritative):** website **https://pfprotocol.com** · live
+> demo/sandbox **https://demo.pfprotocol.com** · production API
+> **https://api.pfprotocol.com**. Full canonical list + status:
+> [`/app/docs/CANONICAL_ENDPOINTS.md`](CANONICAL_ENDPOINTS.md).
+> **Data:** single managed MongoDB; demo isolated via `demo_proofs` /
+> `demo_key_registry` collections + separate demo signing key (consolidated
+> 2026-06-12; `DEMO_DB_NAME` removed).
+
 ## Architecture
 | Document | Path | Purpose | Modified |
 |---|---|---|---|
@@ -23,6 +31,7 @@ Protocol enterprise hardening. Dates are file last-modified (UTC, June 2026).
 ## API
 | Document | Path | Purpose | Modified |
 |---|---|---|---|
+| Canonical Endpoints | `/app/docs/CANONICAL_ENDPOINTS.md` | Authoritative URL list (website/demo/API), SDK refs, environment status | 2026-06-12 |
 | API Reference | `/app/docs/API_REFERENCE.md` | All 34 paths grouped by category, auth schemes, status codes | 2026-06-10 |
 | OpenAPI (JSON) | `/app/docs/openapi.json` | Machine-readable spec (regenerated from live app, 34 paths) | 2026-06-10 |
 | OpenAPI (YAML) | `/app/docs/openapi.yaml` | YAML spec + server list | 2026-06-10 |

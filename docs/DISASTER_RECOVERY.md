@@ -31,7 +31,7 @@
 ### 3.1 Restore MongoDB
 1. Provision a clean MongoDB (TLS + auth).
 2. `mongorestore` latest snapshot; apply oplog to target timestamp (PITR).
-3. Point `MONGO_URL` / `DB_NAME` / `DEMO_DB_NAME` at the restored cluster.
+3. Point `MONGO_URL` / `DB_NAME` at the restored cluster.
 4. Restart backend; confirm `GET /api/health` → `healthy`.
 5. **Verify audit chain**: `GET /api/admin/audit/verify` must return
    `{"intact": true}`. If broken, investigate before resuming writes.

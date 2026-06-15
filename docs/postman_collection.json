@@ -7,7 +7,7 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "https://transaction-sign-1.preview.emergentagent.com"
+      "value": "https://demo.pfprotocol.com"
     },
     {
       "key": "api_key",

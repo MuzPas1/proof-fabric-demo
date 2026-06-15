@@ -1,6 +1,6 @@
 # PFP Load Test Report — `POST /api/fea/generate`
 
-**Target:** `https://transaction-sign-1.preview.emergentagent.com` (preview pod)
+**Target:** Emergent pre-production pod (now live at `https://demo.pfprotocol.com`)
 **Endpoint:** `POST /api/fea/generate`
 **Payload:** unique `idempotency_key` / `transaction_id` / `timestamp` per request — exercises the **write path** (not idempotent fast-return).
 **Tool:** `aiohttp` async load generator with warm-up, ~25 s runs.
@@ -12,7 +12,7 @@
 > **The PFP backend currently sustains ~340 TPS in the FastAPI process (1 uvicorn worker, async Motor, all-200s up to 500 concurrent connections).**
 > **End-to-end through the public ingress, sustained throughput is ~40–50 TPS before ingress-level timeouts / connection failures dominate.**
 
-The bottleneck is **not CPU on the FastAPI process** (it sat at <2% throughout) — the limit is the single-worker async event loop's Mongo round-trip serialisation, and beyond that the Kubernetes ingress in front of the preview pod.
+The bottleneck is **not CPU on the FastAPI process** (it sat at <2% throughout) — the limit is the single-worker async event loop's Mongo round-trip serialisation, and beyond that the Kubernetes ingress in front of the pod.
 
 ---
 
@@ -62,7 +62,7 @@ For each concurrency level: **25-second** sustained run with N persistent worker
 
 ---
 
-## Results — through the public ingress (preview URL)
+## Results — through the public ingress (pre-production URL)
 
 | Conc | TPS | p50 (ms) | p95 (ms) | p99 (ms) | Fail % | Failure mode |
 |---:|---:|---:|---:|---:|---:|---|
@@ -71,7 +71,7 @@ For each concurrency level: **25-second** sustained run with N persistent worker
 | **500** | 53 | 1 325 | 30 689 | 30 841 | 41.0 | ingress drops / 30 s timeouts |
 | **1 000** | 126 | 1 711 | 30 717 | 30 911 | 54.9 | majority of requests rejected by ingress |
 
-Even at concurrency 10, p99 already spikes to 300 ms (vs 54 ms direct) — the ingress (Kubernetes proxy + Cloudflare or equivalent) is the limiting layer for any real-world client. **The preview pod's ingress caps usable end-to-end throughput around 40–50 TPS sustained.**
+Even at concurrency 10, p99 already spikes to 300 ms (vs 54 ms direct) — the ingress (Kubernetes proxy + Cloudflare or equivalent) is the limiting layer for any real-world client. **The pre-production pod's ingress caps usable end-to-end throughput around 40–50 TPS sustained.**
 
 ---
 
@@ -90,7 +90,7 @@ The FastAPI / uvicorn worker (pid 42, single process):
 ## Bottlenecks ranked by impact
 
 1. 🔴 **Single uvicorn worker** (`--workers 1`). One event loop serialises all incoming requests' async DB calls.
-2. 🔴 **Kubernetes ingress / proxy in front of the preview pod.** Drops/timeouts > 50–100 concurrent connections from a single client; not tunable from inside the app.
+2. 🔴 **Kubernetes ingress / proxy in front of the pod.** Drops/timeouts > 50–100 concurrent connections from a single client; not tunable from inside the app.
 3. 🟡 **Mongo round-trips on the critical path.** Each `/fea/generate` does 2 reads + 1 write. With proper indexes (already in place on `(transaction_id, timestamp)`), these are 1–5 ms each but they're serial per request.
 4. 🟢 **CPU / RAM** are not bottlenecks.
 5. 🟢 **Crypto path** (Ed25519 sign + SHA-256) is not a bottleneck — sub-millisecond.
@@ -102,7 +102,7 @@ The FastAPI / uvicorn worker (pid 42, single process):
 Assuming a realistic API caller sending ~1 generate every few seconds:
 
 - **Backend (direct):** ~**350 active in-flight requests** with sub-500 ms latency → roughly **1 500–3 000 concurrent integrated systems** (each generating few-RPS).
-- **Through preview ingress:** comfortably ~**40 active calling clients** before ingress timeouts dominate.
+- **Through pre-production ingress:** comfortably ~**40 active calling clients** before ingress timeouts dominate.
 
 These limits move dramatically with the optimisations below.
 
@@ -115,7 +115,7 @@ These limits move dramatically with the optimisations below.
 | Set `uvicorn --workers N` (where N ≈ cores; pod has 8) | one supervisord line | **~6–8× → 2 000–2 500 TPS direct** |
 | Add Mongo index on `idempotency_key` (if not yet present) | one `create_index` | latency p95 down 20–40 % |
 | Move from in-pod Mongo to a properly resourced MongoDB Atlas tier | infra | flatter latency under load |
-| Production Emergent deployment or dedicated load-balancer instead of preview ingress | infra | 5–10× public ingress TPS |
+| Production Emergent deployment or dedicated load-balancer instead of pre-production ingress | infra | 5–10× public ingress TPS |
 | Add Redis cache for `idempotency_key` lookups | small refactor | 2–3× more headroom on /generate |
 
 ---
@@ -124,6 +124,6 @@ These limits move dramatically with the optimisations below.
 
 > **Current PFP supports approximately 340 TPS sustained on the FastAPI backend (1 uvicorn worker, async Motor, in-pod Mongo, all-success up to 500 concurrent connections, p95 = 400 ms, p99 = 401 ms at the sweet spot of ~100 in-flight requests).**
 >
-> **End-to-end through the preview ingress, that drops to ~40–50 TPS sustainable before ingress-level timeouts dominate.**
+> **End-to-end through the pre-production ingress, that drops to ~40–50 TPS sustainable before ingress-level timeouts dominate.**
 >
 > **The FastAPI process itself is nowhere near CPU- or memory-bound (<2 % CPU, ~26 MB RSS) — it is async-I/O serialisation–bound. Scaling `uvicorn --workers` to match the pod's 8 cores is expected to lift the backend ceiling to ~2 000–2 500 TPS with no code changes.**

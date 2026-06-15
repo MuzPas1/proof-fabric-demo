@@ -21,7 +21,7 @@
 |---|---|---|---|
 | 1 | In-memory API keys (breaks scaling) | ✅ FIXED | `services/api_key_service.py` — keys in MongoDB (`api_keys`), SHA-256 hashed, tenant/customer/scopes/expiry/revocation. In-memory dict removed. |
 | 2 | `/api/config` leaks API key | ✅ FIXED | `server.py get_config()` — sandbox key returned **only** when `ENVIRONMENT != production`. |
-| 3 | Unauthenticated demo writes to prod DB | ✅ FIXED | Demo persists to an **isolated demo DB** (`DEMO_DB_NAME`) + separate demo signing key + 60/min rate limits. |
+| 3 | Unauthenticated demo writes to prod DB | ✅ FIXED | Demo persists to **isolated collections** (`demo_proofs`, `demo_key_registry`) in the managed DB + separate demo signing key + 60/min rate limits. (Originally a separate `pfp_demo` DB; consolidated 2026-06-12 for managed single-DB deployments — isolation preserved via collections + distinct key.) |
 | 4 | Plaintext `PRIVATE_KEY` on disk | ✅ MITIGATED | `core/kms.py` KMS abstraction (local/aws/gcp/azure). Prod uses cloud secret store; local seed is dev-only and documented. |
 | 5 | No admin key rotation/retire/revoke + audit | ✅ FIXED | `/api/admin/keys/{create,rotate,revoke,retire}` (RBAC) + hash-chained audit. |
 

@@ -46,7 +46,7 @@ trust boundary (see `ARCHITECTURE.md` §3).
 |---|---|
 | Flood signing CPU | Rate limits on all write/sign endpoints; demo limited 60/min |
 | Oversized body | `MAX_REQUEST_BYTES` (1 MiB) middleware |
-| Unbounded demo writes | Isolated demo DB + rate limits |
+| Unbounded demo writes | Isolated demo collections + rate limits |
 
 ### Elevation of Privilege
 | Threat | Mitigation |
@@ -64,7 +64,7 @@ trust boundary (see `ARCHITECTURE.md` §3).
 5. **No third-party pen test / crypto audit** → schedule before GA.
 
 ## Abuse cases
-- *Mass minting of demo artifacts*: isolated to demo key + demo DB, rate limited;
+- *Mass minting of demo artifacts*: isolated to a separate demo signing key + dedicated demo collections, rate limited;
   cannot affect production trust.
 - *Key compromise*: revoke via admin route (immediate verify-time effect),
   rotate, re-anchor. See `KEY_ROTATION_GUIDE.md` and `DISASTER_RECOVERY.md`.

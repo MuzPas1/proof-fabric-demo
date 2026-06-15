@@ -39,8 +39,10 @@ the public key — without trusting or contacting the issuer.
               │  (signing keys)  │   │  │  api_keys, users,│
               └──────────────────┘   │  │  tenants, audit, │
                                       │  │  webhooks        │
-                                      │  └─ demo DB (isolated)│
-                                      │     demo_proofs, keys │
+                                      │  └─ demo collections  │
+                                      │     (same DB):        │
+                                      │     demo_proofs,      │
+                                      │     demo_key_registry │
                                       └────────────────────┘
 ```
 
@@ -52,7 +54,7 @@ the public key — without trusting or contacting the issuer.
 | Data plane (`/api/fea`) | per-tenant API key, scopes |
 | Control plane (`/api/admin`) | JWT + RBAC |
 | Signing keys | KMS provider — no plaintext on disk in prod |
-| Demo domain | separate database + separate signing key |
+| Demo domain | isolated collections (`demo_proofs`, `demo_key_registry`) + separate demo signing key |
 | Audit log | append-only SHA-256 hash chain |
 
 ## 4. Request lifecycles
@@ -83,8 +85,8 @@ key from `GET /api/public/keys`. The SDKs do this fully offline.
 | `tenants` | prod | Tenant registry |
 | `audit_log` | prod | Append-only hash-chained audit trail |
 | `webhooks` | prod | Webhook subscriptions |
-| `demo_proofs` | **demo** | Demo issue/verify history (isolated) |
-| `key_registry` | **demo** | Demo signing key (isolated) |
+| `demo_proofs` | main | Demo issue/verify history (isolated collection) |
+| `demo_key_registry` | main | Demo signing key (separate trust domain) |
 
 ## 6. Scaling
 API keys, users, tenants, and signing keys are all DB/KMS backed (no

@@ -15,19 +15,19 @@ Here's the plan, with the clock running.
 ## 0–5 min · Get a sandbox key
 
 ```bash
-curl https://transaction-sign-1.preview.emergentagent.com/api/config
+curl https://demo.pfprotocol.com/api/config
 ```
 
 Copy the `test_api_key` field.
 
 ```bash
-export PFP_BASE="https://transaction-sign-1.preview.emergentagent.com"
+export PFP_BASE="https://demo.pfprotocol.com"
 export PFP_API_KEY="pfp_test_………"   # paste it here
 ```
 
 > **Production?** Email **support@pfprotocol.com** for a live key. Then
-> switch `PFP_BASE` to `https://demo.pfprotocol.com`. Everything else
-> stays the same.
+> switch `PFP_BASE` to `https://api.pfprotocol.com`. Everything else
+> stays the same. (See [`CANONICAL_ENDPOINTS.md`](./CANONICAL_ENDPOINTS.md).)
 
 ---
 
@@ -111,7 +111,7 @@ Expected: `"signature_valid": true`.
 
 Before you flip your code from sandbox to live:
 
-- [ ] Switched `PFP_BASE` to `https://demo.pfprotocol.com`
+- [ ] Switched `PFP_BASE` to `https://api.pfprotocol.com`
 - [ ] Production `PFP_API_KEY` stored in your secret manager
       (Vault / AWS Secrets Manager / GCP SM). **Never** in source.
 - [ ] `idempotency_key` is **persisted before** the API call so a crash

@@ -20,7 +20,7 @@ variable "admin_email"      { type = string }
 variable "admin_password"   { type = string  sensitive = true }
 variable "production_seed"  { type = string  sensitive = true }
 variable "demo_seed"        { type = string  sensitive = true }
-variable "cors_origins"     { type = string  default = "https://app.pfprotocol.com" }
+variable "cors_origins"     { type = string  default = "https://pfprotocol.com,https://demo.pfprotocol.com" }
 
 # --- AWS Secrets Manager entries for the signing keys (KMS_PROVIDER=aws) ---
 resource "aws_secretsmanager_secret" "prod_signing" {

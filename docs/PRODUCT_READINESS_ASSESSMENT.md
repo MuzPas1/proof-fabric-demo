@@ -301,7 +301,7 @@ Suppose a telco wants to integrate PFP for invoice evidence.
 ### 6.1 🔴 CRITICAL: Test API key publicly exposed
 `GET /api/config` returns `{"test_api_key": "pfp_test_..."}` with **no auth**. The key authorizes `POST /api/fea/generate`. Anyone scanning the internet finds it. In the live preview right now:
 ```
-$ curl https://transaction-sign-1.preview.emergentagent.com/api/config
+$ curl https://demo.pfprotocol.com/api/config
 {"test_api_key":"pfp_test_d2e44e17ba6ef818ff8ccf4cf532279b68fd3038b975462d", ...}
 ```
 **Action:** delete this endpoint or guard it behind an admin-only auth before any external pilot.
