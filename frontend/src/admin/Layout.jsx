@@ -4,7 +4,7 @@ import { useAuth } from "./AuthContext";
 import { ReadOnlyBadge } from "./ui";
 import {
   LayoutDashboard, Building2, KeyRound, Webhook, ScrollText,
-  Fingerprint, FileSearch, ShieldCheck, LogOut, ExternalLink, Code,
+  Fingerprint, FileSearch, ShieldCheck, LogOut, ExternalLink, Code, BookOpen,
 } from "lucide-react";
 
 const NAV = [
@@ -49,6 +49,11 @@ export default function Layout({ children }) {
           ))}
         </nav>
         <div className="px-2 py-3 border-t border-slate-200 space-y-0.5">
+          <a href="/docs" target="_blank" rel="noreferrer"
+            data-testid="admin-nav-docs"
+            className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-slate-600 hover:bg-slate-50">
+            <BookOpen className="h-4 w-4" /> Documentation
+          </a>
           <a href="/developers" target="_blank" rel="noreferrer"
             data-testid="admin-nav-developers"
             className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-slate-600 hover:bg-slate-50">

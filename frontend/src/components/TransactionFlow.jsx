@@ -49,6 +49,7 @@ import {
   Link2,
   ClipboardCopy,
   Code,
+  BookOpen,
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -514,6 +515,14 @@ export default function TransactionFlow() {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <a
+              href="/docs"
+              data-testid="demo-nav-docs"
+              className="hidden sm:inline-flex items-center text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md px-3 py-1.5 transition-colors"
+            >
+              <BookOpen className="w-3.5 h-3.5 mr-1.5" />
+              Docs
+            </a>
             <a
               href="/developers"
               data-testid="demo-nav-developers"

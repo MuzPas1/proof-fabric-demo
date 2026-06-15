@@ -42,6 +42,13 @@ export const DevNav = () => (
 
       <div className="flex items-center gap-2 shrink-0">
         <Link
+          to="/docs"
+          data-testid="dev-nav-docs"
+          className="hidden sm:inline-flex text-sm text-slate-600 hover:text-slate-900 px-3 py-2 rounded-md hover:bg-slate-50 transition-colors"
+        >
+          Docs
+        </Link>
+        <Link
           to="/"
           data-testid="dev-nav-demo"
           className="hidden sm:inline-flex text-sm text-slate-600 hover:text-slate-900 px-3 py-2 rounded-md hover:bg-slate-50 transition-colors"
@@ -85,6 +92,7 @@ export const DevFooter = () => (
         </div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
           <a href="https://pfprotocol.com" target="_blank" rel="noreferrer" className="text-slate-600 hover:text-blue-600 transition-colors" data-testid="footer-website">Website</a>
+          <Link to="/docs" className="text-slate-600 hover:text-blue-600 transition-colors" data-testid="footer-docs-portal">Documentation</Link>
           <Link to="/" className="text-slate-600 hover:text-blue-600 transition-colors" data-testid="footer-demo">Demo</Link>
           <Link to="/verify" className="text-slate-600 hover:text-blue-600 transition-colors" data-testid="footer-verify">Verifier</Link>
           <a href={`${API}/docs`} target="_blank" rel="noreferrer" className="text-slate-600 hover:text-blue-600 transition-colors" data-testid="footer-docs">API Docs</a>
