@@ -11,7 +11,7 @@ import requests
 from datetime import datetime, timezone, timedelta
 
 BASE_URL = os.environ.get(
-    "REACT_APP_BACKEND_URL", "https://pfp-demo-portal.preview.emergentagent.com"
+    "REACT_APP_BACKEND_URL", "https://pfp-pilot-ready.preview.emergentagent.com"
 ).rstrip("/")
 
 COMPLIANT = {
