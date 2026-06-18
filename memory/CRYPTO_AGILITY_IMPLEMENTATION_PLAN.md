@@ -1,5 +1,20 @@
 # PFP — Crypto Agility + Federated Key Registry + BYO Signing — Implementation Plan
 
+Status: ✅ IMPLEMENTED & VALIDATED (June 2026). All 6 phases complete; awaiting
+deployment approval. Evidence below.
+
+## Implementation status (all phases complete)
+- Phase 1 Crypto Agility core — DONE (suites.py; KMS/signing/verify suite-aware; 19 tests)
+- Phase 2 Federated Key Registry — DONE (PoP register/confirm, JWK/PEM, validity, tenant; 6 tests)
+- Phase 3 BYOS — DONE (signers.py local/remote/cloud-kms, per-tenant config, health; 6 tests)
+- Phase 4 SDKs — DONE (Python+JS suite-aware, parity proven; Java/.NET source updated)
+- Phase 5 Docs + frontend — DONE (CRYPTO_AGILITY.md, RELEASE_NOTES, /docs portal, Trust section, /api/developer)
+- Phase 6 Validation — DONE (146 backend pytest pass + 1 xfail; testing_agent 9/9 e2e + frontend; SDK parity 6/6)
+
+Validation evidence: 146 pytest passed (0 failed); testing_agent iteration_17.json 0 issues;
+backward compat confirmed (default Ed25519, demo, artifact, auditor unchanged); no residual
+signer/state. Feature flags ENABLE_CRYPTO_SUITES/FEDERATED_KEYS/BYOS enabled in PREVIEW only.
+
 Status: AWAITING APPROVAL (no code written yet). Date: June 2026.
 
 Scope guardrails (HONORED): PFP stays a proof + verification platform. NO identity

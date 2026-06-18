@@ -8,6 +8,29 @@ into deterministic, cryptographically verifiable Financial Evidence Artifacts
 June 2026 the user (acting as enterprise architect) commissioned a full
 enterprise hardening + productionization sprint across 10 phases.
 
+## ✅ v2.2.0 — Crypto Agility + Federated Keys + BYOS (June 18, 2026)
+Implemented & validated; **awaiting deployment approval** (do NOT commit/deploy yet).
+- **Crypto Agility:** signature suites Ed25519 (default), ES256 (secp256r1), ES256K
+  (secp256k1). ECDSA raw r‖s 64B base64, low-S enforced. Verifier binds suite to
+  registry key algorithm (anti-confusion/downgrade). `signature_suite` param on
+  `/api/fea/generate`. Backend: `crypto/suites.py`, suite-aware `core/kms.py`,
+  `crypto/signing.py`, `services/{fea_service,verification_service}.py`.
+- **Federated Key Registry:** customer/partner keys (raw/JWK/SPKI-PEM) with
+  proof-of-possession, validity windows, tenant ownership, revoke/retire.
+  `POST /api/admin/keys/federated/register|confirm`. `services/federated_key_service.py`,
+  extended `models/key_registry.py`, new `pop_challenges` collection.
+- **BYOS:** per-tenant signer (local/remote-HTTP/cloud-kms config-gated).
+  `/api/admin/signers[/health]`. `core/signers.py`, `services/signer_service.py`,
+  new `signers` collection. Verification is signer-independent.
+- **SDKs:** Python+JS suite-aware (parity via `sdks/test_vectors.json`); Java/.NET updated.
+- **Flags (default OFF; enabled in preview):** `ENABLE_CRYPTO_SUITES`,
+  `ENABLE_FEDERATED_KEYS`, `ENABLE_BYOS`, `DEFAULT_SIGNATURE_SUITE`.
+- **Docs:** `docs/CRYPTO_AGILITY.md` (+ /docs portal), RELEASE_NOTES v2.2.0, dev-portal Trust section.
+- **Tests:** 146 pytest pass; testing_agent iteration_17 = 9/9 e2e + frontend, 0 issues.
+- Fully backward compatible: existing Ed25519 proofs/IDs/APIs/SDKs/demo/auditor unchanged;
+  key rotation now algorithm-scoped; no data migration required.
+
+
 ## User Personas
 - Developers (dev console), Backend systems (FEA generate/verify), Auditors
   (independent public verification), Platform/Security operators (control plane).
