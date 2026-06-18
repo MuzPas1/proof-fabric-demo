@@ -32,6 +32,13 @@ class Settings:
     KMS_PROVIDER: str = os.environ.get("KMS_PROVIDER", "local").lower()
     ISSUER_ID: str = os.environ.get("ISSUER_ID", "pfp-issuer-001")
 
+    # --- Crypto agility / federation / BYOS feature flags (default OFF) ---
+    # When OFF, only Ed25519 + FEA v1.1 issuance is active (existing behaviour).
+    ENABLE_CRYPTO_SUITES: bool = os.environ.get("ENABLE_CRYPTO_SUITES", "false").lower() == "true"
+    ENABLE_FEDERATED_KEYS: bool = os.environ.get("ENABLE_FEDERATED_KEYS", "false").lower() == "true"
+    ENABLE_BYOS: bool = os.environ.get("ENABLE_BYOS", "false").lower() == "true"
+    DEFAULT_SIGNATURE_SUITE: str = os.environ.get("DEFAULT_SIGNATURE_SUITE", "Ed25519")
+
     # --- Crypto policy ---
     ACCEPT_LEGACY_V1: bool = os.environ.get("ACCEPT_LEGACY_V1", "false").lower() == "true"
     ENFORCE_VERIFY_TIMESTAMP: bool = (

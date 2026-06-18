@@ -21,7 +21,8 @@ from models.fea import (
 )
 from crypto.canonicalize import canonicalize_to_json, normalize_timestamp
 from crypto.hashing import compute_sha256, hash_metadata
-from crypto.signing import sign_message, get_public_key_id, SIGNATURE_VERSION_V2
+from crypto.signing import sign_message, get_public_key_id, get_public_key_id_for, SIGNATURE_VERSION_V2
+from crypto import suites
 
 
 # Timestamp validation bounds
@@ -55,7 +56,7 @@ def validate_timestamp_bounds(timestamp_str: str) -> Tuple[bool, Optional[str]]:
         return False, f"Invalid timestamp: {timestamp_str}"
 
 
-def build_fea_payload(request: GenerateFEARequest, tenant_id: str = "default") -> Dict[str, Any]:
+def build_fea_payload(request: GenerateFEARequest, tenant_id: str = "default", suite_alg: str = "Ed25519", signer=None) -> Dict[str, Any]:
     """
     Build the FEA payload - THIS IS WHAT GETS SIGNED.
 
@@ -64,15 +65,25 @@ def build_fea_payload(request: GenerateFEARequest, tenant_id: str = "default") -
       - jti        : unique proof identifier (nonce)
       - tenant_id  : owning tenant (cryptographically bound)
       - algorithm  : explicit signature algorithm (algorithm-confusion defense)
+
+    ``suite_alg`` selects the signature suite (default Ed25519). When a ``signer``
+    is provided (BYOS), its algorithm and public-key id are used instead — the
+    chosen suite's public key id is embedded so the verifier resolves the right
+    key, and ``algorithm`` is bound into the signed payload.
     """
+    if signer is not None:
+        suite_alg = suites.normalize_algorithm(signer.algorithm)
+        public_key_id = signer.public_key_id()
+    else:
+        suite_alg = suites.normalize_algorithm(suite_alg)
+        public_key_id = get_public_key_id_for(suite_alg)
     issuer_id = os.environ.get('ISSUER_ID', 'pfp-issuer-001')
-    public_key_id = get_public_key_id()
     normalized_ts = normalize_timestamp(request.timestamp)
     iat = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
     fea_payload = {
         "fea_version": "1.1",
-        "algorithm": "Ed25519",
+        "algorithm": suite_alg,
         "issuer_id": issuer_id,
         "tenant_id": tenant_id,
         "public_key_id": public_key_id,
@@ -103,7 +114,7 @@ def compute_fea_hash(fea_payload: Dict[str, Any]) -> str:
     return compute_sha256(canonical_json)
 
 
-def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = False, tenant_id: str = "default") -> Tuple[FEAResponse, FEADocument]:
+def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = False, tenant_id: str = "default", suite_alg: str = "Ed25519", signer=None) -> Tuple[FEAResponse, FEADocument]:
     """
     Generate a Proof Artifact.
     
@@ -112,7 +123,14 @@ def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = 
     - Timestamp boundary validation
     - Deterministic signing
     - Tenant-bound, issuance-stamped signed payload (v1.1)
+    - Selectable signature suite (Ed25519 default; ES256 / ES256K)
+    - Pluggable signer (BYOS): local KMS, remote signer, or cloud KMS
     """
+    if signer is not None:
+        suite_alg = suites.normalize_algorithm(signer.algorithm)
+    else:
+        suite_alg = suites.normalize_algorithm(suite_alg)
+
     # Validate timestamp bounds (can be skipped for testing)
     if not skip_timestamp_validation:
         valid, error = validate_timestamp_bounds(request.timestamp)
@@ -120,15 +138,22 @@ def generate_fea(request: GenerateFEARequest, skip_timestamp_validation: bool = 
             raise ValueError(error)
 
     # Build fea_payload
-    fea_payload = build_fea_payload(request, tenant_id=tenant_id)
+    fea_payload = build_fea_payload(request, tenant_id=tenant_id, suite_alg=suite_alg, signer=signer)
 
     # Compute fea_hash
     fea_hash = compute_fea_hash(fea_payload)
     fea_payload["fea_hash"] = fea_hash
 
-    # Canonicalize and sign (with domain prefix internally)
+    # Canonicalize and sign (with domain prefix internally) under the suite/signer
     canonical_payload = canonicalize_to_json(fea_payload)
-    signature = sign_message(canonical_payload)
+    if signer is not None:
+        from crypto.signing import DOMAIN_PREFIX_V2
+        import base64 as _b64
+        signature = _b64.b64encode(
+            signer.sign((DOMAIN_PREFIX_V2 + canonical_payload).encode("utf-8"))
+        ).decode("ascii")
+    else:
+        signature = sign_message(canonical_payload, suite_alg=suite_alg)
 
     # Generate metadata
     fea_id = str(uuid.uuid4())

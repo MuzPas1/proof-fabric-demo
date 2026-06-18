@@ -24,6 +24,15 @@ REQUEST_LATENCY = Histogram(
 FEA_GENERATED = Counter("pfp_fea_generated_total", "FEAs generated", ["tenant"])
 FEA_VERIFIED = Counter("pfp_fea_verified_total", "FEA verifications", ["result"])
 AUDIT_EVENTS = Counter("pfp_audit_events_total", "Audit events recorded", ["action"])
+SIGNER_LATENCY = Histogram(
+    "pfp_signer_duration_seconds", "Signing latency by signer", ["signer", "algorithm"]
+)
+SIGNER_ERRORS = Counter(
+    "pfp_signer_errors_total", "Signing errors by signer", ["signer", "algorithm"]
+)
+KEY_MUTATIONS = Counter(
+    "pfp_key_registry_mutations_total", "Key registry mutations", ["action"]
+)
 
 
 def metrics_response() -> Response:

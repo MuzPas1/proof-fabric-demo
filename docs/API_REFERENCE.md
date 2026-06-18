@@ -88,3 +88,18 @@ Delivery header: `X-PFP-Signature: sha256=<hmac-sha256(secret, body)>`.
 ## Status codes
 `400` bad input · `401` auth · `403` scope/tenant/role · `404` not found ·
 `409` idempotency/replay · `413` body too large · `422` schema · `429` rate limit.
+
+---
+
+## Crypto Agility, Federated Keys & Bring-Your-Own-Signing (v2.2.0)
+
+PFP supports selectable signature suites — **Ed25519** (default), **ES256**
+(ECDSA/secp256r1), **ES256K** (ECDSA/secp256k1) — a **federated key registry**
+(customer/partner-owned keys via raw/JWK/SPKI-PEM with proof-of-possession,
+validity windows and tenant ownership), and **Bring-Your-Own-Signing**
+(per-tenant local / remote HTTP / cloud-KMS signers). All are **feature-flagged
+and default OFF**; Ed25519 + FEA v1.1 remains the default and is fully backward
+compatible. Verification binds the suite to the trusted registry key's algorithm
+(algorithm-confusion / downgrade defense) and never depends on signer
+availability. See **CRYPTO_AGILITY.md** for the authoritative reference,
+threat analysis, migration and change-management gates.

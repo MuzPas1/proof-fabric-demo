@@ -5,6 +5,47 @@ published by appending a new section to this document.
 
 ---
 
+## v2.2.0 — Crypto Agility, Federated Key Registry & Bring-Your-Own-Signing
+**Release date:** 2026-06-18
+
+> All new capabilities are **feature-flagged and default OFF**. Ed25519 + FEA
+> v1.1 remains the default and only active behaviour. **Fully backward
+> compatible** — existing proofs, proof IDs, verification APIs, SDKs, demo and
+> auditor workflows are unchanged. See `CRYPTO_AGILITY.md`.
+
+### Features added
+- **Crypto Agility — signature suites:** `Ed25519` (default), `ES256`
+  (ECDSA/secp256r1), `ES256K` (ECDSA/secp256k1). ECDSA uses raw `r‖s` (64B,
+  base64) with **enforced low-S** (anti-malleability). Suite selectable via
+  `signature_suite` on `POST /api/fea/generate`. Verifier binds the suite to the
+  registry key's algorithm (**algorithm-confusion / downgrade defense**).
+- **Federated Key Registry:** register customer/partner-owned public keys
+  (`raw` / `jwk` / `spki-pem`) with **proof-of-possession**, **validity windows**,
+  tenant ownership, and revocation/retirement —
+  `POST /api/admin/keys/federated/register` + `/confirm`.
+- **Bring-Your-Own-Signing (BYOS):** per-tenant signer —
+  `local` KMS, `remote` HTTP signer, or `cloud-kms` (native, config-gated).
+  `POST/GET/DELETE /api/admin/signers`, `GET /api/admin/signers/health`.
+  Independent verification never depends on signer availability.
+- **SDKs:** Python + JavaScript verifiers are suite-aware (parity proven via
+  shipped `sdks/test_vectors.json`); Java + .NET verifiers updated for ES256/ES256K.
+- **Feature flags:** `ENABLE_CRYPTO_SUITES`, `ENABLE_FEDERATED_KEYS`,
+  `ENABLE_BYOS`, `DEFAULT_SIGNATURE_SUITE` (all default to existing behaviour).
+
+### Data / schema
+- `key_registry` gains optional federated fields (no migration; legacy docs
+  default). New `signers` and `pop_challenges` collections. `feas` unchanged.
+  Key rotation is now **algorithm-scoped** (Ed25519 rotation no longer retires
+  ES256/ES256K keys).
+
+### Security
+- Threat analysis + mitigations for algorithm confusion, downgrade, key
+  substitution, replay, remote-signer abuse, ECDSA malleability, and cross-tenant
+  isolation (see `CRYPTO_AGILITY.md` §8 and `THREAT_MODEL.md`).
+
+---
+
+
 ## v2.1.0 — Change & Release Management use case
 **Release date:** 2026-06-15
 

@@ -93,7 +93,8 @@ def verify_fea(
     signature: str,
     public_key_registry: Dict[str, bytes],
     external_signature_version: Optional[str] = None,
-    skip_timestamp_validation: bool = False
+    skip_timestamp_validation: bool = False,
+    key_algorithm: str = "Ed25519"
 ) -> Tuple[bool, Optional[str], str]:
     """
     Verify an FEA payload and signature.
@@ -104,10 +105,16 @@ def verify_fea(
     3. Detect signature version
     4. Recompute fea_hash (constant-time comparison)
     5. Canonicalize fea_payload
-    6. Verify signature with domain prefix
+    6. Algorithm-binding check (payload.algorithm == trusted key.algorithm)
+    7. Verify signature with domain prefix under the resolved suite
+
+    ``key_algorithm`` is the algorithm of the TRUSTED registry key. Defeats
+    algorithm-confusion / downgrade attacks.
 
     Returns (valid, reason, signature_version) tuple.
     """
+    from crypto import suites
+
     # Step 1: Validate fea_version
     valid, reason = validate_fea_version(fea_payload)
     if not valid:
@@ -168,18 +175,31 @@ def verify_fea(
         except Exception:
             return False, f"Unknown public_key_id: {public_key_id}", sig_version
 
-    # Step 8: Verify signature (with domain prefix for v2)
+    # Step 7b: Algorithm-binding (anti-confusion / anti-downgrade).
+    # The signed payload's algorithm (if present) MUST match the algorithm of
+    # the trusted registry key; otherwise an attacker could claim a different
+    # suite than the key actually uses.
+    trusted_alg = suites.normalize_algorithm(key_algorithm)
+    claimed_alg = suites.normalize_algorithm(fea_payload.get("algorithm", "Ed25519"))
+    if sig_version == SIGNATURE_VERSION_V2 and claimed_alg != trusted_alg:
+        return False, (
+            f"Algorithm mismatch: payload claims {claimed_alg} but key is {trusted_alg} "
+            "(algorithm-confusion defense)"
+        ), sig_version
+
+    # Step 8: Verify signature (with domain prefix for v2) under the suite.
     valid, reason = verify_signature(
         canonical_message=canonical_full,
         fea_hash=claimed_hash,
         signature=signature,
         public_key_bytes=public_key_bytes,
-        signature_version=sig_version
+        signature_version=sig_version,
+        algorithm=trusted_alg,
     )
 
     if valid:
         version_desc = "message-signed" if sig_version == SIGNATURE_VERSION_V2 else "hash-signed, legacy"
-        return True, f"Signature valid ({sig_version}: {version_desc})", sig_version
+        return True, f"Signature valid ({sig_version}: {version_desc}, {trusted_alg})", sig_version
 
     return valid, reason, sig_version
 
@@ -198,13 +218,23 @@ async def verify_fea_with_registry(
         return False, "Missing public_key_id in payload", "unknown"
 
     # Live revocation check — read status straight from DB (no stale cache).
-    from services.key_service import get_public_key_bytes_by_id, get_key_status_live
+    from services.key_service import get_key_by_id, get_key_status_live, get_public_key_bytes_by_id
     live_status = await get_key_status_live(public_key_id)
     if live_status == "revoked":
         return False, f"Key {public_key_id} has been revoked", "unknown"
 
-    # Resolve key from persistent registry
-    public_key_bytes = await get_public_key_bytes_by_id(public_key_id)
+    # Resolve key (+ algorithm + validity/tenant metadata) from the registry.
+    key_info = await get_key_by_id(public_key_id)
+    key_algorithm = "Ed25519"
+    public_key_bytes = None
+    if key_info is not None:
+        key_algorithm = key_info.algorithm or "Ed25519"
+        # Validity-window + ownership enforcement (federated keys). For legacy
+        # platform keys these fields are absent → behaviour is unchanged.
+        ok, reason = _check_key_constraints(key_info, fea_payload)
+        if not ok:
+            return False, reason, "unknown"
+        public_key_bytes = await get_public_key_bytes_by_id(public_key_id)
 
     if not public_key_bytes:
         # Fallback: try current signing key (for backward compat)
@@ -219,7 +249,52 @@ async def verify_fea_with_registry(
         return False, f"Unknown public_key_id: {public_key_id}", "unknown"
 
     registry = {public_key_id: public_key_bytes}
-    return verify_fea(fea_payload, signature, registry, external_signature_version, skip_timestamp_validation=True)
+    return verify_fea(
+        fea_payload, signature, registry, external_signature_version,
+        skip_timestamp_validation=True, key_algorithm=key_algorithm,
+    )
+
+
+def _check_key_constraints(key_info, fea_payload: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+    """Enforce federated-key constraints: validity window + tenant ownership.
+
+    Backward compatible: legacy platform keys without these fields impose no
+    constraint. Tenant isolation + validity windows are enforced WHENEVER the
+    relevant fields are present on the key (independent of feature flags) — a
+    federated key only carries them if it was registered through the federated
+    flow, so this is a pure safety check.
+    """
+    # Tenant isolation: a tenant-owned (non-platform) key may only verify proofs
+    # of that tenant.
+    key_tenant = getattr(key_info, "tenant_id", None)
+    owner = getattr(key_info, "owner", "platform")
+    if owner not in (None, "platform") and key_tenant:
+        payload_tenant = fea_payload.get("tenant_id")
+        if payload_tenant and payload_tenant != key_tenant:
+            return False, (
+                f"Tenant isolation: key belongs to '{key_tenant}' "
+                f"but proof is for tenant '{payload_tenant}'"
+            )
+
+    # Validity window enforced at the proof's issuance time (iat) when present.
+    not_before = getattr(key_info, "not_before", None)
+    not_after = getattr(key_info, "not_after", None)
+    if not_before or not_after:
+        iat = fea_payload.get("iat") or fea_payload.get("transaction_summary", {}).get("timestamp")
+        if iat:
+            try:
+                t = datetime.fromisoformat(str(iat).replace("Z", "+00:00"))
+                if not_before:
+                    nb = datetime.fromisoformat(str(not_before).replace("Z", "+00:00"))
+                    if t < nb:
+                        return False, f"Key not yet valid (not_before {not_before})"
+                if not_after:
+                    na = datetime.fromisoformat(str(not_after).replace("Z", "+00:00"))
+                    if t > na:
+                        return False, f"Key expired (not_after {not_after})"
+            except Exception:
+                pass
+    return True, None
 
 
 def verify_fea_public(

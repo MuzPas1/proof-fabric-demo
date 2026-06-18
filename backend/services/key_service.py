@@ -48,8 +48,25 @@ async def initialize_key_registry(db: AsyncIOMotorDatabase):
         # Key not configured yet - that's OK
         pass
 
+    # Register additional crypto-agility signing keys (ES256 / ES256K) when the
+    # feature is enabled and the KMS provider carries those keys. Additive only:
+    # existing Ed25519 issuance/verification is unchanged.
+    try:
+        from core.config import settings
+        if settings.ENABLE_CRYPTO_SUITES:
+            from core.kms import get_kms
+            from crypto import suites as _suites
+            kms = get_kms()
+            for alg in (_suites.ALG_ES256, _suites.ALG_ES256K):
+                if kms.supports_algorithm("production", alg):
+                    kid = kms.get_public_key_id("production", alg)
+                    if kid not in _key_cache:
+                        await register_key(kid, kms.get_public_key_b64("production", alg), algorithm=alg)
+    except Exception:
+        pass
 
-async def register_key(public_key_id: str, public_key: str, status: str = "active") -> PublicKeyInfo:
+
+async def register_key(public_key_id: str, public_key: str, status: str = "active", algorithm: str = "Ed25519") -> PublicKeyInfo:
     """
     Register a new key in the persistent registry.
     Keys are immutable once created.
@@ -59,7 +76,7 @@ async def register_key(public_key_id: str, public_key: str, status: str = "activ
     key_info = PublicKeyInfo(
         public_key_id=public_key_id,
         public_key=public_key,
-        algorithm="Ed25519",
+        algorithm=algorithm,
         created_at=datetime.now(timezone.utc).isoformat(),
         status=status
     )
@@ -175,27 +192,35 @@ def generate_new_keypair() -> dict:
     return {"seed_b64": seed_b64, "public_key_b64": pub_b64, "public_key_id": kid}
 
 
-async def rotate_key(new_public_key_id: str, new_public_key: str) -> PublicKeyInfo:
+async def rotate_key(new_public_key_id: str, new_public_key: str, algorithm: str = "Ed25519") -> PublicKeyInfo:
     """
-    Rotate to a new key:
-    1. Retire all currently active keys
+    Rotate to a new key (algorithm-scoped):
+    1. Retire currently active keys OF THE SAME ALGORITHM only
     2. Register the new key as active
+
+    Algorithm-scoping is required for crypto agility: rotating the Ed25519
+    signing key must NOT retire active ES256 / ES256K keys (different suites
+    are independent trust material).
     """
     global _db, _key_cache
-    
-    # Retire all active keys
+
+    # Retire active keys of the same algorithm (treat missing algorithm as Ed25519).
+    if algorithm == "Ed25519":
+        alg_filter = {"$or": [{"algorithm": "Ed25519"}, {"algorithm": {"$exists": False}}]}
+    else:
+        alg_filter = {"algorithm": algorithm}
     await _db.key_registry.update_many(
-        {"status": "active"},
+        {"status": "active", **alg_filter},
         {"$set": {"status": "retired"}}
     )
-    
+
     # Update cache
     for key_id, key_info in _key_cache.items():
-        if key_info.status == "active":
+        if key_info.status == "active" and (key_info.algorithm or "Ed25519") == algorithm:
             key_info.status = "retired"
-    
+
     # Register new key
-    return await register_key(new_public_key_id, new_public_key, status="active")
+    return await register_key(new_public_key_id, new_public_key, status="active", algorithm=algorithm)
 
 
 async def get_all_keys() -> List[PublicKeyInfo]:

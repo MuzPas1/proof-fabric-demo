@@ -119,6 +119,13 @@ async def startup_event():
     await tenant_service.ensure_indexes(db)
     await webhook_service.ensure_indexes(db)
     await db.audit_log.create_index("created_at")
+    try:
+        from services import federated_key_service
+        await federated_key_service.ensure_indexes(db)
+        from services import signer_service
+        await signer_service.ensure_indexes(db)
+    except Exception as e:
+        logger.warning(f"Federated key index warning: {e}")
 
     await tenant_service.ensure_tenant(db, settings.DEFAULT_TENANT_ID, "Default Tenant")
     await user_service.seed_admin(db, settings.ADMIN_EMAIL, settings.ADMIN_PASSWORD, settings.DEFAULT_TENANT_ID)
@@ -293,25 +300,51 @@ def _signing_capability() -> dict:
     without overstating capabilities.
     """
     from core.kms import kms_status
+    from crypto import suites
     st = kms_status()
+    available_suites = st.get("signature_suites", {}).get("production", ["Ed25519"])
     return {
         "algorithm": st.get("algorithm", "Ed25519"),
+        "default_suite": settings.DEFAULT_SIGNATURE_SUITE,
         "active_provider": st.get("provider"),
         "active_mode": st.get("mode"),
         "ready": st.get("ready"),
         "supported_providers": st.get("supported_providers", []),
+        "signature_suites": {
+            "supported": list(suites.SUPPORTED_ALGORITHMS),
+            "available": available_suites,
+            "default": settings.DEFAULT_SIGNATURE_SUITE,
+        },
+        "crypto_agility": {
+            "enabled": settings.ENABLE_CRYPTO_SUITES,
+            "suites": ["Ed25519 (EdDSA/Curve25519)", "ES256 (ECDSA/secp256r1)", "ES256K (ECDSA/secp256k1)"],
+            "encoding": "Ed25519 raw 64B; ECDSA raw r||s 64B, low-S enforced",
+            "algorithm_binding": "verify-suite bound to registry key algorithm (anti-confusion)",
+        },
+        "federated_keys": {
+            "enabled": settings.ENABLE_FEDERATED_KEYS,
+            "formats": ["raw", "jwk", "spki-pem"],
+            "controls": ["proof-of-possession", "validity windows", "tenant ownership", "revocation/retirement"],
+        },
+        "byos": {
+            "enabled": settings.ENABLE_BYOS,
+            "signers": ["local KMS", "remote signer (HTTP)", "cloud KMS (config-gated)"],
+            "verification": "independent of signer availability (public key only)",
+        },
         "current_capability": [
-            "Deterministic canonicalization (PFP-JCS) + Ed25519 signing",
-            "Independent, offline verification with the public key",
-            "Pluggable KMS abstraction (single signing call site)",
+            "Deterministic canonicalization (PFP-JCS) + signing",
+            "Crypto agility: Ed25519 (default), ES256, ES256K — selectable per request/tenant",
+            "Independent, offline verification with the public key (any suite)",
+            "Federated key registry: customer/partner keys (raw/JWK/PEM) with proof-of-possession",
+            "Bring-Your-Own-Signing: local / remote / cloud-KMS signers per tenant",
             "Multi-tenant key isolation; persistent key registry & rotation",
         ],
         "architecture_readiness": [
             "Cloud KMS ready — AWS Secrets Manager / GCP Secret Manager / Azure Key Vault (config-only switch)",
-            "HSM-ready signing architecture (pluggable provider; no API changes)",
+            "Native HSM / cloud-KMS signing path (private key never leaves the boundary) — config-gated",
         ],
         "planned_enhancements": [
-            "Native HSM signing — private key never leaves the HSM/KMS boundary",
+            "Live cloud-KMS native signing enablement (provider credentials)",
             "External time anchoring (RFC-3161 / transparency log)",
         ],
     }

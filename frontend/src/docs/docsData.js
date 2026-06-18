@@ -65,6 +65,7 @@ export const DOC_TREE = [
     items: [
       { slug: "architecture", title: "Architecture Overview", file: "ARCHITECTURE.md", type: "doc" },
       { slug: "cryptographic-architecture", title: "Cryptographic Architecture", file: "CRYPTOGRAPHIC_ARCHITECTURE.md", type: "doc" },
+      { slug: "crypto-agility", title: "Crypto Agility, Federated Keys & BYOS", file: "CRYPTO_AGILITY.md", type: "doc" },
       { slug: "canonicalization-spec", title: "Canonicalization Spec", file: "CANONICALIZATION_SPEC.md", type: "doc" },
     ],
   },
@@ -76,6 +77,7 @@ export const DOC_TREE = [
     items: [
       { slug: "trust-overview", title: "Trust Overview", type: "page" },
       { slug: "security-architecture", title: "Security Architecture", file: "SECURITY_ARCHITECTURE.md", type: "doc" },
+      { slug: "crypto-agility-sec", title: "Crypto Agility, Federated Keys & BYOS", file: "CRYPTO_AGILITY.md", type: "doc" },
       { slug: "verification-audit", title: "Verification Audit", file: "PFP_VERIFICATION_AUDIT.md", type: "doc" },
       { slug: "kms-migration", title: "KMS / HSM Migration Guide", file: "KMS_MIGRATION_GUIDE.md", type: "doc" },
       { slug: "threat-model", title: "Threat Model", file: "THREAT_MODEL.md", type: "doc" },

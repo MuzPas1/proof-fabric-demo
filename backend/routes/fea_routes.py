@@ -68,6 +68,48 @@ async def check_replay_protection(db, tenant_id: str, transaction_id: str, times
 
 async def _generate_one(database, request: GenerateFEARequest, tenant_id: str) -> FEAResponse:
     """Core single-FEA generation with dual-layer replay protection (tenant scoped)."""
+    # Resolve signature suite (crypto agility). Default Ed25519. When the
+    # feature flag is OFF, only Ed25519 is permitted (no downgrade/confusion).
+    from crypto import suites
+    from core.config import settings
+
+    suite_alg = "Ed25519"
+    requested = getattr(request, "signature_suite", None)
+    if requested:
+        norm = suites.normalize_algorithm(requested)
+        if norm != "Ed25519":
+            if not settings.ENABLE_CRYPTO_SUITES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Crypto-agility (non-Ed25519 suites) is not enabled on this deployment",
+                )
+            if not suites.is_supported(norm):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unsupported signature suite: {requested}",
+                )
+            from core.kms import get_kms
+            if not get_kms().supports_algorithm("production", norm):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No signing key configured for suite {norm}",
+                )
+        suite_alg = norm
+
+    # BYOS: resolve the tenant's configured signer (if any). When BYOS is OFF
+    # or no config exists, this is the platform LocalSigner with ``suite_alg``
+    # (byte-identical to the existing Ed25519 path).
+    from services import signer_service
+    signer = await signer_service.resolve_signer(database, tenant_id, default_suite=suite_alg)
+    if signer.name != "local" and requested:
+        # A BYOS signer dictates the algorithm; an explicit conflicting suite is
+        # rejected to avoid ambiguity.
+        if suites.normalize_algorithm(requested) != suites.normalize_algorithm(signer.algorithm):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tenant signer uses {signer.algorithm}; cannot override with {requested}",
+            )
+
     # Layer 1: idempotency key (scoped to tenant)
     existing_by_idem = await database.feas.find_one(
         {"tenant_id": tenant_id, "idempotency_key": request.idempotency_key},
@@ -97,7 +139,7 @@ async def _generate_one(database, request: GenerateFEARequest, tenant_id: str) -
         return existing_by_txn
 
     try:
-        response, document = generate_fea(request, skip_timestamp_validation=True, tenant_id=tenant_id)
+        response, document = generate_fea(request, skip_timestamp_validation=True, tenant_id=tenant_id, suite_alg=suite_alg, signer=signer)
         await database.feas.insert_one(document.model_dump())
         return response
     except ValueError as e:

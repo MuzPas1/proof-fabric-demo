@@ -32,15 +32,19 @@ from typing import Dict, Optional
 from nacl.signing import SigningKey
 
 from core.config import settings
+from crypto import suites
 
 
 class KMSNotConfigured(RuntimeError):
     """Raised when a KMS provider is selected but not properly configured."""
 
 
-def _public_key_id_from_seed(signing_key: SigningKey) -> str:
-    pub = bytes(signing_key.verify_key)
+def _kid_from_pubkey_bytes(pub: bytes) -> str:
     return "key_" + hashlib.sha256(pub).hexdigest()[:16]
+
+
+def _public_key_id_from_seed(signing_key: SigningKey) -> str:
+    return _kid_from_pubkey_bytes(bytes(signing_key.verify_key))
 
 
 class KMSProvider(ABC):
@@ -63,24 +67,55 @@ class KMSProvider(ABC):
     def get_signing_key(self, logical_name: str) -> SigningKey:
         ...
 
-    def get_public_key_bytes(self, logical_name: str) -> bytes:
-        return bytes(self.get_signing_key(logical_name).verify_key)
+    # -- Crypto-agility: optional EC (ES256/ES256K) signing keys --------------
+    def get_ec_private_key(self, logical_name: str, algorithm: str):
+        """Resolve a suite-native EC private key for ``algorithm``.
 
-    def get_public_key_b64(self, logical_name: str) -> str:
-        return base64.b64encode(self.get_public_key_bytes(logical_name)).decode("ascii")
-
-    def get_public_key_id(self, logical_name: str) -> str:
-        return _public_key_id_from_seed(self.get_signing_key(logical_name))
-
-    def sign(self, logical_name: str, message: bytes) -> bytes:
-        """Sign ``message`` for ``logical_name``.
-
-        The default implementation materializes the seed and signs locally with
-        libsodium. A future native-HSM provider overrides this so the private
-        key never leaves the secure boundary, WITHOUT any caller changes — all
-        signing in the platform flows through this method.
+        Default providers do not carry EC keys; override in providers that
+        support crypto agility (local/cloud). Raises KMSNotConfigured otherwise.
         """
-        return self.get_signing_key(logical_name).sign(message).signature
+        raise KMSNotConfigured(
+            f"{self.name} provider has no {algorithm} key for '{logical_name}'"
+        )
+
+    def supports_algorithm(self, logical_name: str, algorithm: str) -> bool:
+        algorithm = suites.normalize_algorithm(algorithm)
+        if algorithm == suites.ALG_ED25519:
+            try:
+                self.get_signing_key(logical_name)
+                return True
+            except Exception:
+                return False
+        try:
+            self.get_ec_private_key(logical_name, algorithm)
+            return True
+        except Exception:
+            return False
+
+    def get_public_key_bytes(self, logical_name: str, algorithm: str = suites.ALG_ED25519) -> bytes:
+        algorithm = suites.normalize_algorithm(algorithm)
+        if algorithm == suites.ALG_ED25519:
+            return bytes(self.get_signing_key(logical_name).verify_key)
+        return suites.public_key_bytes(algorithm, self.get_ec_private_key(logical_name, algorithm))
+
+    def get_public_key_b64(self, logical_name: str, algorithm: str = suites.ALG_ED25519) -> str:
+        return base64.b64encode(self.get_public_key_bytes(logical_name, algorithm)).decode("ascii")
+
+    def get_public_key_id(self, logical_name: str, algorithm: str = suites.ALG_ED25519) -> str:
+        return _kid_from_pubkey_bytes(self.get_public_key_bytes(logical_name, algorithm))
+
+    def sign(self, logical_name: str, message: bytes, algorithm: str = suites.ALG_ED25519) -> bytes:
+        """Sign ``message`` for ``logical_name`` under ``algorithm``.
+
+        The default implementation materializes the key and signs locally. A
+        future native-HSM provider overrides this so the private key never leaves
+        the secure boundary, WITHOUT any caller changes — all signing in the
+        platform flows through this method.
+        """
+        algorithm = suites.normalize_algorithm(algorithm)
+        if algorithm == suites.ALG_ED25519:
+            return self.get_signing_key(logical_name).sign(message).signature
+        return suites.sign(algorithm, self.get_ec_private_key(logical_name, algorithm), message)
 
     def status(self) -> Dict[str, object]:
         """Non-secret readiness summary for health/observability surfaces.
@@ -101,12 +136,26 @@ class KMSProvider(ABC):
             "algorithm": self.algorithm,
             "native_sign": self.native_sign,
             "logical_keys": keys,
+            "signature_suites": self.available_suites(),
             "ready": all(keys.values()),
         }
 
+    def available_suites(self) -> Dict[str, list]:
+        """Map of logical key -> list of signature suites it can sign with."""
+        out: Dict[str, list] = {}
+        for logical in self.LOGICAL_KEYS:
+            algs = [a for a in suites.SUPPORTED_ALGORITHMS if self.supports_algorithm(logical, a)]
+            out[logical] = algs
+        return out
+
 
 class LocalKMSProvider(KMSProvider):
-    """Reads Ed25519 seeds from environment variables. Development only."""
+    """Reads Ed25519 seeds from environment variables. Development only.
+
+    Optionally carries EC (ES256/ES256K) private keys for crypto-agility, read
+    from ``EC_PRIVATE_KEY_ES256`` / ``EC_PRIVATE_KEY_ES256K`` (base64 DER PKCS8).
+    Absent EC keys simply mean those suites are unavailable on this node.
+    """
 
     name = "local"
     mode = "seed-env"
@@ -114,6 +163,7 @@ class LocalKMSProvider(KMSProvider):
 
     def __init__(self) -> None:
         self._cache: Dict[str, SigningKey] = {}
+        self._ec_cache: Dict[str, object] = {}
 
     def get_signing_key(self, logical_name: str) -> SigningKey:
         if logical_name in self._cache:
@@ -130,6 +180,21 @@ class LocalKMSProvider(KMSProvider):
         key = SigningKey(seed)
         self._cache[logical_name] = key
         return key
+
+    def get_ec_private_key(self, logical_name: str, algorithm: str):
+        algorithm = suites.normalize_algorithm(algorithm)
+        # EC signing keys are shared across logical names on the local provider
+        # (single env-provided key per algorithm) — keyed by algorithm only.
+        if algorithm in self._ec_cache:
+            return self._ec_cache[algorithm]
+        env_name = f"EC_PRIVATE_KEY_{algorithm}"
+        b64 = os.environ.get(env_name)
+        if not b64:
+            raise KMSNotConfigured(f"{env_name} environment variable not set")
+        from cryptography.hazmat.primitives.serialization import load_der_private_key
+        priv = load_der_private_key(base64.b64decode(b64), password=None)
+        self._ec_cache[algorithm] = priv
+        return priv
 
 
 class _SecretBackedProvider(KMSProvider):

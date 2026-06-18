@@ -44,6 +44,11 @@ class GenerateFEARequest(BaseModel):
     payer_id: str = Field(..., description="Hashed/tokenized payer identifier")
     payee_id: str = Field(..., description="Hashed/tokenized payee identifier")
     metadata: Optional[Dict[str, Any]] = None
+    signature_suite: Optional[str] = Field(
+        None,
+        description="Signature suite: Ed25519 (default) | ES256 (secp256r1) | ES256K (secp256k1). "
+                    "Requires the crypto-agility feature to be enabled.",
+    )
 
 
 class FEAResponse(BaseModel):

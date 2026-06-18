@@ -164,3 +164,18 @@ Before you flip your code from sandbox to live:
   — imports with pre-wired sandbox bootstrap, idempotent test, replay-attack
   test, and public-verify call.
 - ✉️ **Stuck?** support@pfprotocol.com
+
+---
+
+## Crypto Agility, Federated Keys & Bring-Your-Own-Signing (v2.2.0)
+
+PFP supports selectable signature suites — **Ed25519** (default), **ES256**
+(ECDSA/secp256r1), **ES256K** (ECDSA/secp256k1) — a **federated key registry**
+(customer/partner-owned keys via raw/JWK/SPKI-PEM with proof-of-possession,
+validity windows and tenant ownership), and **Bring-Your-Own-Signing**
+(per-tenant local / remote HTTP / cloud-KMS signers). All are **feature-flagged
+and default OFF**; Ed25519 + FEA v1.1 remains the default and is fully backward
+compatible. Verification binds the suite to the trusted registry key's algorithm
+(algorithm-confusion / downgrade defense) and never depends on signer
+availability. See **CRYPTO_AGILITY.md** for the authoritative reference,
+threat analysis, migration and change-management gates.

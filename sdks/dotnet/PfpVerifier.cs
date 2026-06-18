@@ -39,8 +39,9 @@ namespace Pfp.Sdk
             if (!FixedTimeEquals(computed, claimed))
                 return new Result(false, "Hash mismatch: payload tampered");
 
+            var alg = root.TryGetProperty("algorithm", out var algEl) ? algEl.GetString()! : "Ed25519";
             var message = DomainPrefixV2 + Canonicalize(dict);
-            return Ed25519Verify(Encoding.UTF8.GetBytes(message), signatureB64, publicKeyB64)
+            return VerifySuite(alg, Encoding.UTF8.GetBytes(message), signatureB64, publicKeyB64)
                 ? new Result(true, null)
                 : new Result(false, "Invalid signature");
         }
@@ -61,8 +62,9 @@ namespace Pfp.Sdk
             if (!FixedTimeEquals(Sha256Hex(Canonicalize(baseForId)), proofId))
                 return new Result(false, "proof_id mismatch");
 
+            var alg = dict.ContainsKey("algorithm") ? dict["algorithm"]!.ToString()! : "Ed25519";
             var message = ArtifactDomainPrefix + Canonicalize(baseDict);
-            return Ed25519Verify(Encoding.UTF8.GetBytes(message), signature, publicKeyB64)
+            return VerifySuite(alg, Encoding.UTF8.GetBytes(message), signature, publicKeyB64)
                 ? new Result(true, null)
                 : new Result(false, "Invalid signature");
         }
@@ -179,6 +181,53 @@ namespace Pfp.Sdk
         }
 
         // ---- Crypto ----
+        private static bool VerifySuite(string alg, byte[] message, string signatureB64, string publicKeyB64)
+        {
+            if (string.IsNullOrEmpty(alg) || alg == "Ed25519" || alg == "EdDSA")
+                return Ed25519Verify(message, signatureB64, publicKeyB64);
+            if (alg == "ES256" || alg == "ES256K")
+                return EcdsaVerify(alg, message, signatureB64, publicKeyB64);
+            return false;
+        }
+
+        private static readonly BigInteger N_R1 = BigInteger.Parse(
+            "0FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551",
+            NumberStyles.HexNumber);
+        private static readonly BigInteger N_K1 = BigInteger.Parse(
+            "0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141",
+            NumberStyles.HexNumber);
+
+        private static bool EcdsaVerify(string alg, byte[] message, string signatureB64, string publicKeyB64)
+        {
+            try
+            {
+                var raw = Convert.FromBase64String(publicKeyB64);
+                if (raw.Length != 65 || raw[0] != 0x04) return false;
+                var sig = Convert.FromBase64String(signatureB64);
+                if (sig.Length != 64) return false;
+
+                // Anti-malleability: reject high-S / out-of-range (big-endian).
+                var order = alg == "ES256" ? N_R1 : N_K1;
+                var r = new BigInteger(sig[..32], isUnsigned: true, isBigEndian: true);
+                var s = new BigInteger(sig[32..], isUnsigned: true, isBigEndian: true);
+                if (r.IsZero || s.IsZero || r >= order || s >= order || s > order / 2)
+                    return false;
+
+                var curve = alg == "ES256"
+                    ? ECCurve.NamedCurves.nistP256
+                    : ECCurve.CreateFromValue("1.3.132.0.10"); // secp256k1
+                var p = new ECParameters
+                {
+                    Curve = curve,
+                    Q = new ECPoint { X = raw[1..33], Y = raw[33..65] },
+                };
+                using var ecdsa = ECDsa.Create(p);
+                return ecdsa.VerifyData(message, sig, HashAlgorithmName.SHA256,
+                    DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+            }
+            catch { return false; }
+        }
+
         private static bool Ed25519Verify(byte[] message, string signatureB64, string publicKeyB64)
         {
             try

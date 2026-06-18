@@ -55,25 +55,40 @@ def get_public_key_id() -> str:
     return f"key_{key_hash}"
 
 
-def sign_message(message: str) -> str:
+# ---------------------------------------------------------------------------
+# Crypto-agility helpers — suite-aware production key resolution
+# ---------------------------------------------------------------------------
+def get_public_key_b64_for(suite_alg: str = "Ed25519") -> str:
+    """Production public key (base64) for a given signature suite."""
+    from core.kms import get_kms
+    return get_kms().get_public_key_b64("production", suite_alg)
+
+
+def get_public_key_id_for(suite_alg: str = "Ed25519") -> str:
+    """Production public key id (kid) for a given signature suite."""
+    from core.kms import get_kms
+    return get_kms().get_public_key_id("production", suite_alg)
+
+
+def sign_message(message: str, suite_alg: str = "Ed25519") -> str:
     """
-    Sign a message directly using Ed25519 with domain prefix.
-    
-    SECURITY: Message is prefixed with "PFP_V2::" to prevent
-    cross-protocol signature reuse attacks.
-    
+    Sign a message under the selected signature suite (default Ed25519).
+
+    SECURITY: Message is prefixed with "PFP_V2::" to prevent cross-protocol
+    signature reuse attacks. The domain prefix is identical across suites; the
+    suite (and its key) is disambiguated by the signed ``algorithm`` field.
+
     Input: canonical JSON string (UTF-8)
-    Output: pure base64-encoded signature
+    Output: pure base64-encoded signature (Ed25519: 64B; ECDSA: r||s 64B)
 
     Signing is delegated to the configured KMS provider's ``sign`` method so a
-    future native-HSM provider (private key never leaves the HSM) can be enabled
-    by configuration alone, with no change to this call site.
+    future native-HSM/remote signer can be enabled by configuration alone, with
+    no change to this call site.
     """
     from core.kms import get_kms
-    # Add domain prefix for cross-protocol attack prevention
     prefixed_message = DOMAIN_PREFIX_V2 + message
     message_bytes = prefixed_message.encode('utf-8')
-    signature = get_kms().sign("production", message_bytes)
+    signature = get_kms().sign("production", message_bytes, algorithm=suite_alg)
     return base64.b64encode(signature).decode('utf-8')
 
 
@@ -100,22 +115,18 @@ def constant_time_compare(a: str, b: str) -> bool:
     return hmac.compare_digest(a.encode('utf-8'), b.encode('utf-8'))
 
 
-def verify_signature_v2(message: str, signature_b64: str, public_key_bytes: bytes) -> Tuple[bool, Optional[str]]:
+def verify_signature_v2(message: str, signature_b64: str, public_key_bytes: bytes, algorithm: str = "Ed25519") -> Tuple[bool, Optional[str]]:
     """
-    Verify a v2 signature (message-signed with domain prefix).
+    Verify a v2 signature (message-signed with domain prefix) under a suite.
     """
+    from crypto import suites
+    prefixed_message = DOMAIN_PREFIX_V2 + message
+    message_bytes = prefixed_message.encode('utf-8')
     try:
-        verify_key = VerifyKey(public_key_bytes)
-        # Add domain prefix (must match signing)
-        prefixed_message = DOMAIN_PREFIX_V2 + message
-        message_bytes = prefixed_message.encode('utf-8')
         signature_bytes = base64.b64decode(signature_b64)
-        verify_key.verify(message_bytes, signature_bytes)
-        return True, None
-    except BadSignatureError:
-        return False, "Invalid signature"
     except Exception as e:
-        return False, f"Verification error: {str(e)}"
+        return False, f"Malformed signature encoding: {e}"
+    return suites.verify(algorithm, public_key_bytes, message_bytes, signature_bytes)
 
 
 def verify_signature_v1(hash_hex: str, signature_b64: str, public_key_bytes: bytes) -> Tuple[bool, Optional[str]]:
@@ -140,15 +151,19 @@ def verify_signature(
     fea_hash: str,
     signature: str,
     public_key_bytes: bytes,
-    signature_version: str
+    signature_version: str,
+    algorithm: str = "Ed25519"
 ) -> Tuple[bool, Optional[str]]:
     """
-    Verify signature based on version.
+    Verify signature based on version and signature suite.
+
+    v1 (legacy) is Ed25519 hash-signed only. v2 dispatches to the suite
+    identified by ``algorithm`` (Ed25519 / ES256 / ES256K).
     """
     raw_sig = normalize_signature(signature)
-    
+
     if signature_version == SIGNATURE_VERSION_V2:
-        return verify_signature_v2(canonical_message, raw_sig, public_key_bytes)
+        return verify_signature_v2(canonical_message, raw_sig, public_key_bytes, algorithm)
     else:
         return verify_signature_v1(fea_hash, raw_sig, public_key_bytes)
 

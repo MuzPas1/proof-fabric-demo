@@ -639,6 +639,192 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/admin/keys/federated/register:
+    post:
+      tags:
+      - Admin
+      summary: Register Federated Key
+      description: 'Register a customer/partner-owned public key (raw / JWK / SPKI
+        PEM).
+
+
+        Returns a single-use proof-of-possession challenge; the key stays `pending`
+
+        until /keys/federated/confirm proves control of the private key.'
+      operationId: register_federated_key_api_admin_keys_federated_register_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: tenant_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FederatedKeyRegisterRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FederatedKeyRegisterResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/admin/keys/federated/confirm:
+    post:
+      tags:
+      - Admin
+      summary: Confirm Federated Key
+      description: Confirm proof-of-possession and activate a pending federated key.
+      operationId: confirm_federated_key_api_admin_keys_federated_confirm_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: tenant_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FederatedKeyConfirmRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/admin/signers:
+    post:
+      tags:
+      - Admin
+      summary: Configure Signer
+      description: Configure the signer for a tenant (BYOS). Registers the signer's
+        public key.
+      operationId: configure_signer_api_admin_signers_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: tenant_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignerConfigRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Admin
+      summary: List Signers
+      operationId: list_signers_api_admin_signers_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: tenant_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Admin
+      summary: Delete Signer
+      operationId: delete_signer_api_admin_signers_delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: tenant_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/admin/signers/health:
+    get:
+      tags:
+      - Admin
+      summary: Signers Health
+      operationId: signers_health_api_admin_signers_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
   /api/admin/tenants:
     get:
       tags:
@@ -1149,6 +1335,31 @@ components:
       required:
       - name
       title: CreateTenantRequest
+    CustomField:
+      properties:
+        label:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Label
+        value:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Value
+      type: object
+      required:
+      - label
+      - value
+      title: CustomField
+      description: 'A single user-defined workflow field (label/value pair).
+
+
+        Used by the Generic Workflow Builder. Embedded in the canonical payload as
+
+        an ORDERED list so the exact field order shown on screen is preserved and
+
+        cryptographically proven.'
     FEAListItem:
       properties:
         fea_id:
@@ -1234,6 +1445,105 @@ components:
         - signature_version: signature metadata (NOT signed)
 
         - created_at: response metadata (NOT signed)'
+    FederatedKeyConfirmRequest:
+      properties:
+        public_key_id:
+          type: string
+          title: Public Key Id
+        pop_signature:
+          type: string
+          title: Pop Signature
+          description: 'Base64 signature over (PFP_POP_V1:: + challenge)'
+      type: object
+      required:
+      - public_key_id
+      - pop_signature
+      title: FederatedKeyConfirmRequest
+    FederatedKeyRegisterRequest:
+      properties:
+        algorithm:
+          type: string
+          title: Algorithm
+          description: Ed25519 | ES256 | ES256K
+        key_format:
+          type: string
+          title: Key Format
+          description: raw | jwk | spki-pem
+          default: raw
+        public_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Public Key
+          description: Base64 raw key OR base64 SPKI PEM, per key_format
+        jwk:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Jwk
+          description: JWK object (when key_format=jwk)
+        owner:
+          type: string
+          title: Owner
+          description: customer | partner
+          default: partner
+        label:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Label
+        not_before:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Not Before
+        not_after:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Not After
+      type: object
+      required:
+      - algorithm
+      title: FederatedKeyRegisterRequest
+      description: Register a customer/partner-owned public key (starts in `pending`).
+    FederatedKeyRegisterResponse:
+      properties:
+        public_key_id:
+          type: string
+          title: Public Key Id
+        tenant_id:
+          type: string
+          title: Tenant Id
+        algorithm:
+          type: string
+          title: Algorithm
+        status:
+          type: string
+          title: Status
+        pop_challenge:
+          type: string
+          title: Pop Challenge
+          description: Sign this (with domain prefix PFP_POP_V1::) using the private
+            key, then call /confirm
+        pop_domain_prefix:
+          type: string
+          title: Pop Domain Prefix
+          default: 'PFP_POP_V1::'
+        expires_at:
+          type: string
+          title: Expires At
+      type: object
+      required:
+      - public_key_id
+      - tenant_id
+      - algorithm
+      - status
+      - pop_challenge
+      - expires_at
+      title: FederatedKeyRegisterResponse
     GenerateFEARequest:
       properties:
         idempotency_key:
@@ -1272,6 +1582,13 @@ components:
             type: object
           - type: 'null'
           title: Metadata
+        signature_suite:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Signature Suite
+          description: 'Signature suite: Ed25519 (default) | ES256 (secp256r1) | ES256K
+            (secp256k1). Requires the crypto-agility feature to be enabled.'
       type: object
       required:
       - idempotency_key
@@ -1300,9 +1617,10 @@ components:
           minLength: 1
           title: Name
         desc:
-          type: string
-          maxLength: 500
-          minLength: 1
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
           title: Desc
         status:
           type: string
@@ -1311,7 +1629,6 @@ components:
       type: object
       required:
       - name
-      - desc
       - status
       title: IndustryCheck
       description: A single industry-specific compliance check executed before proof
@@ -1332,9 +1649,24 @@ components:
           items:
             $ref: '#/components/schemas/IndustryCheck'
           type: array
-          maxItems: 20
+          maxItems: 50
           minItems: 1
           title: Checks
+        context:
+          anyOf:
+          - additionalProperties:
+              type: string
+            type: object
+          - type: 'null'
+          title: Context
+        custom_fields:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/CustomField'
+            type: array
+            maxItems: 50
+          - type: 'null'
+          title: Custom Fields
       type: object
       required:
       - id
@@ -1353,7 +1685,16 @@ components:
 
         primitives (canonicalize → SHA-256 → Ed25519) are unchanged; only the
 
-        input dict gains an additional, well-defined field.'
+        input dict gains an additional, well-defined field.
+
+
+        `context` carries optional, industry-specific descriptive metadata
+
+        (e.g. Release Name / Environment for Change & Release Management). It is
+
+        embedded in the signed payload too, so it is proven and returned on verify
+
+        without exposing any raw operational data.'
     IssueRequest:
       properties:
         transaction_id:
@@ -1535,8 +1876,50 @@ components:
           - active
           - retired
           - revoked
+          - pending
           title: Status
           default: active
+        key_format:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Key Format
+        jwk:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Jwk
+        tenant_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tenant Id
+        owner:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Owner
+        not_before:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Not Before
+        not_after:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Not After
+        pop_verified:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Pop Verified
+        label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Label
       type: object
       required:
       - public_key_id
@@ -1616,6 +1999,56 @@ components:
       - tenant_id
       - scopes
       title: SandboxKeyResponse
+    SignerConfigRequest:
+      properties:
+        type:
+          type: string
+          title: Type
+          description: local | remote | cloud-kms
+        algorithm:
+          type: string
+          title: Algorithm
+          description: Ed25519 | ES256 | ES256K
+          default: Ed25519
+        endpoint:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Endpoint
+        auth_header:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Auth Header
+        timeout:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Timeout
+        provider:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Provider
+        key_ref:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Key Ref
+        public_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Public Key
+        logical:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Logical
+      type: object
+      required:
+      - type
+      title: SignerConfigRequest
     SubscribeRequest:
       properties:
         url:
@@ -1780,8 +2213,3 @@ components:
     HTTPBearer:
       type: http
       scheme: bearer
-servers:
-- url: https://api.pfprotocol.com
-  description: Production
-- url: https://demo.pfprotocol.com
-  description: Live demo / sandbox

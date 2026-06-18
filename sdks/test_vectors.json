@@ -1,0 +1,91 @@
+{
+  "fea": [
+    {
+      "suite": "Ed25519",
+      "algorithm": "Ed25519",
+      "public_key_b64": "4OSjHQsSuNjj9yScDMPbGyeV6jmHVfcw9YgLqq4XCbA=",
+      "public_key_id": "key_0c6c7071b3086f1a",
+      "fea_payload": {
+        "fea_version": "1.1",
+        "algorithm": "Ed25519",
+        "issuer_id": "pfp-issuer-001",
+        "tenant_id": "acme",
+        "public_key_id": "key_0c6c7071b3086f1a",
+        "iat": "2026-06-18T13:53:20.125Z",
+        "jti": "bc6d93b8-d6fb-4192-9124-9c523c720070",
+        "transaction_summary": {
+          "transaction_id": "TXN-VECTOR-Ed25519",
+          "timestamp": "2026-06-10T12:00:00.000Z",
+          "amount": 250000,
+          "currency": "USD"
+        },
+        "parties": {
+          "payer_hash": "payer-token-abc",
+          "payee_hash": "payee-token-xyz"
+        },
+        "metadata_hash": "794e289a1d066ab3675a8dd95533994a3cbe0ac925bd0ed73925191ffab057c2",
+        "fea_hash": "97abdd5d723c38f2882b8afff16250e44206e370278a2045c0d8b2e1d40be5f2"
+      },
+      "signature": "QcwkAWGNh0LBNpP7tLnBtrdKc+SN8z2whltv5jKG624d20ftzYWidjNw2Yqm/iH/X4Gzbxu7GeZ0kqrBRDH2Bw==",
+      "expected_valid": true
+    },
+    {
+      "suite": "ES256",
+      "algorithm": "ES256",
+      "public_key_b64": "BMDRM0/f+mpD41QozvHzg4Z8YvdtEgN6gtl+D9lIOlMC0+ezfy1Jgn26TyMuIbVukxKMZuxlZGzC/ITRMj1Yxmk=",
+      "public_key_id": "key_a8eff9e9a9917c60",
+      "fea_payload": {
+        "fea_version": "1.1",
+        "algorithm": "ES256",
+        "issuer_id": "pfp-issuer-001",
+        "tenant_id": "acme",
+        "public_key_id": "key_a8eff9e9a9917c60",
+        "iat": "2026-06-18T13:53:20.130Z",
+        "jti": "13d2208d-f1c8-45d7-b190-15db78fa4745",
+        "transaction_summary": {
+          "transaction_id": "TXN-VECTOR-ES256",
+          "timestamp": "2026-06-10T12:00:00.000Z",
+          "amount": 250000,
+          "currency": "USD"
+        },
+        "parties": {
+          "payer_hash": "payer-token-abc",
+          "payee_hash": "payee-token-xyz"
+        },
+        "metadata_hash": "794e289a1d066ab3675a8dd95533994a3cbe0ac925bd0ed73925191ffab057c2",
+        "fea_hash": "7ade3905a40f550538b07ce25e35face50e5d26527d462ff2d091f93af6b6fd0"
+      },
+      "signature": "dmuGe/xi7SyCN223NdyNTUTtpoGqmgdAKcfOBOtYihYV6/r6Bp9B6N7mYJ/rVwg2Hs2jlTsIdfbsdB4b45mB5Q==",
+      "expected_valid": true
+    },
+    {
+      "suite": "ES256K",
+      "algorithm": "ES256K",
+      "public_key_b64": "BHd+VnJzYh+qKH5xSNZAYNTRrx6qpCNVTJMoxcTxoPlU2hhgyWmd+Pa6SRxnJtBpQ3Y6kX0lXtbgX3GsRbP4iYI=",
+      "public_key_id": "key_b79881101e567c5a",
+      "fea_payload": {
+        "fea_version": "1.1",
+        "algorithm": "ES256K",
+        "issuer_id": "pfp-issuer-001",
+        "tenant_id": "acme",
+        "public_key_id": "key_b79881101e567c5a",
+        "iat": "2026-06-18T13:53:20.134Z",
+        "jti": "7a0e912f-0b09-43ad-863c-f00756d4dbe9",
+        "transaction_summary": {
+          "transaction_id": "TXN-VECTOR-ES256K",
+          "timestamp": "2026-06-10T12:00:00.000Z",
+          "amount": 250000,
+          "currency": "USD"
+        },
+        "parties": {
+          "payer_hash": "payer-token-abc",
+          "payee_hash": "payee-token-xyz"
+        },
+        "metadata_hash": "794e289a1d066ab3675a8dd95533994a3cbe0ac925bd0ed73925191ffab057c2",
+        "fea_hash": "dfdfbe2f137a6581866751b927b81e626497b52838984fc5e1f3f4f4baa09f09"
+      },
+      "signature": "Ax07Ong819tq3dMlGG1siUqOve7XnLiF7+q33kFSdEpzrBv2b5SJhRVHVg3yrPG9zJOPdEU00SN88ShPZh2tGw==",
+      "expected_valid": true
+    }
+  ]
+}

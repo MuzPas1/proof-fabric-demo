@@ -10,9 +10,11 @@ const COLUMNS = [
     tagClass: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
     dotClass: "text-emerald-500",
     fallback: [
-      "Deterministic canonicalization (PFP-JCS) + Ed25519 signing",
-      "Independent, offline verification with the public key",
-      "Pluggable KMS abstraction (single signing call site)",
+      "Deterministic canonicalization (PFP-JCS) + signing",
+      "Crypto agility: Ed25519 (default), ES256, ES256K — selectable per request/tenant",
+      "Independent, offline verification with the public key (any suite)",
+      "Federated key registry: customer/partner keys (raw/JWK/PEM) with proof-of-possession",
+      "Bring-Your-Own-Signing: local / remote / cloud-KMS signers per tenant",
       "Multi-tenant key isolation; persistent key registry & rotation",
     ],
     field: "current_capability",
@@ -24,7 +26,7 @@ const COLUMNS = [
     dotClass: "text-blue-500",
     fallback: [
       "Cloud KMS ready — AWS / GCP / Azure (config-only switch)",
-      "HSM-ready signing architecture (pluggable provider; no API changes)",
+      "Native HSM / cloud-KMS signing path (private key never leaves the boundary) — config-gated",
     ],
     field: "architecture_readiness",
   },
@@ -42,10 +44,10 @@ const COLUMNS = [
 ];
 
 const BADGES = [
-  { icon: KeyRound, label: "Enterprise Key Management", status: "Ready" },
+  { icon: ShieldCheck, label: "Crypto Agility", status: "Active" },
+  { icon: KeyRound, label: "Federated Key Registry", status: "Active" },
+  { icon: Cpu, label: "Bring-Your-Own-Signing", status: "Active" },
   { icon: Cloud, label: "Cloud KMS", status: "Ready" },
-  { icon: Cpu, label: "HSM Architecture", status: "Ready" },
-  { icon: ShieldCheck, label: "Cryptographic Signing", status: "Active" },
   { icon: Clock, label: "External Time Anchoring", status: "Planned" },
 ];
 
@@ -74,7 +76,7 @@ export const TrustArchitecture = () => {
         <SectionHeader
           eyebrow="Trust & Security"
           title="Cryptographic signing architecture"
-          subtitle="Proofs are Ed25519-signed today. The signing layer is a pluggable KMS abstraction, so enterprise key management can be enabled by configuration — without any API or proof-format changes."
+          subtitle="Proofs are signed with selectable suites — Ed25519 (default), ES256 (secp256r1) and ES256K (secp256k1). A federated key registry and Bring-Your-Own-Signing let partners use their own keys/signers, while independent verification stays signer-agnostic — all without API or proof-format changes."
         />
 
         {/* Capability badges */}

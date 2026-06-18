@@ -8,7 +8,11 @@ from auth.rbac import Permission, Role
 from models.auth_models import (
     User, CreateApiKeyRequest, CreateApiKeyResponse, CreateTenantRequest,
 )
-from services import api_key_service, tenant_service, audit_service, key_service
+from models.key_registry import (
+    FederatedKeyRegisterRequest, FederatedKeyRegisterResponse, FederatedKeyConfirmRequest,
+)
+from services import api_key_service, tenant_service, audit_service, key_service, federated_key_service
+from core.config import settings
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -134,6 +138,137 @@ async def retire_signing_key(
         _db(), "key.retired", actor=user.email, tenant_id=user.tenant_id, target=public_key_id,
     )
     return {"status": "retired", "public_key_id": public_key_id}
+
+
+# --------------------------------------------------------------------------
+# Federated key registry (customer / partner-owned keys, proof-of-possession)
+# --------------------------------------------------------------------------
+@router.post("/keys/federated/register", response_model=FederatedKeyRegisterResponse)
+async def register_federated_key(
+    body: FederatedKeyRegisterRequest,
+    tenant_id: Optional[str] = Query(None),
+    user: User = Depends(require_permission(Permission.KEYS_MANAGE)),
+):
+    """Register a customer/partner-owned public key (raw / JWK / SPKI PEM).
+
+    Returns a single-use proof-of-possession challenge; the key stays `pending`
+    until /keys/federated/confirm proves control of the private key.
+    """
+    if not settings.ENABLE_FEDERATED_KEYS:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Federated key registry is not enabled on this deployment")
+    scope = resolve_tenant_scope(user, tenant_id)
+    try:
+        info, challenge, expires_at = await federated_key_service.register_federated_key(
+            _db(), scope,
+            algorithm=body.algorithm, key_format=body.key_format,
+            public_key=body.public_key, jwk=body.jwk, owner=body.owner,
+            label=body.label, not_before=body.not_before, not_after=body.not_after,
+        )
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    await audit_service.record_audit(
+        _db(), "key.federated_registered", actor=user.email, tenant_id=scope, target=info.public_key_id,
+        metadata={"algorithm": info.algorithm, "owner": info.owner},
+    )
+    return FederatedKeyRegisterResponse(
+        public_key_id=info.public_key_id, tenant_id=scope, algorithm=info.algorithm,
+        status=info.status, pop_challenge=challenge, expires_at=expires_at,
+    )
+
+
+@router.post("/keys/federated/confirm")
+async def confirm_federated_key(
+    body: FederatedKeyConfirmRequest,
+    tenant_id: Optional[str] = Query(None),
+    user: User = Depends(require_permission(Permission.KEYS_MANAGE)),
+):
+    """Confirm proof-of-possession and activate a pending federated key."""
+    if not settings.ENABLE_FEDERATED_KEYS:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Federated key registry is not enabled on this deployment")
+    scope = resolve_tenant_scope(user, tenant_id)
+    try:
+        info = await federated_key_service.confirm_federated_key(
+            _db(), scope, body.public_key_id, body.pop_signature,
+        )
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    await audit_service.record_audit(
+        _db(), "key.federated_confirmed", actor=user.email, tenant_id=scope, target=info.public_key_id,
+    )
+    return {"status": info.status, "public_key_id": info.public_key_id, "pop_verified": info.pop_verified}
+
+
+# --------------------------------------------------------------------------
+# Bring-Your-Own-Signing (BYOS) — per-tenant signer configuration
+# --------------------------------------------------------------------------
+class SignerConfigRequest(BaseModel):
+    type: str = Field(..., description="local | remote | cloud-kms")
+    algorithm: str = Field("Ed25519", description="Ed25519 | ES256 | ES256K")
+    # remote
+    endpoint: Optional[str] = None
+    auth_header: Optional[str] = None
+    timeout: Optional[float] = None
+    # cloud-kms
+    provider: Optional[str] = None
+    key_ref: Optional[str] = None
+    # remote / cloud-kms expected public key (base64 raw)
+    public_key: Optional[str] = None
+    logical: Optional[str] = None
+
+
+@router.post("/signers")
+async def configure_signer(
+    body: SignerConfigRequest,
+    tenant_id: Optional[str] = Query(None),
+    user: User = Depends(require_permission(Permission.KEYS_MANAGE)),
+):
+    """Configure the signer for a tenant (BYOS). Registers the signer's public key."""
+    if not settings.ENABLE_BYOS:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Bring-Your-Own-Signing is not enabled on this deployment")
+    from services import signer_service
+    scope = resolve_tenant_scope(user, tenant_id)
+    try:
+        cfg = await signer_service.configure_signer(_db(), scope, body.model_dump(exclude_none=True))
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e))
+    await audit_service.record_audit(
+        _db(), "signer.configured", actor=user.email, tenant_id=scope,
+        target=cfg.get("public_key_id"), metadata={"type": cfg.get("type"), "algorithm": cfg.get("algorithm")},
+    )
+    return {"status": "configured", "signer": cfg}
+
+
+@router.get("/signers")
+async def list_signers(
+    tenant_id: Optional[str] = Query(None),
+    user: User = Depends(get_current_user),
+):
+    from services import signer_service
+    scope = None if user.role == Role.SUPER_ADMIN.value and not tenant_id else resolve_tenant_scope(user, tenant_id)
+    signers = await signer_service.list_signers(_db(), tenant_id=scope)
+    return {"signers": signers, "total": len(signers)}
+
+
+@router.get("/signers/health")
+async def signers_health(user: User = Depends(get_current_user)):
+    from services import signer_service
+    return await signer_service.signers_health(_db())
+
+
+@router.delete("/signers")
+async def delete_signer(
+    tenant_id: Optional[str] = Query(None),
+    user: User = Depends(require_permission(Permission.KEYS_MANAGE)),
+):
+    if not settings.ENABLE_BYOS:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Bring-Your-Own-Signing is not enabled on this deployment")
+    from services import signer_service
+    scope = resolve_tenant_scope(user, tenant_id)
+    ok = await signer_service.delete_signer(_db(), scope)
+    if not ok:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No signer configured for tenant")
+    await audit_service.record_audit(_db(), "signer.deleted", actor=user.email, tenant_id=scope)
+    return {"status": "deleted", "tenant_id": scope}
 
 
 # --------------------------------------------------------------------------
