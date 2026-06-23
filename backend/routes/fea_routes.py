@@ -10,6 +10,7 @@ from models.fea import (
     VerifyFEARequest,
     VerifyFEAResponse,
 )
+from models.ai_provenance import AttachProvenanceRequest
 from models.auth_models import ApiKeyRecord
 from services.fea_service import (
     generate_fea,
@@ -329,3 +330,39 @@ async def anchor_fea_endpoint(
     except Exception:
         pass
     return {"fea_id": fea_id, "time_anchor": envelope}
+
+
+@router.post("/{fea_id}/provenance")
+@limiter.limit("60/minute")
+async def attach_provenance_endpoint(
+    request: Request,
+    fea_id: str,
+    body: AttachProvenanceRequest,
+    key: ApiKeyRecord = Depends(require_scope("fea:write")),
+):
+    """Attach a detached AI Provenance & Accountability envelope to an existing proof.
+
+    Additive & opt-in (gated by ENABLE_AI_PROVENANCE). Does NOT modify the signed
+    payload, signature, or fea_id — the envelope binds to the existing fea_hash and
+    is itself signed (Ed25519) for independent, tamper-evident verification.
+    Privacy-preserving: hashes & identity metadata only — no raw content stored.
+    Write-once / idempotent: re-attaching returns the existing envelope.
+    """
+    from core.config import settings as _settings
+    if not _settings.ENABLE_AI_PROVENANCE:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI provenance not enabled")
+    from server import db as database
+    from services.ai_provenance_service import attach_provenance
+    try:
+        envelope = await attach_provenance(database, fea_id, body, tenant_id=key.tenant_id)
+    except LookupError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Proof not found: {fea_id}")
+    except (ValueError, PermissionError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    try:
+        await audit_service.record_audit(
+            database, "fea.provenance_attached", actor=key.key_id, tenant_id=key.tenant_id, target=fea_id,
+        )
+    except Exception:
+        pass
+    return {"fea_id": fea_id, "ai_provenance": envelope}

@@ -45,6 +45,9 @@ class Settings:
     TSA_URL: str = os.environ.get("TSA_URL", "")
     TIME_ANCHOR_LOCAL_SEED: str = os.environ.get("TIME_ANCHOR_LOCAL_SEED", "")
 
+    # --- Trust Layer 2: AI Provenance & Accountability (default OFF; additive) ---
+    ENABLE_AI_PROVENANCE: bool = os.environ.get("ENABLE_AI_PROVENANCE", "false").lower() == "true"
+
     # --- Crypto policy ---
     ACCEPT_LEGACY_V1: bool = os.environ.get("ACCEPT_LEGACY_V1", "false").lower() == "true"
     ENFORCE_VERIFY_TIMESTAMP: bool = (

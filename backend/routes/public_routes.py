@@ -46,6 +46,14 @@ async def public_verify_fea(fea_id: str):
         except Exception:
             time_attestation = None
 
+    ai_provenance = None
+    if settings.ENABLE_AI_PROVENANCE and fea_doc.get("ai_provenance"):
+        try:
+            from services.ai_provenance_service import verify_ai_provenance
+            ai_provenance = await verify_ai_provenance(fea_doc)
+        except Exception:
+            ai_provenance = None
+
     return PublicVerifyResponse(
         fea_id=fea_id,
         fea_payload=fea_payload,
@@ -55,6 +63,7 @@ async def public_verify_fea(fea_id: str):
         issuer_id=fea_payload.get("issuer_id", "unknown"),
         created_at=fea_doc["created_at"],
         time_attestation=time_attestation,
+        ai_provenance=ai_provenance,
     )
 
 

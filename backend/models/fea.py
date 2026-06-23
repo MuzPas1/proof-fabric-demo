@@ -102,6 +102,7 @@ class PublicVerifyResponse(BaseModel):
     issuer_id: str
     created_at: str
     time_attestation: Optional[Dict[str, Any]] = None  # present only when a time anchor exists
+    ai_provenance: Optional[Dict[str, Any]] = None  # present only when an AI provenance envelope exists (Trust Layer 2)
 
 
 class FEADocument(BaseModel):
@@ -119,3 +120,4 @@ class FEADocument(BaseModel):
     public_key_id: str
     created_at: str
     time_anchor: Optional[Dict[str, Any]] = None  # detached time-attestation envelope (Trust Layer 2)
+    ai_provenance: Optional[Dict[str, Any]] = None  # detached AI provenance & accountability envelope (Trust Layer 2)
