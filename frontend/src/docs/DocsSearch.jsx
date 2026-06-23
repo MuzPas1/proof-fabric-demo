@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Loader2, X, FileText, Hash } from "lucide-react";
 import { DOCS_RES, SEARCHABLE_DOCS, CATEGORIES, slugify } from "./docsData";
+import { getDocsToken } from "./docsAuth";
 
 // Lazily fetched, cached search index shared across opens.
 let INDEX_CACHE = null;
@@ -12,10 +13,12 @@ const buildIndex = async () => {
   if (INDEX_PROMISE) return INDEX_PROMISE;
   INDEX_PROMISE = (async () => {
     const entries = [];
+    const token = getDocsToken();
+    const opts = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
     await Promise.all(
       SEARCHABLE_DOCS.map(async (d) => {
         try {
-          const res = await fetch(`${DOCS_RES}/${d.file}`);
+          const res = await fetch(`${DOCS_RES}/${d.file}`, opts);
           const text = res.ok ? await res.text() : "";
           // Document-level entry
           entries.push({ slug: d.slug, title: d.title, category: d.category, kind: "doc", text: text.toLowerCase(), preview: text.replace(/[#*`>_\-]/g, " ").replace(/\s+/g, " ").trim().slice(0, 160) });

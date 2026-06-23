@@ -1,7 +1,9 @@
 // Documentation Portal — data layer & canonical resource map.
-// The Documentation Portal (/docs) is the structured knowledge base. It does NOT
-// duplicate the interactive Developer Portal (/developers) or the API reference
-// (/api/docs) — it links to them and renders the long-form Markdown docs.
+// Information governance: every item is tagged with an `audience`:
+//   'public'     -> served to anyone (product / value / verification / limited examples)
+//   'enterprise' -> gated behind Enterprise Evaluation access (server-enforced)
+// INTERNAL-only materials (runbooks, DR, key rotation, pilot/readiness) are NOT
+// listed here and are not externally serveable.
 const BACKEND = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND}/api`;
 export const DOCS_RES = `${API}/resources/docs`;
@@ -13,9 +15,11 @@ export const CANONICAL = {
   admin: "https://demo.pfprotocol.com/admin/login",
   developers: "/developers",
   docs: "/docs",
-  swagger: `${API}/docs`,
-  redoc: `${API}/redoc`,
-  openapi: `${API}/openapi.json`,
+  evaluation: "/evaluation",
+  swagger: `${API}/docs`,        // public Swagger UI (curated public spec)
+  redoc: `${API}/redoc`,         // public ReDoc (curated public spec)
+  openapiPublic: `${API}/openapi-public.json`,
+  openapi: `${API}/openapi.json`, // FULL spec — enterprise-gated
 };
 
 // Top-of-portal nav (every major journey is reachable from the docs).
@@ -23,13 +27,12 @@ export const TOP_NAV = [
   { label: "Website", href: CANONICAL.website, external: true },
   { label: "Demo", href: CANONICAL.demo, external: true },
   { label: "Developers", href: CANONICAL.developers, external: false },
-  { label: "Admin", href: CANONICAL.admin, external: true },
+  { label: "Enterprise Access", href: CANONICAL.evaluation, external: false },
   { label: "API Docs", href: CANONICAL.swagger, external: true },
 ];
 
-// Information architecture. Adding a future category = appending an object here;
-// no structural changes required (version-ready, extensible).
-// item.type: 'doc' (Markdown file) | 'page' (native React) | 'releases' | 'link'
+// item.type: 'doc' (Markdown) | 'page' (native React) | 'releases' | 'link'
+// item.audience: 'public' | 'enterprise'
 export const DOC_TREE = [
   {
     id: "getting-started",
@@ -37,9 +40,17 @@ export const DOC_TREE = [
     icon: "Rocket",
     blurb: "Understand PFP in 5 minutes.",
     items: [
-      { slug: "overview", title: "Overview", file: "README.md", type: "doc" },
-      { slug: "quickstart", title: "Quickstart", file: "QUICKSTART.md", type: "doc" },
-      { slug: "master-index", title: "Master Index", file: "PFP_MASTER_INDEX.md", type: "doc" },
+      { slug: "overview", title: "Overview", file: "README.md", type: "doc", audience: "public" },
+      { slug: "quickstart", title: "Quickstart", file: "QUICKSTART.md", type: "doc", audience: "public" },
+    ],
+  },
+  {
+    id: "use-cases",
+    label: "Product & Use Cases",
+    icon: "Boxes",
+    blurb: "What PFP does and where it applies.",
+    items: [
+      { slug: "use-case-change-release", title: "Release Readiness Evaluation", file: "USE_CASE_CHANGE_RELEASE.md", type: "doc", audience: "public" },
     ],
   },
   {
@@ -48,13 +59,12 @@ export const DOC_TREE = [
     icon: "Code",
     blurb: "Guides for integrating PFP.",
     items: [
-      { slug: "developer-guide", title: "Developer Guide", file: "DEVELOPER_GUIDE.md", type: "doc" },
-      { slug: "api-reference", title: "API Reference", file: "API_REFERENCE.md", type: "doc" },
-      { slug: "integration-guide", title: "Integration Guide", file: "INTEGRATION_GUIDE.md", type: "doc" },
-      { slug: "lnk-developers", title: "Developer Portal", href: CANONICAL.developers, type: "link", internal: true },
-      { slug: "lnk-swagger", title: "Swagger UI", href: CANONICAL.swagger, type: "link" },
-      { slug: "lnk-redoc", title: "ReDoc", href: CANONICAL.redoc, type: "link" },
-      { slug: "lnk-openapi", title: "OpenAPI JSON", href: CANONICAL.openapi, type: "link" },
+      { slug: "developer-guide", title: "Developer Guide", file: "DEVELOPER_GUIDE.md", type: "doc", audience: "enterprise" },
+      { slug: "api-reference", title: "API Reference", file: "API_REFERENCE.md", type: "doc", audience: "enterprise" },
+      { slug: "integration-guide", title: "Integration Guide", file: "INTEGRATION_GUIDE.md", type: "doc", audience: "enterprise" },
+      { slug: "lnk-developers", title: "Developer Portal", href: CANONICAL.developers, type: "link", internal: true, audience: "public" },
+      { slug: "lnk-swagger", title: "Public API (Swagger)", href: CANONICAL.swagger, type: "link", audience: "public" },
+      { slug: "lnk-redoc", title: "Public API (ReDoc)", href: CANONICAL.redoc, type: "link", audience: "public" },
     ],
   },
   {
@@ -63,10 +73,10 @@ export const DOC_TREE = [
     icon: "Network",
     blurb: "Platform design for architects & reviewers.",
     items: [
-      { slug: "architecture", title: "Architecture Overview", file: "ARCHITECTURE.md", type: "doc" },
-      { slug: "cryptographic-architecture", title: "Cryptographic Architecture", file: "CRYPTOGRAPHIC_ARCHITECTURE.md", type: "doc" },
-      { slug: "crypto-agility", title: "Crypto Agility, Federated Keys & BYOS", file: "CRYPTO_AGILITY.md", type: "doc" },
-      { slug: "canonicalization-spec", title: "Canonicalization Spec", file: "CANONICALIZATION_SPEC.md", type: "doc" },
+      { slug: "architecture", title: "Architecture Overview", file: "ARCHITECTURE.md", type: "doc", audience: "enterprise" },
+      { slug: "cryptographic-architecture", title: "Cryptographic Architecture", file: "CRYPTOGRAPHIC_ARCHITECTURE.md", type: "doc", audience: "enterprise" },
+      { slug: "crypto-agility", title: "Crypto Agility, Federated Keys & BYOS", file: "CRYPTO_AGILITY.md", type: "doc", audience: "enterprise" },
+      { slug: "canonicalization-spec", title: "Canonicalization Spec", file: "CANONICALIZATION_SPEC.md", type: "doc", audience: "enterprise" },
     ],
   },
   {
@@ -75,15 +85,12 @@ export const DOC_TREE = [
     icon: "ShieldCheck",
     blurb: "Trust model, signing & key management.",
     items: [
-      { slug: "trust-overview", title: "Trust Overview", type: "page" },
-      { slug: "security-architecture", title: "Security Architecture", file: "SECURITY_ARCHITECTURE.md", type: "doc" },
-      { slug: "crypto-agility-sec", title: "Crypto Agility, Federated Keys & BYOS", file: "CRYPTO_AGILITY.md", type: "doc" },
-      { slug: "verification-audit", title: "Verification Audit", file: "PFP_VERIFICATION_AUDIT.md", type: "doc" },
-      { slug: "kms-migration", title: "KMS / HSM Migration Guide", file: "KMS_MIGRATION_GUIDE.md", type: "doc" },
-      { slug: "threat-model", title: "Threat Model", file: "THREAT_MODEL.md", type: "doc" },
-      { slug: "disaster-recovery", title: "Disaster Recovery", file: "DISASTER_RECOVERY.md", type: "doc" },
-      { slug: "operations-runbook", title: "Operations Runbook", file: "OPERATIONS_RUNBOOK.md", type: "doc" },
-      { slug: "key-rotation", title: "Key Rotation Guide", file: "KEY_ROTATION_GUIDE.md", type: "doc" },
+      { slug: "trust-overview", title: "Trust Overview", type: "page", audience: "public" },
+      { slug: "security-architecture", title: "Security Architecture", file: "SECURITY_ARCHITECTURE.md", type: "doc", audience: "enterprise" },
+      { slug: "crypto-agility-sec", title: "Crypto Agility, Federated Keys & BYOS", file: "CRYPTO_AGILITY.md", type: "doc", audience: "enterprise" },
+      { slug: "threat-model", title: "Threat Model", file: "THREAT_MODEL.md", type: "doc", audience: "enterprise" },
+      { slug: "kms-migration", title: "KMS / HSM Migration Guide", file: "KMS_MIGRATION_GUIDE.md", type: "doc", audience: "enterprise" },
+      { slug: "verification-audit", title: "Verification Audit", file: "PFP_VERIFICATION_AUDIT.md", type: "doc", audience: "enterprise" },
     ],
   },
   {
@@ -92,41 +99,11 @@ export const DOC_TREE = [
     icon: "Boxes",
     blurb: "First-party SDKs & integration tooling.",
     items: [
-      { slug: "lnk-sdk-python", title: "Python SDK", href: `${SDK_RES}/python/pyproject.toml`, type: "link" },
-      { slug: "lnk-sdk-javascript", title: "JavaScript SDK", href: `${SDK_RES}/javascript/index.js`, type: "link" },
-      { slug: "lnk-sdk-java", title: "Java SDK", href: `${SDK_RES}/java/pom.xml`, type: "link" },
-      { slug: "lnk-sdk-dotnet", title: ".NET SDK", href: `${SDK_RES}/dotnet/PfpVerifier.cs`, type: "link" },
-      { slug: "lnk-postman", title: "Postman Collection", href: `${DOCS_RES}/postman_collection.json`, type: "link" },
-      { slug: "lnk-openapi-sdk", title: "OpenAPI Specification", href: CANONICAL.openapi, type: "link" },
-    ],
-  },
-  {
-    id: "use-cases",
-    label: "Industry Use Cases",
-    icon: "Boxes",
-    blurb: "How PFP applies across industries.",
-    items: [
-      { slug: "use-case-change-release", title: "Change & Release Management", file: "USE_CASE_CHANGE_RELEASE.md", type: "doc" },
-    ],
-  },
-  {
-    id: "deployment",
-    label: "Deployment & Operations",
-    icon: "ServerCog",
-    blurb: "Deployment readiness & operational posture.",
-    items: [
-      { slug: "pilot-deployment", title: "Pilot Deployment Guide", file: "PILOT_DEPLOYMENT_GUIDE.md", type: "doc" },
-      { slug: "product-readiness", title: "Product Readiness Assessment", file: "PRODUCT_READINESS_ASSESSMENT_V2.md", type: "doc" },
-    ],
-  },
-  {
-    id: "governance",
-    label: "Governance & Compliance",
-    icon: "Scale",
-    blurb: "Audit, governance & compliance guidance.",
-    items: [
-      { slug: "verification-audit", title: "Verification Audit", file: "PFP_VERIFICATION_AUDIT.md", type: "doc" },
-      { slug: "product-readiness", title: "Product Readiness Assessment", file: "PRODUCT_READINESS_ASSESSMENT_V2.md", type: "doc" },
+      { slug: "lnk-sdk-python", title: "Python SDK", href: `${SDK_RES}/python/pyproject.toml`, type: "link", audience: "enterprise" },
+      { slug: "lnk-sdk-javascript", title: "JavaScript SDK", href: `${SDK_RES}/javascript/index.js`, type: "link", audience: "enterprise" },
+      { slug: "lnk-sdk-java", title: "Java SDK", href: `${SDK_RES}/java/pom.xml`, type: "link", audience: "enterprise" },
+      { slug: "lnk-sdk-dotnet", title: ".NET SDK", href: `${SDK_RES}/dotnet/PfpVerifier.cs`, type: "link", audience: "enterprise" },
+      { slug: "lnk-postman", title: "Postman Collection", href: `${DOCS_RES}/postman_collection.json`, type: "link", audience: "enterprise" },
     ],
   },
   {
@@ -135,10 +112,11 @@ export const DOC_TREE = [
     icon: "FileJson",
     blurb: "Machine-readable specs & explorers.",
     items: [
-      { slug: "lnk-openapi-json", title: "openapi.json", href: CANONICAL.openapi, type: "link" },
-      { slug: "lnk-openapi-yaml", title: "openapi.yaml", href: `${DOCS_RES}/openapi.yaml`, type: "link" },
-      { slug: "lnk-swagger-2", title: "Swagger UI", href: CANONICAL.swagger, type: "link" },
-      { slug: "lnk-redoc-2", title: "ReDoc", href: CANONICAL.redoc, type: "link" },
+      { slug: "lnk-swagger-2", title: "Public Swagger UI", href: CANONICAL.swagger, type: "link", audience: "public" },
+      { slug: "lnk-redoc-2", title: "Public ReDoc", href: CANONICAL.redoc, type: "link", audience: "public" },
+      { slug: "lnk-openapi-public", title: "Public OpenAPI (JSON)", href: CANONICAL.openapiPublic, type: "link", audience: "public" },
+      { slug: "lnk-openapi-json", title: "Full OpenAPI (JSON)", href: CANONICAL.openapi, type: "link", audience: "enterprise" },
+      { slug: "lnk-openapi-yaml", title: "Full OpenAPI (YAML)", href: `${DOCS_RES}/openapi.yaml`, type: "link", audience: "enterprise" },
     ],
   },
   {
@@ -147,7 +125,7 @@ export const DOC_TREE = [
     icon: "Tag",
     blurb: "What changed, by version.",
     items: [
-      { slug: "releases", title: "Release Notes", type: "releases" },
+      { slug: "releases", title: "Release Notes", type: "releases", audience: "public" },
     ],
   },
 ];
@@ -171,7 +149,6 @@ export const FILE_TO_SLUG = (() => {
       if (it.file && !m[it.file.toLowerCase()]) m[it.file.toLowerCase()] = it.slug;
     }
   }
-  // Aliases for files referenced in docs but surfaced under a different slug.
   m["readme.md"] = "overview";
   m["release_notes.md"] = "releases";
   return m;
@@ -185,7 +162,7 @@ export const SEARCHABLE_DOCS = (() => {
     for (const it of cat.items) {
       if (it.type === "doc" && it.file && !seen.has(it.file)) {
         seen.add(it.file);
-        out.push({ slug: it.slug, title: it.title, file: it.file, category: cat.label });
+        out.push({ slug: it.slug, title: it.title, file: it.file, category: cat.label, audience: it.audience });
       }
     }
   }

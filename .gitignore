@@ -85,6 +85,13 @@ android-sdk/
 .env
 .env.*
 *.env
+
+# Internal-only artifacts — information governance (PFP Information Disclosure
+# Reduction Program). Kept on disk for the workspace, excluded from any repo
+# push: credentials, internal planning/strategy, QA reports.
+memory/
+test_reports/
+test_result.md
 frontend/node_modules/.cache/default-development/0.pack
 frontend/node_modules/.cache/default-development/1.pack
 frontend/node_modules/.cache/default-development/2.pack

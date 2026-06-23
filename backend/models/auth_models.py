@@ -26,6 +26,33 @@ class User(BaseModel):
     tenant_id: str
     status: str = "active"
     created_at: str = Field(default_factory=_now_iso)
+    expires_at: Optional[str] = None  # time-boxed access (e.g. Enterprise Evaluator)
+
+
+class EvaluationRequest(BaseModel):
+    """Enterprise Evaluation lead-capture + lifecycle record."""
+    model_config = ConfigDict(extra="ignore")
+    request_id: str
+    name: str
+    company: str
+    business_email: str
+    industry: str
+    use_case: str
+    status: str = "pending"  # pending | approved | rejected
+    created_at: str = Field(default_factory=_now_iso)
+    reviewed_at: Optional[str] = None
+    reviewed_by: Optional[str] = None
+    evaluator_email: Optional[str] = None
+    expires_at: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class EvaluationRequestCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    company: str = Field(..., min_length=1, max_length=160)
+    business_email: EmailStr
+    industry: str = Field(..., min_length=1, max_length=120)
+    use_case: str = Field(..., min_length=5, max_length=2000)
 
 
 class ApiKeyRecord(BaseModel):

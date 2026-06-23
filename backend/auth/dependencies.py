@@ -39,7 +39,53 @@ async def get_current_user(
     user = await user_service.get_user_by_id(_db(), payload["sub"])
     if not user or user.status != "active":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
+    # Time-boxed access (e.g. Enterprise Evaluator) auto-expires server-side.
+    if user.expires_at:
+        from datetime import datetime, timezone
+        try:
+            exp = datetime.fromisoformat(user.expires_at.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > exp:
+                raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Access period expired")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
     return user
+
+
+async def get_optional_user(
+    request: Request,
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+) -> Optional[User]:
+    """Resolve the current user if a valid token/cookie is present, else None.
+
+    Never raises — used by endpoints that serve different content based on
+    whether the caller is authenticated (e.g. tiered document access).
+    """
+    token = creds.credentials if creds else request.cookies.get("access_token")
+    if not token:
+        return None
+    try:
+        payload = decode_token(token, expected_type="access")
+        user = await user_service.get_user_by_id(_db(), payload["sub"])
+    except Exception:
+        return None
+    if not user or user.status != "active":
+        return None
+    if user.expires_at:
+        from datetime import datetime, timezone
+        try:
+            exp = datetime.fromisoformat(user.expires_at.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > exp:
+                return None
+        except Exception:
+            pass
+    return user
+
+
+def has_enterprise_access(user: Optional[User]) -> bool:
+    from core.doc_classification import ENTERPRISE_ROLES
+    return bool(user) and user.role in ENTERPRISE_ROLES
 
 
 def require_permission(permission: Permission):

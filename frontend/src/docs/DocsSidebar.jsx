@@ -1,9 +1,10 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Rocket, Code, Network, ShieldCheck, Boxes, ServerCog, Scale, FileJson, Tag, ExternalLink,
+  Rocket, Code, Network, ShieldCheck, Boxes, ServerCog, Scale, FileJson, Tag, ExternalLink, Lock,
 } from "lucide-react";
 import { DOC_TREE } from "./docsData";
+import { openEnterpriseAsset } from "./docsAuth";
 
 const ICONS = { Rocket, Code, Network, ShieldCheck, Boxes, ServerCog, Scale, FileJson, Tag };
 
@@ -12,8 +13,13 @@ export const DocsSidebar = ({ activeSlug, onNavigate }) => {
 
   const go = (item) => {
     if (item.type === "link") {
-      if (item.internal) navigate(item.href);
-      else window.open(item.href, "_blank", "noopener");
+      if (item.audience === "enterprise") {
+        openEnterpriseAsset(item.href, navigate);
+      } else if (item.internal) {
+        navigate(item.href);
+      } else {
+        window.open(item.href, "_blank", "noopener");
+      }
     } else {
       navigate(`/docs/${item.slug}`);
     }
@@ -33,11 +39,13 @@ export const DocsSidebar = ({ activeSlug, onNavigate }) => {
               {cat.items.map((item) => {
                 const isLink = item.type === "link";
                 const active = !isLink && item.slug === activeSlug;
+                const enterprise = item.audience === "enterprise";
                 return (
                   <li key={`${cat.id}-${item.slug}`}>
                     <button
                       onClick={() => go(item)}
                       data-testid={`docs-nav-${cat.id}-${item.slug}`}
+                      title={enterprise ? "Enterprise Evaluation access" : undefined}
                       className={`w-full text-left flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors ${
                         active
                           ? "bg-blue-50 text-blue-700 font-medium"
@@ -45,7 +53,8 @@ export const DocsSidebar = ({ activeSlug, onNavigate }) => {
                       }`}
                     >
                       <span className="truncate">{item.title}</span>
-                      {isLink && !item.internal && <ExternalLink className="h-3 w-3 shrink-0 text-slate-400" />}
+                      {enterprise && <Lock className="h-3 w-3 shrink-0 text-amber-500" data-testid="enterprise-lock" />}
+                      {isLink && !enterprise && !item.internal && <ExternalLink className="h-3 w-3 shrink-0 text-slate-400" />}
                     </button>
                   </li>
                 );

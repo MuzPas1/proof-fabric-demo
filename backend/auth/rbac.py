@@ -10,6 +10,7 @@ class Role(str, Enum):
     VERIFIER = "verifier"
     READ_ONLY = "read_only"
     EXTERNAL_REVIEWER = "external_reviewer"  # least-privilege, view-only (partner review)
+    EVALUATOR = "evaluator"  # time-boxed Enterprise Evaluation: read-only docs only, NO control plane
 
 
 # Permission strings used across admin/control-plane routes.
@@ -65,6 +66,10 @@ ROLE_PERMISSIONS: dict[Role, Set[Permission]] = {
         Permission.FEA_VERIFY,
         Permission.WEBHOOKS_READ,
     },
+    # Enterprise Evaluator: NO control-plane permissions at all. Access is limited
+    # to ENTERPRISE-tier documentation (enforced by role membership in
+    # core.doc_classification.ENTERPRISE_ROLES), and is time-boxed via User.expires_at.
+    Role.EVALUATOR: set(),
 }
 
 

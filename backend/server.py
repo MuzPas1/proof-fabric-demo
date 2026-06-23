@@ -46,9 +46,12 @@ app = FastAPI(
     title="Proof Fabric Protocol (PFP)",
     description="Cryptographically verifiable Proof Artifacts — general-purpose proof infrastructure & enterprise control plane.",
     version="2.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
+    # Interactive API docs are GATED. A curated PUBLIC spec is served at
+    # /api/openapi-public.json (and powers the public Swagger/ReDoc); the FULL
+    # spec at /api/openapi.json requires Enterprise Evaluation / staff access.
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 app.state.limiter = limiter
@@ -77,20 +80,97 @@ from routes.demo_routes import router as demo_router
 from routes.auth_routes import router as auth_router
 from routes.admin_routes import router as admin_router
 from routes.webhook_routes import router as webhook_router
+from routes.resources_routes import router as resources_router
+from routes.evaluation_routes import router as evaluation_router
 
-for r in (fea_router, public_router, demo_router, auth_router, admin_router, webhook_router):
+for r in (fea_router, public_router, demo_router, auth_router, admin_router,
+          webhook_router, resources_router, evaluation_router):
     app.include_router(r, prefix="/api")
 
-# Developer resources hosted under /api so they are reachable on any attached
-# domain (e.g. demo.pfprotocol.com or api.pfprotocol.com) via the /api ingress
-# route. Read-only static serving of docs (OpenAPI, Postman, guides) and SDKs.
-import os as _os
-_DOCS_DIR = _os.path.join(_os.path.dirname(__file__), "..", "docs")
-_SDKS_DIR = _os.path.join(_os.path.dirname(__file__), "..", "sdks")
-if _os.path.isdir(_DOCS_DIR):
-    app.mount("/api/resources/docs", StaticFiles(directory=_DOCS_DIR), name="docs")
-if _os.path.isdir(_SDKS_DIR):
-    app.mount("/api/resources/sdks", StaticFiles(directory=_SDKS_DIR), name="sdks")
+# Developer assets (docs, OpenAPI, Postman, SDKs) are served through the
+# resources router with SERVER-SIDE tiered access control (PUBLIC / ENTERPRISE /
+# INTERNAL) — see routes/resources_routes.py + core/doc_classification.py. The
+# previous open StaticFiles mounts were removed so internal docs can no longer be
+# fetched by direct URL.
+
+# --------------------------------------------------------------------------
+# OpenAPI / Swagger / ReDoc — gated full spec + curated public spec
+# --------------------------------------------------------------------------
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+from fastapi import Depends
+from typing import Optional as _Optional
+from auth.dependencies import get_optional_user, has_enterprise_access
+from models.auth_models import User as _User
+
+# Paths exposed in the PUBLIC (curated) spec — verification + demo + value only.
+# Issuance, batch, listing, control plane, federated keys & BYOS are NOT public.
+_PUBLIC_SPEC_EXACT = {
+    "/api/", "/api/health", "/api/config", "/api/developer",
+    "/api/fea/verify", "/api/evaluation/request",
+}
+_PUBLIC_SPEC_PREFIXES = ("/api/public/", "/api/demo/")
+
+
+def _full_openapi() -> dict:
+    from fastapi.openapi.utils import get_openapi
+    if not app.openapi_schema:
+        app.openapi_schema = get_openapi(
+            title=app.title, version=app.version, description=app.description, routes=app.routes,
+        )
+    return app.openapi_schema
+
+
+def _is_public_path(path: str) -> bool:
+    if "/admin/" in path:
+        return False
+    if path in _PUBLIC_SPEC_EXACT:
+        return True
+    return any(path.startswith(p) for p in _PUBLIC_SPEC_PREFIXES)
+
+
+def _public_openapi() -> dict:
+    full = _full_openapi()
+    paths = {p: item for p, item in full.get("paths", {}).items() if _is_public_path(p)}
+    return {
+        "openapi": full.get("openapi", "3.1.0"),
+        "info": {
+            "title": "Proof Fabric Protocol — Public API",
+            "version": app.version,
+            "description": "Public verification & demo surface. Full API (issuance, "
+                           "control plane, federated keys, BYOS) is available via the "
+                           "PFP Enterprise Evaluation Center.",
+        },
+        "paths": paths,
+        "components": full.get("components", {}),
+    }
+
+
+@app.get("/api/openapi-public.json", include_in_schema=False)
+async def openapi_public():
+    return _public_openapi()
+
+
+@app.get("/api/openapi.json", include_in_schema=False)
+async def openapi_full(user: _Optional[_User] = Depends(get_optional_user)):
+    if not has_enterprise_access(user):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=403, content={
+            "error": "enterprise_access_required",
+            "message": "The full OpenAPI specification is available via the PFP Enterprise Evaluation Center.",
+            "public_spec": "/api/openapi-public.json",
+            "request_access": "/evaluation",
+        })
+    return _full_openapi()
+
+
+@app.get("/api/docs", include_in_schema=False)
+async def public_swagger():
+    return get_swagger_ui_html(openapi_url="/api/openapi-public.json", title="PFP Public API — Swagger")
+
+
+@app.get("/api/redoc", include_in_schema=False)
+async def public_redoc():
+    return get_redoc_html(openapi_url="/api/openapi-public.json", title="PFP Public API — ReDoc")
 
 
 @app.on_event("startup")
@@ -124,6 +204,8 @@ async def startup_event():
         await federated_key_service.ensure_indexes(db)
         from services import signer_service
         await signer_service.ensure_indexes(db)
+        from services import evaluation_service
+        await evaluation_service.ensure_indexes(db)
     except Exception as e:
         logger.warning(f"Federated key index warning: {e}")
 
@@ -263,26 +345,37 @@ async def developer_resources(request: Request):
         "name": "Proof Fabric Protocol — Developer Resources",
         "version": "2.0.0",
         "api_base": f"{base}/api",
-        "interactive": {
+        "access_model": {
+            "tiers": ["public", "enterprise", "internal"],
+            "note": "Full API specs, SDKs, integration & architecture materials are "
+                    "available through the Enterprise Evaluation Center.",
+            "request_access": f"{base}/evaluation",
+        },
+        "public": {
             "swagger_ui": f"{base}/api/docs",
             "redoc": f"{base}/api/redoc",
-            "openapi_json": f"{base}/api/openapi.json",
+            "openapi_public_json": f"{base}/api/openapi-public.json",
+            "quickstart": f"{base}/api/resources/docs/QUICKSTART.md",
+            "use_case": f"{base}/api/resources/docs/USE_CASE_CHANGE_RELEASE.md",
+            "release_notes": f"{base}/api/resources/docs/RELEASE_NOTES.md",
+            "public_verify": f"{base}/api/public/verify/{{fea_id}}",
+            "public_keys": f"{base}/api/public/keys",
+        },
+        "enterprise": {
+            "note": "Requires Enterprise Evaluation access (Authorization: Bearer <evaluator/staff token>).",
+            "openapi_full_json": f"{base}/api/openapi.json",
             "openapi_yaml": f"{base}/api/resources/docs/openapi.yaml",
             "postman_collection": f"{base}/api/resources/docs/postman_collection.json",
-        },
-        "guides": {
-            "quickstart": f"{base}/api/resources/docs/QUICKSTART.md",
             "developer_guide": f"{base}/api/resources/docs/DEVELOPER_GUIDE.md",
             "integration_guide": f"{base}/api/resources/docs/INTEGRATION_GUIDE.md",
             "api_reference": f"{base}/api/resources/docs/API_REFERENCE.md",
-            "canonical_endpoints": f"{base}/api/resources/docs/CANONICAL_ENDPOINTS.md",
-        },
-        "sdks": {
-            "python": f"{base}/api/resources/sdks/python/",
-            "javascript": f"{base}/api/resources/sdks/javascript/",
-            "java": f"{base}/api/resources/sdks/java/",
-            "dotnet": f"{base}/api/resources/sdks/dotnet/",
-            "readme": f"{base}/api/resources/sdks/README.md",
+            "architecture": f"{base}/api/resources/docs/ARCHITECTURE.md",
+            "sdks": {
+                "python": f"{base}/api/resources/sdks/python/",
+                "javascript": f"{base}/api/resources/sdks/javascript/",
+                "java": f"{base}/api/resources/sdks/java/",
+                "dotnet": f"{base}/api/resources/sdks/dotnet/",
+            },
         },
         "auth": {
             "data_plane": "X-API-Key: <key>  (provisioned via POST /api/admin/api-keys/create)",

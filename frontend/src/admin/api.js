@@ -77,6 +77,14 @@ export const api = {
   audit: (params = {}) => cp.get("/admin/audit", { params }).then((r) => r.data),
   auditVerify: () => cp.get("/admin/audit/verify").then((r) => r.data),
 
+  // --- Enterprise Evaluation requests ---
+  listEvaluations: (status) =>
+    cp.get("/admin/evaluation/requests", { params: status ? { status_filter: status } : {} }).then((r) => r.data),
+  approveEvaluation: (id, days) =>
+    cp.post(`/admin/evaluation/requests/${id}/approve`, { days }).then((r) => r.data),
+  rejectEvaluation: (id, reason) =>
+    cp.post(`/admin/evaluation/requests/${id}/reject`, { reason }).then((r) => r.data),
+
   // --- System ---
   health: () => cp.get("/health").then((r) => r.data),
   metricsRaw: () => cp.get("/metrics", { responseType: "text" }).then((r) => r.data),
