@@ -1,6 +1,7 @@
 """Public routes (no authentication required)."""
 from fastapi import APIRouter, HTTPException, status
 
+from core.config import settings
 from models.fea import PublicVerifyResponse
 from services.verification_service import verify_fea_with_registry
 from services.key_service import get_all_keys
@@ -37,6 +38,14 @@ async def public_verify_fea(fea_id: str):
         sig_version
     )
 
+    time_attestation = None
+    if settings.ENABLE_TIME_ANCHOR and fea_doc.get("time_anchor"):
+        try:
+            from services.time_anchor_service import verify_time_attestation
+            time_attestation = await verify_time_attestation(fea_doc)
+        except Exception:
+            time_attestation = None
+
     return PublicVerifyResponse(
         fea_id=fea_id,
         fea_payload=fea_payload,
@@ -44,7 +53,8 @@ async def public_verify_fea(fea_id: str):
         signature_version=detected_version,
         signature_valid=valid,
         issuer_id=fea_payload.get("issuer_id", "unknown"),
-        created_at=fea_doc["created_at"]
+        created_at=fea_doc["created_at"],
+        time_attestation=time_attestation,
     )
 
 

@@ -127,26 +127,38 @@ async def get_public_key_bytes_by_id(public_key_id: str) -> Optional[bytes]:
     return None
 
 
-async def retire_key(public_key_id: str) -> bool:
+async def retire_key(public_key_id: str, time_anchor_cutoff: Optional[str] = None) -> bool:
     """
     Retire a key (mark as inactive).
     Key remains in registry for verification of old FEAs.
     NEVER deletes the key.
+
+    Optionally records a ``time_anchor_cutoff`` (ISO-8601). This is enforced
+    ONLY by Independent Time Attestation (Trust Layer 2) against the proof's
+    INDEPENDENTLY attested time — NOT by the core signature path and NOT against
+    the self-attested ``iat``. Therefore it closes the leaked-but-retired
+    backdating gap WITHOUT affecting the verifiability of any existing proof
+    (continuity / retire-not-revoke fully preserved).
     """
     global _db, _key_cache
-    
+
     if _db is None:
         return False
-    
+
+    update = {"status": "retired"}
+    if time_anchor_cutoff:
+        update["time_anchor_cutoff"] = time_anchor_cutoff
     result = await _db.key_registry.update_one(
         {"public_key_id": public_key_id},
-        {"$set": {"status": "retired"}}
+        {"$set": update}
     )
-    
+
     # Update cache
     if public_key_id in _key_cache:
         _key_cache[public_key_id].status = "retired"
-    
+        if time_anchor_cutoff:
+            _key_cache[public_key_id].time_anchor_cutoff = time_anchor_cutoff
+
     return result.modified_count > 0
 
 

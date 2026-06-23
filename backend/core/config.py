@@ -39,6 +39,12 @@ class Settings:
     ENABLE_BYOS: bool = os.environ.get("ENABLE_BYOS", "false").lower() == "true"
     DEFAULT_SIGNATURE_SUITE: str = os.environ.get("DEFAULT_SIGNATURE_SUITE", "Ed25519")
 
+    # --- Trust Layer 2: Independent Time Attestation (default OFF; additive) ---
+    ENABLE_TIME_ANCHOR: bool = os.environ.get("ENABLE_TIME_ANCHOR", "false").lower() == "true"
+    TIME_ANCHOR_PROVIDER: str = os.environ.get("TIME_ANCHOR_PROVIDER", "local").lower()
+    TSA_URL: str = os.environ.get("TSA_URL", "")
+    TIME_ANCHOR_LOCAL_SEED: str = os.environ.get("TIME_ANCHOR_LOCAL_SEED", "")
+
     # --- Crypto policy ---
     ACCEPT_LEGACY_V1: bool = os.environ.get("ACCEPT_LEGACY_V1", "false").lower() == "true"
     ENFORCE_VERIFY_TIMESTAMP: bool = (

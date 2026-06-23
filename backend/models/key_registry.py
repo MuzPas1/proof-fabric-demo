@@ -26,6 +26,7 @@ class PublicKeyInfo(BaseModel):
     owner: Optional[str] = None                # "platform" | "customer" | "partner"
     not_before: Optional[str] = None           # ISO-8601 validity window start
     not_after: Optional[str] = None            # ISO-8601 validity window end
+    time_anchor_cutoff: Optional[str] = None   # retirement cutoff enforced ONLY via independent time attestation (Trust Layer 2)
     pop_verified: Optional[bool] = None        # proof-of-possession confirmed
     label: Optional[str] = None                # human label for partner keys
 

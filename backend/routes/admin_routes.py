@@ -129,15 +129,17 @@ async def revoke_signing_key(
 @router.post("/keys/retire")
 async def retire_signing_key(
     public_key_id: str = Query(...),
+    not_after: Optional[str] = Query(None, description="Optional ISO-8601 retirement cutoff; enforced ONLY via independent time attestation (does not affect existing-proof verification)"),
     user: User = Depends(require_permission(Permission.KEYS_MANAGE)),
 ):
-    ok = await key_service.retire_key(public_key_id)
+    ok = await key_service.retire_key(public_key_id, time_anchor_cutoff=not_after)
     if not ok:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Key not found")
     await audit_service.record_audit(
         _db(), "key.retired", actor=user.email, tenant_id=user.tenant_id, target=public_key_id,
+        metadata={"time_anchor_cutoff": not_after} if not_after else None,
     )
-    return {"status": "retired", "public_key_id": public_key_id}
+    return {"status": "retired", "public_key_id": public_key_id, "time_anchor_cutoff": not_after}
 
 
 # --------------------------------------------------------------------------

@@ -101,6 +101,7 @@ class PublicVerifyResponse(BaseModel):
     signature_valid: bool
     issuer_id: str
     created_at: str
+    time_attestation: Optional[Dict[str, Any]] = None  # present only when a time anchor exists
 
 
 class FEADocument(BaseModel):
@@ -117,3 +118,4 @@ class FEADocument(BaseModel):
     signature_version: str
     public_key_id: str
     created_at: str
+    time_anchor: Optional[Dict[str, Any]] = None  # detached time-attestation envelope (Trust Layer 2)

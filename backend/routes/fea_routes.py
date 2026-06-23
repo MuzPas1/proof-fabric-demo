@@ -295,3 +295,37 @@ async def get_fea(fea_id: str, key: ApiKeyRecord = Depends(require_scope("fea:re
         signature_version=doc.get("signature_version", "v2"),
         public_key_id=doc["public_key_id"], created_at=doc["created_at"],
     )
+
+
+
+@router.post("/{fea_id}/anchor")
+@limiter.limit("60/minute")
+async def anchor_fea_endpoint(
+    request: Request,
+    fea_id: str,
+    key: ApiKeyRecord = Depends(require_scope("fea:write")),
+):
+    """Attach a detached Independent Time Attestation to an existing proof.
+
+    Additive & opt-in (gated by ENABLE_TIME_ANCHOR). Does NOT modify the signed
+    payload, signature, or fea_id — the anchor commits to the existing fea_hash.
+    Idempotent: re-anchoring returns the existing envelope.
+    """
+    from core.config import settings as _settings
+    if not _settings.ENABLE_TIME_ANCHOR:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Time attestation not enabled")
+    from server import db as database
+    from services.time_anchor_service import anchor_fea
+    try:
+        envelope = await anchor_fea(database, fea_id, tenant_id=key.tenant_id)
+    except LookupError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Proof not found: {fea_id}")
+    except (ValueError, PermissionError) as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    try:
+        await audit_service.record_audit(
+            database, "fea.time_anchored", actor=key.key_id, tenant_id=key.tenant_id, target=fea_id,
+        )
+    except Exception:
+        pass
+    return {"fea_id": fea_id, "time_anchor": envelope}
