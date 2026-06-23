@@ -61,6 +61,12 @@ import {
   BookOpen,
   Sparkles,
   Award,
+  Bot,
+  Cpu,
+  Users,
+  Clock,
+  Workflow,
+  UserCheck,
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -281,6 +287,7 @@ export default function TransactionFlow() {
   // Auditor verification
   const [auditorProofId, setAuditorProofId] = useState("");
   const [auditorResult, setAuditorResult] = useState(null); // VerifyByIdResponse
+  const [auditorTrust, setAuditorTrust] = useState(null); // Trust Layer 2: { ai_provenance, time_attestation }
   const [verifying, setVerifying] = useState(false);
 
   // Consistency + exception
@@ -648,16 +655,60 @@ export default function TransactionFlow() {
     }
     setVerifying(true);
     setAuditorResult(null);
+    setAuditorTrust(null);
     try {
       await new Promise((r) => setTimeout(r, 350));
-      const { data } = await axios.get(`${API}/demo/verify/${pid}`);
-      setAuditorResult(data);
-    } catch (e) {
-      setAuditorResult({
-        valid: false,
-        proof_id: pid,
-        reason: e?.response?.data?.detail || "Verification request failed",
-      });
+
+      // Trust Layer 2 (additive, never breaks the primary flow): the production
+      // public-verify surface carries any AI provenance & independent time
+      // attestation. Demo proofs simply 404 here -> trust stays null.
+      let trust = null;
+      try {
+        const { data: pub } = await axios.get(`${API}/public/verify/${pid}`);
+        trust = {
+          ai_provenance: pub.ai_provenance || null,
+          time_attestation: pub.time_attestation || null,
+          pub,
+        };
+      } catch {
+        /* not a production proof / no trust layer data */
+      }
+
+      // Primary verification: demo trust domain first (existing behaviour).
+      let demoData = null;
+      try {
+        const { data } = await axios.get(`${API}/demo/verify/${pid}`);
+        demoData = data;
+      } catch (e) {
+        demoData = e?.response?.data?.detail
+          ? { valid: false, proof_id: pid, reason: e.response.data.detail }
+          : null;
+      }
+
+      if (demoData && demoData.valid) {
+        // A valid demo-domain proof — render the existing demo result.
+        setAuditorResult(demoData);
+      } else if (trust?.pub) {
+        // Production proof (verified via public-verify) — render in the SAME panel.
+        const p = trust.pub;
+        const ts = p.fea_payload?.transaction_summary || {};
+        setAuditorResult({
+          valid: !!p.signature_valid,
+          proof_id: pid,
+          transaction_id: ts.transaction_id,
+          issued_at: p.created_at,
+          reason: p.signature_valid ? undefined : "Signature verification failed",
+        });
+      } else {
+        setAuditorResult(
+          demoData || {
+            valid: false,
+            proof_id: pid,
+            reason: "Verification request failed",
+          }
+        );
+      }
+      setAuditorTrust(trust);
     } finally {
       setVerifying(false);
     }
@@ -674,6 +725,7 @@ export default function TransactionFlow() {
     setProof(null);
     setAuditorProofId("");
     setAuditorResult(null);
+    setAuditorTrust(null);
     setMismatch(false);
     toast.message(isCustomForm ? "New release started" : "New transaction started");
   };
@@ -1409,6 +1461,7 @@ export default function TransactionFlow() {
           {auditorResult && (
             <div className="mt-5" data-testid="auditor-result">
               <AuditorResult result={auditorResult} />
+              <AuditorTrustSection trust={auditorTrust} />
             </div>
           )}
 
@@ -1587,10 +1640,254 @@ export default function TransactionFlow() {
 
 /* --------------------------- auditor result view -------------------------- */
 
+function TrustRow({ label, value, valueClass = "text-gray-900", testId }) {
+  return (
+    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+      <span className="text-xs uppercase tracking-wide text-gray-500">{label}</span>
+      <span className={`text-sm text-right ${valueClass}`} data-testid={testId}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function YesNo({ yes }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 font-medium ${yes ? "text-emerald-700" : "text-gray-500"}`}>
+      {yes ? <CheckCircle2 className="w-3.5 h-3.5" /> : null}
+      {yes ? "Yes" : "No"}
+    </span>
+  );
+}
+
+// Trust Layer 2 — AI Accountability & Trust Information.
+// Always rendered below the verification results (never hidden). Sources data
+// from the production public-verify response (ai_provenance + time_attestation).
+// Privacy: shows identity/role/verdict facts only — never raw prompts, system
+// prompts, AI outputs, sensitive content, or provenance content hashes.
+function AuditorTrustSection({ trust }) {
+  const NA = "Not Available";
+  const ap = trust?.ai_provenance || null;
+  const ta = trust?.time_attestation || null;
+  const present = !!ap?.present;
+
+  const ident = ap?.ai_identity || {};
+  const aiUsed =
+    present &&
+    (ap.ai_identity_present ||
+      (ap.agent_chain_length || 0) > 0 ||
+      (ap.provenance_hashes && Object.keys(ap.provenance_hashes).length > 0));
+
+  const multiAgent = present && !!ap.multi_agent;
+  const agents = (present && Array.isArray(ap.agents) && ap.agents) || [];
+  const approvalChain =
+    (present && Array.isArray(ap.approval_chain) && ap.approval_chain) || [];
+
+  const modelLabel =
+    (ident.provider || ident.model_name)
+      ? `${ident.provider || "—"} / ${ident.model_name || "—"}`
+      : "—";
+
+  // Independent time attestation status string.
+  let timeStatus = NA;
+  let timeClass = "text-gray-500";
+  if (ta && ta.present) {
+    if (ta.valid && ta.independent) {
+      timeStatus = "Independently attested (RFC-3161)";
+      timeClass = "text-emerald-700 font-medium";
+    } else if (ta.valid && !ta.independent) {
+      timeStatus = `Timestamped — ${ta.tier || "local authority"}`;
+      timeClass = "text-blue-700 font-medium";
+    } else {
+      timeStatus = "Present — not verified";
+      timeClass = "text-amber-700 font-medium";
+    }
+  }
+
+  const aiVal = (yes, txt) => (
+    <span className={yes ? "text-gray-900" : "text-gray-500"}>{txt}</span>
+  );
+
+  return (
+    <div
+      className="mt-4 rounded-lg border border-slate-200 bg-white overflow-hidden"
+      data-testid="auditor-trust-section"
+    >
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50/70">
+        <ShieldCheck className="w-4 h-4 text-blue-600" />
+        <h4 className="text-sm font-semibold text-slate-900 font-['Space_Grotesk']">
+          AI Accountability &amp; Trust Information
+        </h4>
+        {present && (
+          <span
+            className={`ml-auto inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${
+              ap.valid
+                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20"
+                : "bg-amber-50 text-amber-700 ring-1 ring-amber-600/20"
+            }`}
+            data-testid="trust-provenance-integrity"
+          >
+            {ap.valid ? "Provenance cryptographically verified" : "Provenance unverified"}
+          </span>
+        )}
+      </div>
+
+      {!present && (
+        <div className="px-4 py-2.5 text-xs text-gray-500" data-testid="trust-no-provenance">
+          No AI provenance record is attached to this proof.
+        </div>
+      )}
+
+      <div className="divide-y divide-gray-100">
+        <TrustRow label="AI Used" value={<YesNo yes={!!aiUsed} />} testId="trust-ai-used" />
+        <TrustRow
+          label="AI Provider"
+          value={aiUsed ? aiVal(!!ident.provider, ident.provider || NA) : "Not Applicable"}
+          testId="trust-ai-provider"
+        />
+        <TrustRow
+          label="Model Name"
+          value={aiUsed ? aiVal(!!ident.model_name, ident.model_name || NA) : "Not Applicable"}
+          testId="trust-model-name"
+        />
+        <TrustRow
+          label="Model Version"
+          value={aiUsed ? aiVal(!!ident.model_version, ident.model_version || NA) : "Not Applicable"}
+          testId="trust-model-version"
+        />
+        <TrustRow
+          label="Agent Identifier"
+          value={
+            aiUsed
+              ? aiVal(!!ident.agent_identifier, ident.agent_identifier || NA)
+              : "Not Applicable"
+          }
+          valueClass="font-mono text-xs text-gray-900"
+          testId="trust-agent-identifier"
+        />
+        <TrustRow
+          label="Human Reviewed"
+          value={present ? <YesNo yes={!!ap.human_reviewed} /> : NA}
+          testId="trust-human-reviewed"
+        />
+        <TrustRow
+          label="Human Approved"
+          value={present ? <YesNo yes={!!ap.human_approved} /> : NA}
+          testId="trust-human-approved"
+        />
+        <TrustRow
+          label="Multi-Agent Workflow"
+          value={present ? <YesNo yes={multiAgent} /> : NA}
+          testId="trust-multi-agent"
+        />
+        <TrustRow
+          label="Independent Time Attestation"
+          value={<span className={timeClass}>{timeStatus}</span>}
+          testId="trust-time-attestation"
+        />
+      </div>
+
+      {/* Human Approval Chain */}
+      {present && (
+        <div className="border-t border-gray-100">
+          <div className="px-4 pt-3 pb-1 flex items-center gap-1.5">
+            <UserCheck className="w-3.5 h-3.5 text-slate-500" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Human Approval Chain
+            </span>
+          </div>
+          {approvalChain.length === 0 ? (
+            <div className="px-4 pb-3 text-xs text-gray-500" data-testid="trust-approval-chain-empty">
+              Not Applicable
+            </div>
+          ) : (
+            <ol className="px-4 pb-3 space-y-1.5" data-testid="trust-approval-chain">
+              {approvalChain.map((e, i) => (
+                <li
+                  key={`approval-${i}`}
+                  className="flex items-center gap-2 text-sm text-gray-800"
+                  data-testid={`trust-approval-${i}`}
+                >
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600">
+                    {i + 1}
+                  </span>
+                  <span className="capitalize font-medium">{e.event_type}</span>
+                  <span className="text-gray-400">·</span>
+                  <span>{e.actor_role || "—"}</span>
+                  {e.actor_id && (
+                    <span className="font-mono text-[11px] text-gray-400 truncate">
+                      ({e.actor_id})
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
+
+      {/* Agent Accountability Chain — only when Multi-Agent Workflow = Yes */}
+      {multiAgent && (
+        <div className="border-t border-gray-100 bg-slate-50/40" data-testid="agent-accountability-chain">
+          <div className="px-4 pt-3 pb-1 flex items-center gap-1.5">
+            <Workflow className="w-3.5 h-3.5 text-blue-600" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-700">
+              Agent Accountability Chain
+            </span>
+          </div>
+          <ol className="px-4 pb-3 space-y-1.5">
+            {agents.map((a, i) => (
+              <li
+                key={`agent-${i}`}
+                className="flex items-center gap-2 text-sm text-gray-800"
+                data-testid={`agent-chain-row-${i}`}
+              >
+                <Bot className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <span className="font-medium">{a.agent_role || a.agent_identifier || `Agent ${i + 1}`}</span>
+                <ArrowRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                <span className="text-gray-600">{modelLabel}</span>
+                {a.outcome && (
+                  <span className="ml-1 text-[11px] text-gray-400">· {a.outcome}</span>
+                )}
+              </li>
+            ))}
+            {approvalChain
+              .filter((e) => e.event_type === "approval")
+              .map((e, i) => (
+                <li
+                  key={`agent-approval-${i}`}
+                  className="flex items-center gap-2 text-sm text-gray-800"
+                  data-testid={`agent-chain-approval-${i}`}
+                >
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="font-medium">Human Approval</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                  <span className="text-gray-600">
+                    {(e.actor_id || "Approver")}{e.actor_role ? ` / ${e.actor_role}` : ""}
+                  </span>
+                </li>
+              ))}
+          </ol>
+        </div>
+      )}
+
+      <div className="px-4 py-2.5 border-t border-gray-100 bg-slate-50/50">
+        <p className="text-[11px] text-gray-400 leading-relaxed">
+          Accountability facts are derived from the proof's cryptographically
+          bound provenance envelope. No raw prompts, AI outputs, or sensitive
+          content are stored or shown.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function AuditorResult({ result }) {
   const { valid, compliance, industry, transaction_id, issued_at, reason } =
     result;
-  const isCompliant = valid && compliance?.status === "COMPLIANT";
+  // A valid proof with NO compliance metadata (e.g. production proofs verified
+  // via public-verify) reads as a clean valid proof — not "non-compliant".
+  const isCompliant = valid && (!compliance || compliance?.status === "COMPLIANT");
 
   const headline = !valid
     ? "Invalid Proof — Verification Failed"
