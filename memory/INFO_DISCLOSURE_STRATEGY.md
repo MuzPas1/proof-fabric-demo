@@ -47,6 +47,15 @@ P1 Public site refocus: rewrite landing/docs to product/value/use-case; add Ente
 P1 OpenAPI split: public spec = verify/demo/limited-generate only; full spec behind eval auth.
 P2 Lead gen: Request Demo / Request Evaluation / Contact Sales / Partnership CTAs + analytics.
 
-## Future governance model
-Three-tier disclosure (Public / Enterprise-NDA / Internal), private infra repo,
-"public by exception" doc policy, watermarked/time-boxed eval access, secret-scanning in CI.
+## UPDATE 2026-06-18b — git HISTORY scan (verified)
+- CONFIRMED: backend/.env, memory/test_credentials.md, and *.pem/*.key/*credentials*
+  files EXIST IN GIT HISTORY (multiple auto-commits). Removing from working tree is
+  NOT sufficient — leaked values (PRIVATE_KEY, JWT_SECRET, ADMIN_PASSWORD, DEMO_PRIVATE_KEY,
+  EC keys, admin/reviewer passwords, API keys) must be ROTATED. History rewrite = High-risk.
+- 267 files tracked total.
+- RBAC roles available: super_admin, tenant_admin, auditor, verifier, read_only,
+  external_reviewer. Plan: add EVALUATOR role (read-only, enterprise-docs only) for
+  the Evaluation Center; provision via public lead-capture -> admin approval -> time-boxed token.
+- Change-control: user mandates per-phase approval; NO destructive/irreversible changes
+  (rotation, history rewrite, removals, access-control, repo restructuring) without explicit OK.
+
