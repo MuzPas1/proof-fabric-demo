@@ -9,7 +9,7 @@ Covers the full public lifecycle exercised by the in-browser playground:
 import os
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://pfp-pilot-ready.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://deterministic-ledger.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
 
