@@ -23,7 +23,7 @@ export default function Evaluations() {
     try {
       const res = await api.approveEvaluation(id, 30);
       setApproved(res);
-      toast.success("Evaluator account provisioned");
+      toast.success("Evaluator account provisioned", { position: "bottom-right" });
       load();
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Approve failed");
@@ -59,6 +59,7 @@ export default function Evaluations() {
           <div className="flex items-center gap-1.5">
             {["pending", "approved", "rejected", "all"].map((s) => (
               <Button key={s} size="sm" variant={filter === s ? "default" : "outline"}
+                className={filter === s ? "" : "text-slate-700 border-slate-300 hover:bg-slate-100"}
                 onClick={() => setFilter(s)} data-testid={`eval-filter-${s}`}>
                 {s[0].toUpperCase() + s.slice(1)}
               </Button>
