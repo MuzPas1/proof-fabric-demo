@@ -42,6 +42,13 @@ import {
   decodeConfig,
   validateConfig,
 } from "@/lib/workflowConfig";
+import { PfpTopSections, PfpBottomSections } from "@/components/PfpOverview";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   CheckCircle2,
   ShieldCheck,
@@ -782,14 +789,23 @@ export default function TransactionFlow() {
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="max-w-5xl mx-auto px-6 pt-10 pb-6">
-        <h1
-          className="text-3xl sm:text-4xl font-semibold tracking-tight text-gray-900 font-['Space_Grotesk']"
+      {/* PFP positioning + GEO/enterprise overview (presentation-only) */}
+      <PfpTopSections />
+
+      {/* Interactive Demo */}
+      <section
+        className="max-w-5xl mx-auto px-6 pt-10 pb-6 border-t border-gray-100"
+        data-testid="demo-section"
+      >
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-600">
+          Live Interactive Demo
+        </div>
+        <h2
+          className="mt-2 text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900 font-['Space_Grotesk']"
           data-testid="page-title"
         >
           {industry.ui?.heroTitle || "Cryptographic proof for any regulated workflow."}
-        </h1>
+        </h2>
         <p
           className="mt-3 text-base text-gray-600 max-w-2xl"
           data-testid="page-subtitle"
@@ -1142,6 +1158,25 @@ export default function TransactionFlow() {
             </div>
           ) : (
             <>
+              <div
+                className="mb-3 flex items-center gap-2"
+                data-testid="proof-artifact-label"
+              >
+                <TooltipProvider delayDuration={150}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 cursor-help">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        Cryptographically Verifiable Proof Artifact
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs text-xs">
+                      Independently verifiable evidence containing integrity,
+                      provenance, accountability, and audit metadata.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <div className="rounded-lg bg-gray-50 border border-gray-100 divide-y divide-gray-100">
                 {isBuilder && (
                   <>
@@ -1563,6 +1598,9 @@ export default function TransactionFlow() {
             </div>
           </SectionCard>
         )}
+
+        {/* PFP enterprise use-cases, AI governance, FAQ, knowledge center */}
+        <PfpBottomSections />
 
         {/* Footer */}
         <footer className="pt-8 mt-4 border-t border-gray-200 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-gray-500">
