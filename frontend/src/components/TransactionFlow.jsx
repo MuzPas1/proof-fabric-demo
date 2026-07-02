@@ -43,14 +43,20 @@ import {
   validateConfig,
 } from "@/lib/workflowConfig";
 import {
-  PfpHero,
-  PortalTabs,
   TabHowItWorks,
   TabUseCases,
   TabAiGovernance,
   TabFaq,
   TabResources,
 } from "@/components/PfpOverview";
+import {
+  PortalSidebar,
+  PortalTopBar,
+  PortalRightRail,
+  SessionProofsView,
+  useSessionProofs,
+  formatUSD,
+} from "@/components/PortalShell";
 import {
   Tooltip,
   TooltipContent,
@@ -275,6 +281,10 @@ export default function TransactionFlow() {
 
   // Portal information architecture: product (Demo) first, education secondary.
   const [activeTab, setActiveTab] = useState("demo");
+
+  // Session-scoped proof history (localStorage — no backend, no fake data).
+  const { proofs: sessionProofs, addProof, clear: clearSessionProofs } =
+    useSessionProofs();
 
   // Industry context (presentation-only — backend payload is unchanged)
   const [industryId, setIndustryId] = useState(() =>
@@ -522,6 +532,13 @@ export default function TransactionFlow() {
       setProof({ ...data, compliance: complianceState, signature });
       setAuditorProofId(data.proof_id); // pre-fill for demo convenience
       setProcessed(true);
+      addProof({
+        proof_id: data.proof_id,
+        transaction_id: record.transaction_id,
+        amount: record.amount,
+        compliant: isCompliant,
+        industry_label: isBuilder ? builder.workflowName.trim() : industry.label,
+      });
       toast.success(
         isBuilder
           ? `Proof generated — ${isCompliant ? "Verified" : "Failed"}`
@@ -745,99 +762,93 @@ export default function TransactionFlow() {
     setAuditorResult(null);
     setAuditorTrust(null);
     setMismatch(false);
+    setActiveTab("demo");
     toast.message(isCustomForm ? "New release started" : "New transaction started");
   };
 
+  const checksTotal = isBuilder
+    ? (builderValidation?.validChecks || []).length
+    : (industry.checks || []).length;
+  const checksPassed = !processed
+    ? 0
+    : effectiveFail
+    ? isBuilder
+      ? 0
+      : Math.max(checksTotal - 1, 0)
+    : checksTotal;
+
   return (
     <div
-      className="min-h-screen bg-white text-gray-900"
+      className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden"
       data-testid="transaction-flow"
     >
-      {/* Top Nav */}
-      <header className="border-b border-gray-200 bg-white sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center">
-              <ShieldCheck className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <div className="text-sm font-semibold tracking-tight text-gray-900">
-                Proof Fabric Protocol
+      <PortalSidebar
+        active={activeTab}
+        onNavigate={setActiveTab}
+        onNewTransaction={() => {
+          resetAll();
+          setActiveTab("demo");
+        }}
+      />
+
+      <div className="flex-1 flex flex-col min-w-0 h-full">
+        <PortalTopBar
+          active={activeTab}
+          onNavigate={setActiveTab}
+          onNewTransaction={() => {
+            resetAll();
+            setActiveTab("demo");
+          }}
+        />
+
+        <div className="flex-1 flex overflow-hidden">
+          <div
+            className="flex-1 overflow-y-auto min-w-0"
+            data-testid="portal-center"
+          >
+            {/* Educational views */}
+            {activeTab !== "demo" &&
+              activeTab !== "verify" &&
+              activeTab !== "proofs" && (
+                <div className="p-6 max-w-4xl" data-testid="education-content">
+                  {activeTab === "how" && <TabHowItWorks />}
+                  {activeTab === "usecases" && <TabUseCases />}
+                  {activeTab === "aigov" && <TabAiGovernance />}
+                  {activeTab === "faq" && <TabFaq />}
+                  {activeTab === "resources" && <TabResources />}
+                </div>
+              )}
+
+            {/* Session proofs list */}
+            {activeTab === "proofs" && (
+              <div className="p-6" data-testid="proofs-view">
+                <SessionProofsView
+                  proofs={sessionProofs}
+                  onOpen={(id) => {
+                    setAuditorProofId(id);
+                    setActiveTab("verify");
+                  }}
+                  onClear={clearSessionProofs}
+                  onNew={() => {
+                    resetAll();
+                    setActiveTab("demo");
+                  }}
+                />
               </div>
-              <div className="text-xs text-gray-500">
-                Transaction Evidence Dashboard
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <a
-              href="/docs"
-              data-testid="demo-nav-docs"
-              className="hidden sm:inline-flex items-center text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md px-3 py-1.5 transition-colors"
-            >
-              <BookOpen className="w-3.5 h-3.5 mr-1.5" />
-              Docs
-            </a>
-            <a
-              href="/developers"
-              data-testid="demo-nav-developers"
-              className="hidden sm:inline-flex items-center text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md px-3 py-1.5 transition-colors"
-            >
-              <Code className="w-3.5 h-3.5 mr-1.5" />
-              Developers
-            </a>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={resetAll}
-              className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-              data-testid="new-transaction-btn"
-            >
-              <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-              New Transaction
-            </Button>
-          </div>
-        </div>
-      </header>
+            )}
 
-      {/* Compact product-first hero */}
-      <PfpHero />
-
-      {/* Primary tab navigation — Demo first, education secondary */}
-      <PortalTabs active={activeTab} onChange={setActiveTab} />
-
-      {/* Educational tabs (secondary — discoverable but not blocking the demo) */}
-      {activeTab !== "demo" && (
-        <main
-          className="max-w-5xl mx-auto px-6 pt-8 pb-16"
-          data-testid="education-content"
-        >
-          {activeTab === "how" && <TabHowItWorks />}
-          {activeTab === "usecases" && <TabUseCases />}
-          {activeTab === "aigov" && <TabAiGovernance />}
-          {activeTab === "faq" && <TabFaq />}
-          {activeTab === "resources" && <TabResources />}
-        </main>
-      )}
-
-      {/* Live Demo (primary) */}
-      {activeTab === "demo" && (
-      <>
-      <section
-        className="max-w-5xl mx-auto px-6 pt-6 pb-6"
-        data-testid="demo-section"
-      >
-        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-600">
-          Live Interactive Demo
-        </div>
+            {/* Live Demo (primary) */}
+            {activeTab === "demo" && (
+            <div className="p-6 space-y-5" data-testid="demo-view">
+      <section data-testid="demo-section">
         <h2
-          className="mt-2 text-2xl sm:text-3xl font-semibold tracking-tight text-gray-900 font-['Space_Grotesk']"
+          className="text-xl font-bold tracking-tight text-slate-900 font-['Space_Grotesk']"
           data-testid="page-title"
         >
           {industry.ui?.heroTitle || "Cryptographic proof for any regulated workflow."}
         </h2>
         <p
-          className="mt-3 text-base text-gray-600 max-w-2xl"
+          className="mt-1 text-sm text-slate-500 max-w-2xl"
           data-testid="page-subtitle"
         >
           {industry.ui?.heroSubtitle ||
@@ -954,7 +965,7 @@ export default function TransactionFlow() {
         )}
       </section>
 
-      <main className="max-w-5xl mx-auto px-6 pb-20 space-y-5">
+      <main className="mt-5 space-y-5" data-testid="demo-steps">
         {/* 1. Input (industry-aware) */}
         <SectionCard
           step="1"
@@ -1483,7 +1494,14 @@ export default function TransactionFlow() {
             </div>
           </div>
         )}
+      </main>
+            </div>
+            )}
 
+            {/* Verify Proof view */}
+            {activeTab === "verify" && (
+            <div className="p-6 space-y-5" data-testid="verify-view">
+      <main className="space-y-5" data-testid="verify-steps">
         {/* 4. Auditor / External Verification */}
         <SectionCard
           step="4"
@@ -1620,8 +1638,8 @@ export default function TransactionFlow() {
                   Amount mismatch detected
                 </div>
                 <div className="text-sm text-red-700/90 mt-1">
-                  Party A reports ₹{form.amount}, Party B reports ₹
-                  {(Number(form.amount) + 100).toFixed(2)}. Settlement paused
+                  Party A reports {formatUSD(form.amount)}, Party B reports{" "}
+                  {formatUSD((Number(form.amount) + 100).toFixed(2))}. Settlement paused
                   pending reconciliation.
                 </div>
               </div>
@@ -1630,16 +1648,34 @@ export default function TransactionFlow() {
         )}
 
       </main>
-      </>
-      )}
+            </div>
+            )}
+          </div>
 
-      {/* Footer (shared across all tabs) */}
-      <footer className="max-w-5xl mx-auto px-6 pt-8 mt-4 pb-10 border-t border-gray-200 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-gray-500">
-        <span>Ed25519 · SHA-256 · Deterministic canonicalization</span>
-        <span className="ml-auto">
-          Proof artifacts verifiable without access to raw data
-        </span>
-      </footer>
+          {(activeTab === "demo" || activeTab === "verify") && (
+            <PortalRightRail
+              active={activeTab}
+              processed={processed}
+              proof={proof}
+              isCompliant={isCompliant}
+              checksPassed={checksPassed}
+              checksTotal={checksTotal}
+              sessionProofs={sessionProofs}
+              onVerify={() => setActiveTab("verify")}
+              onViewAll={(id) => {
+                if (id) {
+                  setAuditorProofId(id);
+                  setActiveTab("verify");
+                } else {
+                  setActiveTab("proofs");
+                }
+              }}
+              onShare={shareProof}
+              onCopyLink={copyVerificationLink}
+            />
+          )}
+        </div>
+      </div>
 
       {/* Too-large fallback dialog */}
       <Dialog open={tooLargeOpen} onOpenChange={setTooLargeOpen}>
@@ -2221,7 +2257,7 @@ function PartyPanel({ name, subtitle, amount, diverged, testId }) {
           }`}
           data-testid={`${testId}-amount`}
         >
-          ₹{amount}
+          {formatUSD(amount)}
         </div>
       </div>
     </div>
