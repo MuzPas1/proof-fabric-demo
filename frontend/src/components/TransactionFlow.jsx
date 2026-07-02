@@ -1039,7 +1039,7 @@ export default function TransactionFlow() {
                 onChange={(v) => handleInput("amount", v)}
                 testId="input-amount"
                 mono
-                prefix="₹"
+                prefix="$"
               />
             </div>
           )}
@@ -1542,7 +1542,10 @@ export default function TransactionFlow() {
           </div>
 
           {auditorResult && (
-            <div className="mt-5" data-testid="auditor-result">
+            <div
+              className="mt-5 grid grid-cols-1 xl:grid-cols-2 gap-4 items-start"
+              data-testid="auditor-result"
+            >
               <AuditorResult result={auditorResult} />
               <AuditorTrustSection trust={auditorTrust} />
             </div>
