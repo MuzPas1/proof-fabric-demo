@@ -42,7 +42,15 @@ import {
   decodeConfig,
   validateConfig,
 } from "@/lib/workflowConfig";
-import { PfpTopSections, PfpBottomSections } from "@/components/PfpOverview";
+import {
+  PfpHero,
+  PortalTabs,
+  TabHowItWorks,
+  TabUseCases,
+  TabAiGovernance,
+  TabFaq,
+  TabResources,
+} from "@/components/PfpOverview";
 import {
   Tooltip,
   TooltipContent,
@@ -264,6 +272,9 @@ export default function TransactionFlow() {
   const [form, setForm] = useState(DEFAULTS);
   const [processed, setProcessed] = useState(false);
   const [processing, setProcessing] = useState(false);
+
+  // Portal information architecture: product (Demo) first, education secondary.
+  const [activeTab, setActiveTab] = useState("demo");
 
   // Industry context (presentation-only — backend payload is unchanged)
   const [industryId, setIndustryId] = useState(() =>
@@ -789,12 +800,31 @@ export default function TransactionFlow() {
         </div>
       </header>
 
-      {/* PFP positioning + GEO/enterprise overview (presentation-only) */}
-      <PfpTopSections />
+      {/* Compact product-first hero */}
+      <PfpHero />
 
-      {/* Interactive Demo */}
+      {/* Primary tab navigation — Demo first, education secondary */}
+      <PortalTabs active={activeTab} onChange={setActiveTab} />
+
+      {/* Educational tabs (secondary — discoverable but not blocking the demo) */}
+      {activeTab !== "demo" && (
+        <main
+          className="max-w-5xl mx-auto px-6 pt-8 pb-16"
+          data-testid="education-content"
+        >
+          {activeTab === "how" && <TabHowItWorks />}
+          {activeTab === "usecases" && <TabUseCases />}
+          {activeTab === "aigov" && <TabAiGovernance />}
+          {activeTab === "faq" && <TabFaq />}
+          {activeTab === "resources" && <TabResources />}
+        </main>
+      )}
+
+      {/* Live Demo (primary) */}
+      {activeTab === "demo" && (
+      <>
       <section
-        className="max-w-5xl mx-auto px-6 pt-10 pb-6 border-t border-gray-100"
+        className="max-w-5xl mx-auto px-6 pt-6 pb-6"
         data-testid="demo-section"
       >
         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-600">
@@ -1599,17 +1629,17 @@ export default function TransactionFlow() {
           </SectionCard>
         )}
 
-        {/* PFP enterprise use-cases, AI governance, FAQ, knowledge center */}
-        <PfpBottomSections />
-
-        {/* Footer */}
-        <footer className="pt-8 mt-4 border-t border-gray-200 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-gray-500">
-          <span>Ed25519 · SHA-256 · Deterministic canonicalization</span>
-          <span className="ml-auto">
-            Proof artifacts verifiable without access to raw data
-          </span>
-        </footer>
       </main>
+      </>
+      )}
+
+      {/* Footer (shared across all tabs) */}
+      <footer className="max-w-5xl mx-auto px-6 pt-8 mt-4 pb-10 border-t border-gray-200 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-gray-500">
+        <span>Ed25519 · SHA-256 · Deterministic canonicalization</span>
+        <span className="ml-auto">
+          Proof artifacts verifiable without access to raw data
+        </span>
+      </footer>
 
       {/* Too-large fallback dialog */}
       <Dialog open={tooLargeOpen} onOpenChange={setTooLargeOpen}>
