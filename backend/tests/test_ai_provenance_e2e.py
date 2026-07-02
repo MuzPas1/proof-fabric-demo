@@ -20,7 +20,7 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get(
-    "REACT_APP_BACKEND_URL", "https://deterministic-ledger-1.preview.emergentagent.com"
+    "REACT_APP_BACKEND_URL", "https://crypto-proof-engine.preview.emergentagent.com"
 ).rstrip("/")
 
 
