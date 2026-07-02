@@ -1,110 +1,117 @@
 {
-  "theme": "light",
-  "archetype": "4 (Swiss & High-Contrast) - Modified for Brand Context",
-  "rationale": "The platform requires a clean, authoritative, and functional developer portal that aligns with the existing PFP brand (blue-600, white background, slate neutrals). The Swiss & High-Contrast archetype ensures maximum legibility for documentation and code blocks.",
+  "theme": "LIGHT",
+  "archetype": "4_Swiss_High_Contrast",
   "typography": {
     "headings": {
       "family": "Space Grotesk",
-      "weights": ["600", "700"],
-      "classes": "font-space-grotesk tracking-tight text-slate-900"
+      "weights": ["500", "700"],
+      "usage": "All section titles, card headers, and large numeric values."
+    },
+    "monospace": {
+      "family": "JetBrains Mono",
+      "weights": ["400", "500"],
+      "usage": "Transaction IDs, Proof IDs, Hashes, Ed25519 signatures, Timestamps (UTC)."
     },
     "body": {
-      "family": "IBM Plex Sans",
+      "family": "Inter",
       "weights": ["400", "500", "600"],
-      "classes": "font-ibm-plex text-slate-600 leading-relaxed"
+      "usage": "Dense UI labels, descriptions, list items, and standard copy."
     },
-    "mono": {
-      "family": "JetBrains Mono",
-      "classes": "font-jetbrains-mono text-sm"
+    "scale": {
+      "h1": "text-2xl sm:text-3xl tracking-tight leading-none",
+      "h2": "text-xl font-bold tracking-tight",
+      "h3": "text-base font-semibold",
+      "body": "text-sm leading-tight",
+      "label": "text-xs font-medium tracking-wide uppercase",
+      "code": "text-[11px] leading-none"
     }
   },
   "colors": {
-    "background": {
-      "default": "bg-white",
-      "muted": "bg-slate-50",
-      "code": "bg-slate-950"
-    },
-    "primary": {
-      "default": "bg-blue-600",
-      "hover": "hover:bg-blue-700",
-      "text": "text-blue-600",
-      "light": "bg-blue-50 text-blue-700"
+    "backgrounds": {
+      "app": "bg-slate-50",
+      "surface": "bg-white",
+      "surfaceHover": "bg-slate-100",
+      "sidebar": "bg-white border-r border-slate-200"
     },
     "text": {
       "primary": "text-slate-900",
-      "secondary": "text-slate-600",
-      "tertiary": "text-slate-500",
-      "code": "text-slate-200",
-      "code_highlight": "text-blue-400"
+      "secondary": "text-slate-500",
+      "tertiary": "text-slate-400",
+      "code": "text-slate-600"
     },
-    "border": {
+    "accents": {
+      "primary": "blue-600",
+      "primaryHover": "blue-700",
+      "primaryBg": "bg-blue-50",
+      "pass": "emerald-600",
+      "passBg": "bg-emerald-50",
+      "fail": "red-600",
+      "failBg": "bg-red-50",
+      "warning": "amber-500"
+    },
+    "borders": {
       "default": "border-slate-200",
-      "focus": "focus:border-blue-500",
-      "code": "border-slate-800"
-    },
-    "status": {
-      "success": "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
-      "error": "bg-red-50 text-red-700 ring-red-600/20",
-      "info": "bg-blue-50 text-blue-700 ring-blue-600/20",
-      "neutral": "bg-slate-50 text-slate-700 ring-slate-600/20"
+      "focus": "ring-2 ring-blue-600 ring-offset-1"
     }
   },
-  "layout": {
-    "structure": "Stripe/Twilio inspired single-page documentation structure with vertical flow. Sticky header, Hero Section, Content Body with Left Sticky Nav (if multi-page) or single unified vertical scroll.",
-    "header": "Sticky header with glassmorphism `bg-white/80 backdrop-blur-md border-b border-slate-200 z-50`. Include Logo (ShieldCheck in blue square), Nav links (Demo, Admin), and primary CTA.",
-    "hero": "Technical and spacious hero section. Uses a subtle CSS grid background for texture. Center-aligned text for the main hook, immediately followed by Get Started onboarding flow.",
-    "spacing": {
-      "section_gap": "gap-12 md:gap-24",
-      "container_padding": "px-4 sm:px-6 lg:px-8",
-      "card_padding": "p-6"
-    }
+  "layout_grid": {
+    "appShell": "flex h-screen bg-slate-50 overflow-hidden font-sans",
+    "sidebar": "w-[240px] flex-shrink-0 border-r border-slate-200 bg-white flex flex-col h-full",
+    "mainArea": "flex-1 flex flex-col min-w-0 h-full",
+    "topBar": "h-14 flex-shrink-0 border-b border-slate-200 bg-white flex items-center px-6 justify-between",
+    "contentRow": "flex-1 flex overflow-hidden",
+    "centerFlow": "flex-1 overflow-y-auto p-6 min-w-0",
+    "rightRail": "w-[320px] flex-shrink-0 border-l border-slate-200 bg-white p-6 overflow-y-auto flex flex-col gap-6 hidden lg:flex",
+    "verifyProofLayout": "grid grid-cols-1 xl:grid-cols-3 gap-6 items-start w-full"
   },
   "components": {
+    "sidebarNav": {
+      "active": "flex items-center gap-3 px-3 py-2 rounded-md text-sm bg-blue-50 text-blue-700 font-semibold border-l-2 border-blue-600",
+      "inactive": "flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors border-l-2 border-transparent",
+      "groupLabel": "px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-500 mt-4"
+    },
     "cards": {
-      "style": "bg-white border border-slate-200 rounded-xl shadow-sm transition-all duration-200",
-      "hover": "hover:shadow-md hover:border-slate-300 hover:-translate-y-0.5",
-      "content": "Use Space Grotesk for card titles. Feature a lucide-react icon with a blue-50 background and blue-600 text as the focal point of the card."
+      "container": "bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden",
+      "densePadding": "p-4 space-y-3",
+      "header": "flex items-center justify-between border-b border-slate-100 px-4 py-3 bg-slate-50/50"
     },
-    "code_blocks": {
-      "style": "bg-slate-950 rounded-xl p-4 md:p-6 overflow-x-auto relative border border-slate-800 shadow-inner mt-4",
-      "typography": "font-jetbrains-mono text-sm text-slate-300 leading-relaxed",
-      "features": "Must include a copy button in the top right corner (`absolute top-3 right-3 text-slate-400 hover:text-white`). Use basic manual syntax highlighting (e.g. coloring keywords blue/pink using spans) if actual syntax highlighter library is not available."
+    "badges": {
+      "pass": "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider",
+      "fail": "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-50 text-red-700 border border-red-200 uppercase tracking-wider",
+      "neutral": "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 uppercase tracking-wider"
     },
-    "status_pills": {
-      "style": "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset",
-      "indicator": "For 'Live' or 'Active' statuses, prepend a small 6px rounded-full dot with a `animate-pulse` class."
-    },
-    "step_indicator": {
-      "style": "w-8 h-8 rounded-full flex shrink-0 items-center justify-center font-bold text-sm bg-blue-100 text-blue-700 border border-blue-200",
-      "connector": "Vertical line connecting steps using `absolute left-4 top-8 bottom-[-2rem] w-[2px] bg-slate-200`."
-    },
-    "buttons": {
-      "primary": "bg-blue-600 text-white hover:bg-blue-700 font-medium rounded-lg px-4 py-2 transition-colors inline-flex items-center gap-2",
-      "secondary": "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 font-medium rounded-lg px-4 py-2 transition-colors inline-flex items-center gap-2",
-      "outline": "text-blue-600 border border-blue-600 hover:bg-blue-50 font-medium rounded-lg px-4 py-2 transition-colors inline-flex items-center gap-2"
-    },
-    "decorative_grid": {
-      "style": "absolute inset-0 bg-[linear-gradient(to_right,#888888_1px,transparent_1px),linear-gradient(to_bottom,#888888_1px,transparent_1px)] bg-[size:24px_24px] opacity-[0.05] pointer-events-none"
+    "dataDensity": {
+      "row": "flex justify-between items-center py-1.5 border-b border-slate-100 last:border-0",
+      "key": "text-xs text-slate-500 font-medium",
+      "value": "text-xs font-semibold text-slate-900 text-right max-w-[60%] truncate"
     }
   },
-  "motion": {
-    "hover": "Subtle translate-y (`-translate-y-0.5`) on resource cards. Smooth color transitions (`transition-all duration-200`).",
-    "entrance": "If using Framer Motion, use staggered fade-up for Get Started steps. Otherwise, rely on clean static presentation."
-  },
-  "media": {
-    "icons": {
-      "library": "lucide-react",
-      "usage": "Use consistently for cards, navigation, and buttons. Primary brand mark is `ShieldCheck`. Other technical icons: `Code`, `FileText`, `Terminal`, `Key`, `Activity`, `Download`, `BookOpen`."
+  "views_blueprint": {
+    "Demo_View": {
+      "Center_Main": "Render the 'Transaction Form' and 'Compliance Checks' stacked densely. Transaction form inputs inline. Simulated failure toggle floated right on the Compliance list header. Evidence Generation block spans full width, using dark code-block aesthetics (bg-slate-900 text-slate-50) for the Ed25519 hash to pop out visually and convey cryptographic gravity.",
+      "Right_Rail": "Render 'Proof Summary' card at top (State: Awaiting/Verified, Checks Passed, Status), followed by 'Next Steps' (Verify/Share), and 'Recent Proofs' (Local storage list showing Time, Amount, Verified Badge)."
+    },
+    "Verify_Proof_View": {
+      "Header": "Full width spanning top of main content area. Large Space Grotesk title with Verified badge. Row of key-value items (Industry, Txn ID, Issued At, Proof ID) compactly arranged.",
+      "Three_Column_Grid": "Place 'Compliance Checks', 'AI Accountability', and 'Cross-Party Consistency' side-by-side using `grid-cols-3`. Each card must have aggressive data density (py-1.5 padding on rows, text-xs) to prevent vertical scrolling. The UI must fit completely in one viewport on a 13-15 inch screen at 100% zoom. Cross-Party Consistency should graphically represent Party A vs Party B side-by-side within its column."
     }
   },
-  "instructions_to_main_agent": {
-    "1": "Implement the Developer Portal at the route `/developers` in the existing App component (React Router). Create a new page component.",
-    "2": "Create a sticky header with navigation linking to /api/docs, /api/redoc, /api/openapi.json, and the Admin/Demo portals. Ensure it uses `bg-white/80 backdrop-blur-md z-50`.",
-    "3": "Build the Hero section with a subtle CSS grid background (use the `decorative_grid` style from these guidelines). Keep it spacious and enterprise-grade.",
-    "4": "Implement the 'First API Call in 15 Minutes' 5-step onboarding path using the `step_indicator` style and dark `code_blocks`. Ensure snippets are copyable.",
-    "5": "Create the Resource Cards grid (Swagger UI, ReDoc, OpenAPI JSON, API Ref, Auth Guide, Quick Start, Architecture). Ensure they have the hover lift and shadow.",
-    "6": "Add the SDK Download Section with 4 language cards (Python, JavaScript, Java, .NET) and Postman Collection download.",
-    "7": "Add the Platform Status section with live pills using the `status_pills` style. Ensure they have the correct colors.",
-    "8": "All interactive elements must have a `data-testid` attribute in kebab-case."
-  }
+  "states": {
+    "empty": "For 'Recent Proofs': A compact rounded box with dashed slate-300 borders, a subtle icon, and 'No session proofs' in slate-400. Very subtle, no massive empty-state illustrations.",
+    "loading": "Use shadcn/ui Skeletons with exact height match of the final content to prevent layout shifts. Rapid shimmer effect."
+  },
+  "accessibility_and_testing": {
+    "data_testid": "MANDATORY. Every button, toggle, and key data value must have a data-testid attribute in kebab-case. e.g., 'simulate-failure-toggle', 'verify-proof-button', 'compliance-pass-badge'.",
+    "contrast": "Text over backgrounds must meet APCA standards. Slate-500 on Slate-50 requires at least font-medium for legibility."
+  },
+  "instructions_to_main_agent": [
+    "Do NOT introduce fictional metrics (Risk Score, Trust Score, etc.). Only map the REAL data defined in the problem statement.",
+    "DO NOT use a user profile chip or avatar. This is a public demo.",
+    "Format amounts using '$' (USD).",
+    "Replace existing top tabs with the Sidebar defined in layout_grid. App Shell should manage global state routing between the views.",
+    "Recent Proofs must be hooked up to localStorage so it works during a single session, populating the Right Rail.",
+    "The 3-column verify layout is non-negotiable for desktop. Keep padding minimal inside cards (`p-3` or `p-4`) so it all fits on one screen without scrolling.",
+    "If using icons, default to 'lucide-react' standard icons. Keep them small (size 14-16) to match the dense typography.",
+    "The 'Simulate Compliance Failure' toggle must break the proof state gracefully in the UI without altering underlying cryptographic business logic."
+  ]
 }
