@@ -188,11 +188,11 @@ function SectionCard({
       className={`bg-white ${toneRing} ${accentRing} shadow-sm hover:shadow-md transition-shadow`}
       data-testid={testId}
     >
-      <CardHeader className="pb-4">
+      <CardHeader className="px-5 pt-4 pb-2 space-y-0">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <div
-              className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold ${toneBadge}`}
+              className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold ${toneBadge}`}
             >
               {step}
             </div>
@@ -203,14 +203,14 @@ function SectionCard({
                 {title}
               </CardTitle>
               {description && (
-                <p className="text-sm text-gray-500 mt-1">{description}</p>
+                <p className="text-sm text-gray-500 mt-0.5">{description}</p>
               )}
             </div>
           </div>
           {rightSlot}
         </div>
       </CardHeader>
-      <CardContent className="pt-0">{children}</CardContent>
+      <CardContent className="px-5 pb-4 pt-0">{children}</CardContent>
     </Card>
   );
 }
@@ -244,7 +244,7 @@ function ComplianceCheckRow({ name, desc, status = "success", testId }) {
     status === "success" ? "text-emerald-600" : "text-red-600";
   return (
     <div
-      className="flex items-start justify-between gap-4 py-3 border-b border-gray-100 last:border-0"
+      className="flex items-start justify-between gap-4 py-2 border-b border-gray-100 last:border-0"
       data-testid={testId}
     >
       <div className="flex items-start gap-2.5 min-w-0">
@@ -839,7 +839,7 @@ export default function TransactionFlow() {
 
             {/* Live Demo (primary) */}
             {activeTab === "demo" && (
-            <div className="p-6 space-y-5" data-testid="demo-view">
+            <div className="p-4 sm:p-5 space-y-3" data-testid="demo-view">
       <section data-testid="demo-section">
         <h2
           className="text-xl font-bold tracking-tight text-slate-900 font-['Space_Grotesk']"
@@ -848,7 +848,7 @@ export default function TransactionFlow() {
           {industry.ui?.heroTitle || "Cryptographic proof for any regulated workflow."}
         </h2>
         <p
-          className="mt-1 text-sm text-slate-500 max-w-2xl"
+          className="mt-0.5 text-sm text-slate-500 max-w-2xl"
           data-testid="page-subtitle"
         >
           {industry.ui?.heroSubtitle ||
@@ -857,7 +857,7 @@ export default function TransactionFlow() {
 
         {/* Industry context selector — primary context, immediately visible */}
         <div
-          className="mt-7 rounded-xl border border-gray-200 bg-white shadow-sm px-5 py-4 sm:px-6 sm:py-5"
+          className="mt-3 rounded-xl border border-gray-200 bg-white shadow-sm px-4 py-3"
           data-testid="industry-selector-row"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
@@ -892,7 +892,7 @@ export default function TransactionFlow() {
               >
                 <SelectTrigger
                   id="industry-select"
-                  className="w-full h-14 bg-white border-2 border-gray-200 hover:border-gray-300 text-gray-900 text-lg font-medium px-4 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-colors data-[state=open]:border-blue-400"
+                  className="w-full h-11 bg-white border-2 border-gray-200 hover:border-gray-300 text-gray-900 text-base font-medium px-4 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-colors data-[state=open]:border-blue-400"
                   data-testid="industry-select-trigger"
                 >
                   <SelectValue placeholder="Select an industry" />
@@ -928,7 +928,7 @@ export default function TransactionFlow() {
 
         {/* Positioning + approach comparison (industry-specific) */}
         {industry.positioning && (
-          <div className="mt-5" data-testid="industry-positioning">
+          <div className="mt-3" data-testid="industry-positioning">
             <div className="rounded-xl border border-blue-200 bg-blue-50/60 px-5 py-4 flex items-start gap-3">
               <Sparkles className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
               <p className="text-sm text-blue-900 font-medium leading-relaxed">
@@ -965,7 +965,7 @@ export default function TransactionFlow() {
         )}
       </section>
 
-      <main className="mt-5 space-y-5" data-testid="demo-steps">
+      <main className="mt-3 space-y-3" data-testid="demo-steps">
         {/* 1. Input (industry-aware) */}
         <SectionCard
           step="1"
@@ -974,12 +974,27 @@ export default function TransactionFlow() {
           testId="section-transaction"
           tone={processed ? "success" : "neutral"}
           rightSlot={
-            processed && (
+            processed ? (
               <StatusPill
                 status="success"
                 label="Processed"
                 testId="transaction-processed-badge"
               />
+            ) : (
+              <Button
+                onClick={processTransaction}
+                disabled={!canProcess || processing}
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-medium shrink-0"
+                data-testid="process-transaction-btn"
+              >
+                {processing ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : (
+                  <ArrowRight className="w-4 h-4 mr-2" />
+                )}
+                {industry.ui?.processBtn || "Process Transaction"}
+              </Button>
             )
           }
         >
@@ -1043,21 +1058,6 @@ export default function TransactionFlow() {
               />
             </div>
           )}
-          <div className="mt-5 flex items-center justify-end">
-            <Button
-              onClick={processTransaction}
-              disabled={!canProcess || processing}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-medium"
-              data-testid="process-transaction-btn"
-            >
-              {processing ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : (
-                <ArrowRight className="w-4 h-4 mr-2" />
-              )}
-              {industry.ui?.processBtn || "Process Transaction"}
-            </Button>
-          </div>
         </SectionCard>
 
         {/* 2. Compliance */}
