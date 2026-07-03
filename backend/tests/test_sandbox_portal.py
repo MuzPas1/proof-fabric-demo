@@ -9,7 +9,7 @@ Covers the full public lifecycle exercised by the in-browser playground:
 import os
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://crypto-proof-engine.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://trust-layer-12.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
 

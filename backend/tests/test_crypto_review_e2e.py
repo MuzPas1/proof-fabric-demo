@@ -7,7 +7,7 @@ import pytest
 import requests
 from nacl.signing import SigningKey
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://crypto-proof-engine.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://trust-layer-12.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 SANDBOX_KEY = "pfp_sandbox_a5fb2bad1924d788c128edf6a31bf1aaa107a9a4"
 ADMIN_EMAIL = "admin@pfprotocol.com"
