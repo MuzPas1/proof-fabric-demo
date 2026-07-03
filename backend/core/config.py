@@ -43,6 +43,10 @@ class Settings:
     ENABLE_TIME_ANCHOR: bool = os.environ.get("ENABLE_TIME_ANCHOR", "false").lower() == "true"
     TIME_ANCHOR_PROVIDER: str = os.environ.get("TIME_ANCHOR_PROVIDER", "local").lower()
     TSA_URL: str = os.environ.get("TSA_URL", "")
+    # Pinned RFC-3161 TSA trust anchors (PEM: root [+ intermediates]) as an inline
+    # PEM string or a file path. When set, the rfc3161 provider verifies the TST
+    # signing certificate chains to these roots -> chain_verified=true.
+    TSA_ROOT_BUNDLE: str = os.environ.get("TSA_ROOT_BUNDLE", "")
     TIME_ANCHOR_LOCAL_SEED: str = os.environ.get("TIME_ANCHOR_LOCAL_SEED", "")
 
     # --- Trust Layer 2: AI Provenance & Accountability (default OFF; additive) ---

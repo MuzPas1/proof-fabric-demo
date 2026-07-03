@@ -22,19 +22,19 @@ import requests
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://crypto-proof-engine.preview.emergentagent.com').rstrip('/')
 
-ADMIN_EMAIL = "admin@pfprotocol.com"
-ADMIN_PASSWORD = "PfpAdmin!2026"
+ADMIN_EMAIL = os.environ.get("PFP_ADMIN_EMAIL", "admin@pfprotocol.com")
+ADMIN_PASSWORD = os.environ.get("PFP_ADMIN_PASSWORD", "PfpAdmin!6WJb8Y0_8IV3ci2jIPG23DsT")
 
 
 # ---------- Shared fixtures ----------
 
 @pytest.fixture(scope="session")
 def api_key():
-    r = requests.get(f"{BASE_URL}/api/config", timeout=10)
-    assert r.status_code == 200
-    data = r.json()
-    assert "test_api_key" in data, "dev /api/config must expose test_api_key"
-    return data["test_api_key"]
+    # Retired: /api/config no longer exposes test_api_key in production.
+    # Use the public sandbox-key endpoint for a real data-plane credential.
+    r = requests.post(f"{BASE_URL}/api/demo/sandbox-key", timeout=10)
+    assert r.status_code == 200, f"Failed to get sandbox key: {r.text}"
+    return r.json()["api_key"]
 
 
 @pytest.fixture(scope="session")
@@ -73,12 +73,14 @@ def fresh_payload(extra=None):
 # ---------- /api/config, /api/health, /api/metrics ----------
 
 class TestPlatformEndpoints:
-    def test_config_dev_includes_test_key(self):
+    def test_config_exposes_issuer_and_endpoints(self):
         r = requests.get(f"{BASE_URL}/api/config", timeout=10)
         assert r.status_code == 200
         data = r.json()
         assert "endpoints" in data and isinstance(data["endpoints"], dict)
-        assert data.get("test_api_key", "").startswith("pfp_")
+        assert "issuer_id" in data
+        # Production config must NOT leak a data-plane key.
+        assert "test_api_key" not in data
 
     def test_health_deep_checks_all_true(self):
         r = requests.get(f"{BASE_URL}/api/health", timeout=10)
@@ -204,7 +206,7 @@ class TestFEAGenerateV11:
         fea = data["fea_payload"]
         assert fea["fea_version"] == "1.1"
         assert fea["algorithm"] == "Ed25519"
-        assert fea["tenant_id"] == "default"
+        assert fea["tenant_id"] in ("default", "sandbox")
         assert "iat" in fea and "jti" in fea
         assert data["signature_version"] == "v2"
         assert isinstance(data["signature"], str) and len(data["signature"]) > 0
@@ -368,7 +370,24 @@ class TestPublic:
 # ---------- Webhooks ----------
 
 class TestWebhooks:
-    def test_webhook_lifecycle(self, api_key):
+    @pytest.fixture(scope="class")
+    def webhook_key(self, admin_token):
+        # Webhook endpoints require webhooks:manage/read scopes, which the public
+        # sandbox key does not carry — mint an admin-scoped key for this suite.
+        body = {
+            "name": f"TEST_webhook_{uuid.uuid4().hex[:8]}",
+            "tenant_id": "default",
+            "scopes": ["webhooks:manage", "webhooks:read"],
+            "expires_in_days": 1,
+        }
+        r = requests.post(f"{BASE_URL}/api/admin/api-keys/create",
+                          json=body, headers=auth_headers(admin_token), timeout=10)
+        assert r.status_code in (200, 201), f"webhook key create failed: {r.status_code} {r.text}"
+        created = r.json()
+        return created.get("api_key") or created.get("raw_key") or created.get("key")
+
+    def test_webhook_lifecycle(self, webhook_key):
+        api_key = webhook_key
         sub = {"url": "https://example.com/webhook", "events": ["fea.generated"]}
         r = requests.post(f"{BASE_URL}/api/webhooks/subscribe", json=sub,
                           headers=key_headers(api_key), timeout=10)

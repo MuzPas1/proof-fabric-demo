@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import os
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Dict, Optional
@@ -32,6 +33,29 @@ from core.config import settings
 
 TSA_DOMAIN_PREFIX = "PFP_TSA_V1::"
 ENVELOPE_VERSION = "1"
+
+
+def _load_pinned_tsa_roots():
+    """Load pinned RFC-3161 TSA trust anchors from ``settings.TSA_ROOT_BUNDLE``.
+
+    Accepts an inline PEM string or a filesystem path. Returns a list of
+    ``cryptography`` x509 Certificate objects (empty when unconfigured/invalid).
+    """
+    bundle = getattr(settings, "TSA_ROOT_BUNDLE", "") or ""
+    if not bundle:
+        return []
+    try:
+        if "-----BEGIN" in bundle:
+            data = bundle.encode("utf-8")
+        elif os.path.exists(bundle):
+            with open(bundle, "rb") as fh:
+                data = fh.read()
+        else:
+            return []
+        from cryptography import x509
+        return x509.load_pem_x509_certificates(data)
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def _now_iso() -> str:
@@ -180,8 +204,28 @@ class Rfc3161Provider(TimeAnchorProvider):
                 out["error"] = "messageImprint does not match fea_hash"
                 return out
             out["valid"] = True  # imprint + structure valid; chain trust below
-            # Optional full chain verification when a TSA cert/root is configured.
-            # (Phase 1: documented production-config step; absent -> chain_verified False.)
+
+            # Full certificate-chain verification against pinned TSA roots.
+            # When TSA_ROOT_BUNDLE is configured, confirm the TST signing
+            # certificate chains to a pinned root -> chain_verified=True.
+            roots = _load_pinned_tsa_roots()
+            if roots:
+                try:
+                    from cryptography.hazmat.primitives.serialization import Encoding
+                    from rfc3161_client import VerifierBuilder
+
+                    builder = VerifierBuilder()
+                    for cert in roots:
+                        pem = cert.public_bytes(Encoding.PEM)
+                        if cert.issuer == cert.subject:
+                            builder = builder.add_root_certificate(pem)
+                        else:
+                            builder = builder.add_intermediate_certificate(pem)
+                    verifier = builder.build()
+                    verifier.verify(decoded, digest_hex.encode("utf-8"))
+                    out["chain_verified"] = True
+                except Exception as ce:  # noqa: BLE001
+                    out["chain_note"] = f"chain not verified against pinned roots: {ce}"
         except Exception as e:  # noqa: BLE001
             out["error"] = f"rfc3161 anchor verification failed: {e}"
         return out

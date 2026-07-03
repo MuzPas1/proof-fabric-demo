@@ -24,17 +24,25 @@ if not BASE_URL:
     BASE_URL = "https://crypto-proof-engine.preview.emergentagent.com"
 
 
+def _get_api_key():
+    """Fetch a real, short-lived sandbox data-plane API key (public endpoint).
+
+    Replaces the retired dev-only ``/api/config`` ``test_api_key`` which is no
+    longer exposed in production.
+    """
+    r = requests.post(f"{BASE_URL}/api/demo/sandbox-key", timeout=10)
+    assert r.status_code == 200, f"Failed to get sandbox key: {r.text}"
+    return r.json()["api_key"]
+
+
+
 class TestSetup:
     """Setup tests - get API key and verify basic connectivity"""
     
     @pytest.fixture(scope="class")
     def api_key(self):
         """Get API key from /api/config"""
-        response = requests.get(f"{BASE_URL}/api/config")
-        assert response.status_code == 200, f"Failed to get config: {response.text}"
-        data = response.json()
-        assert "test_api_key" in data, "Missing test_api_key in config"
-        return data["test_api_key"]
+        return _get_api_key()
     
     def test_health_check(self):
         """Test API health endpoint"""
@@ -45,13 +53,13 @@ class TestSetup:
         print("✓ Health check passed")
     
     def test_config_endpoint(self):
-        """Test config endpoint returns API key"""
+        """Config endpoint exposes issuer + endpoints (no secret key in production)"""
         response = requests.get(f"{BASE_URL}/api/config")
         assert response.status_code == 200
         data = response.json()
-        assert "test_api_key" in data
-        assert "endpoints" in data
-        print(f"✓ Config endpoint passed, API key: {data['test_api_key'][:10]}...")
+        assert "issuer_id" in data
+        assert "endpoints" in data and isinstance(data["endpoints"], dict)
+        print(f"✓ Config endpoint passed, issuer: {data['issuer_id']}")
 
 
 class TestFEAGeneration:
@@ -60,9 +68,7 @@ class TestFEAGeneration:
     @pytest.fixture(scope="class")
     def api_key(self):
         """Get API key from /api/config"""
-        response = requests.get(f"{BASE_URL}/api/config")
-        assert response.status_code == 200
-        return response.json()["test_api_key"]
+        return _get_api_key()
     
     @pytest.fixture
     def valid_payload(self):
@@ -158,8 +164,7 @@ class TestIdempotency:
     @pytest.fixture(scope="class")
     def api_key(self):
         """Get API key from /api/config"""
-        response = requests.get(f"{BASE_URL}/api/config")
-        return response.json()["test_api_key"]
+        return _get_api_key()
     
     def test_idempotency_same_payload_returns_same_fea(self, api_key):
         """Same idempotency_key + same payload → returns same FEA (200)"""
@@ -242,8 +247,7 @@ class TestReplayProtection:
     @pytest.fixture(scope="class")
     def api_key(self):
         """Get API key from /api/config"""
-        response = requests.get(f"{BASE_URL}/api/config")
-        return response.json()["test_api_key"]
+        return _get_api_key()
     
     def test_replay_same_payload_returns_existing_fea(self, api_key):
         """Different idempotency_key + same (transaction_id, timestamp) + same payload → returns existing FEA (200)"""
@@ -388,8 +392,7 @@ class TestPublicVerification:
     @pytest.fixture(scope="class")
     def api_key(self):
         """Get API key from /api/config"""
-        response = requests.get(f"{BASE_URL}/api/config")
-        return response.json()["test_api_key"]
+        return _get_api_key()
     
     @pytest.fixture(scope="class")
     def generated_fea(self, api_key):
@@ -447,8 +450,7 @@ class TestAPIVerification:
     @pytest.fixture(scope="class")
     def api_key(self):
         """Get API key from /api/config"""
-        response = requests.get(f"{BASE_URL}/api/config")
-        return response.json()["test_api_key"]
+        return _get_api_key()
     
     @pytest.fixture(scope="class")
     def generated_fea(self, api_key):
@@ -541,8 +543,7 @@ class TestEdgeCases:
     @pytest.fixture(scope="class")
     def api_key(self):
         """Get API key from /api/config"""
-        response = requests.get(f"{BASE_URL}/api/config")
-        return response.json()["test_api_key"]
+        return _get_api_key()
     
     def test_generate_fea_empty_idempotency_key(self, api_key):
         """Empty idempotency_key should return 400/422"""
