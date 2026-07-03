@@ -497,4 +497,4 @@ export const INDUSTRY_ORDER = [
   "change_release",
 ];
 
-export const DEFAULT_INDUSTRY = "generic_builder";
+export const DEFAULT_INDUSTRY = "financial";

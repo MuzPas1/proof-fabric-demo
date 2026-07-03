@@ -285,7 +285,6 @@ export default function TransactionFlow() {
   // Session-scoped proof history (localStorage — no backend, no fake data).
   const { proofs: sessionProofs, addProof, clear: clearSessionProofs } =
     useSessionProofs();
-  const [aiProvBusy, setAiProvBusy] = useState(false);
 
   // Industry context (presentation-only — backend payload is unchanged)
   const [industryId, setIndustryId] = useState(() =>
@@ -753,109 +752,6 @@ export default function TransactionFlow() {
     }
   };
 
-  // One-click AI Provenance story: orchestrates the REAL production APIs
-  // (sandbox key -> /fea/generate -> /fea/{id}/provenance -> /public/verify) so
-  // the Auditor "AI Accountability & Trust" panel lights up with a genuine,
-  // cryptographically signed, privacy-preserving (hashes-only) provenance
-  // envelope — no manual curl, no mocked data.
-  const runAiProvenanceDemo = async () => {
-    setAiProvBusy(true);
-    const tid = toast.loading("Generating AI-assisted proof…");
-    try {
-      const { data: sk } = await axios.post(`${API}/demo/sandbox-key`);
-      const headers = {
-        "X-API-Key": sk.api_key,
-        "Content-Type": "application/json",
-      };
-      const uid =
-        (typeof crypto !== "undefined" &&
-          crypto.randomUUID &&
-          crypto.randomUUID()) ||
-        `${Date.now()}`;
-      const shortId = uid.replace(/-/g, "").slice(0, 8).toUpperCase();
-      const txnId = `AI-DEMO-${shortId}`;
-
-      const { data: gen } = await axios.post(
-        `${API}/fea/generate`,
-        {
-          idempotency_key: `ai_demo_${uid}`,
-          transaction_id: txnId,
-          timestamp: new Date().toISOString(),
-          amount: 24500,
-          currency: "USD",
-          payer_id: "payer_ai_demo",
-          payee_id: "payee_ai_demo",
-          metadata: { source: "portal-ai-provenance-demo" },
-        },
-        { headers }
-      );
-      const feaId = gen.fea_id;
-
-      await axios.post(
-        `${API}/fea/${feaId}/provenance`,
-        {
-          ai_identity: {
-            provider: "Acme AI",
-            model_name: "acme-underwriter",
-            model_version: "2026.6",
-            agent_identifier: "agent-loan-assistant",
-            agent_role: "underwriting-assistant",
-          },
-          provenance: {
-            prompt_hash:
-              "9f2c1a7b3e5d48c60a1b2c3d4e5f60718293a4b5c6d7e8f901a2b3c4d5e6f708",
-            output_hash:
-              "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809",
-            workflow_id: "wf-loan-approval",
-          },
-          oversight_events: [
-            { event_type: "review", actor_role: "Risk Analyst" },
-            { event_type: "approval", actor_role: "Compliance Officer" },
-          ],
-          agent_chain: [
-            {
-              agent_identifier: "agent-loan-assistant",
-              agent_role: "underwriting-assistant",
-              sequence: 0,
-              outcome: "recommended",
-              handoff_to: "agent-compliance-checker",
-            },
-            {
-              agent_identifier: "agent-compliance-checker",
-              agent_role: "compliance-reviewer",
-              sequence: 1,
-              outcome: "approved",
-            },
-          ],
-        },
-        { headers }
-      );
-
-      addProof({
-        proof_id: feaId,
-        transaction_id: txnId,
-        amount: "24500.00",
-        compliant: true,
-        industry_label: "AI-Assisted (Provenance)",
-      });
-      setAuditorProofId(feaId);
-      setActiveTab("verify");
-      await runAuditorVerification(feaId);
-      toast.success(
-        "AI-assisted proof created & verified — see the AI Accountability panel",
-        { id: tid }
-      );
-    } catch (e) {
-      const d = e?.response?.data?.detail || e?.message;
-      toast.error(
-        typeof d === "string" ? d : "Failed to run AI provenance demo",
-        { id: tid }
-      );
-    } finally {
-      setAiProvBusy(false);
-    }
-  };
-
   const resetAll = () => {
     setForm(DEFAULTS);
     setExtra(buildExtraDefaults(industry));
@@ -1073,39 +969,6 @@ export default function TransactionFlow() {
       </section>
 
       <main className="mt-3 space-y-3" data-testid="demo-steps">
-        {/* One-click AI Provenance demo — orchestrates the real production APIs */}
-        <div
-          className="rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-          data-testid="ai-provenance-cta"
-        >
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0">
-              <Bot className="w-4 h-4 text-white" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-slate-900">
-                See AI Accountability in action
-              </div>
-              <div className="text-xs text-slate-500">
-                Generate a real AI → human-approval → proof story and verify it — one click, no code.
-              </div>
-            </div>
-          </div>
-          <Button
-            onClick={runAiProvenanceDemo}
-            disabled={aiProvBusy}
-            size="sm"
-            className="bg-blue-600 hover:bg-blue-700 text-white shrink-0"
-            data-testid="ai-provenance-demo-btn"
-          >
-            {aiProvBusy ? (
-              <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            ) : (
-              <Sparkles className="w-4 h-4 mr-2" />
-            )}
-            Generate AI-assisted proof
-          </Button>
-        </div>
 
         {/* 1. Input (industry-aware) */}
         <SectionCard
