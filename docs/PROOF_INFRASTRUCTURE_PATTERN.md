@@ -1,10 +1,13 @@
 # Proof Infrastructure: A Proposed Architectural Pattern for Independently Verifiable Enterprise Systems
 
-**Version:** 2.0 (Practitioner Draft for Community Review)
+**Version:** 2.1 (Practitioner Draft for Community Review)
+**Author:** Muzamil Pasha
 **Document type:** Architectural proposal / practitioner paper
 **Status:** Proposed pattern — *not* an established industry category
 **Audience:** Enterprise architects, security engineers, cryptography practitioners, standards reviewers (W3C, IETF, NIST, CNCF, IEEE, OpenSSF)
 **Editorial stance:** Vendor-neutral, evidence-based, intellectually honest. Optimized for technical credibility and long-term reference value, not persuasion.
+
+*The architectural concepts, the reference implementation, and this manuscript are the intellectual work of the author.*
 
 ---
 
@@ -16,13 +19,13 @@ Throughout, claims are separated into three explicit maturity classes:
 
 | Marker | Meaning |
 |---|---|
-| **[Implemented]** | Demonstrated in the reference implementation (PFP) with code and tests that the authors inspected directly. |
+| **[Implemented]** | Demonstrated in the reference implementation (PFP) with code and tests inspected directly by the author. |
 | **[Proposed]** | Part of the pattern as an architectural intent; interface defined but not necessarily wired end-to-end in the reference implementation. |
 | **[Future]** | Aspirational / roadmap; documented as readiness only, with no working code path claimed. |
 
 The pattern description (Sections 1–17) is designed to stand on its own. **If the reference-implementation section (Section 18) were removed, the paper would remain technically valid.** PFP is cited only as *one early reference implementation* and its specific maturity is reported honestly, including where it is preview-only or not yet deployed.
 
-Where the authors could not find supporting evidence for a capability, the paper says so explicitly rather than inferring it.
+Where the author could not find supporting evidence for a capability, the paper says so explicitly rather than inferring it.
 
 ---
 
@@ -58,7 +61,7 @@ Where the authors could not find supporting evidence for a capability, the paper
 
 ## 1. Executive Summary
 
-Modern enterprises make billions of consequential decisions — payments cleared, access granted, models invoked, records approved — and then, *after the fact*, attempt to prove those decisions happened correctly. Today that proof is almost always **testimonial**: logs, reports, screenshots, and attestations that a trusted party asserts are accurate. Testimonial evidence is fragile. It can be edited, backfilled, or lost; it usually requires exposing raw data to be examined; and its trustworthiness collapses to "do you trust the system that produced it?"
+Modern enterprises make vast numbers of consequential decisions — payments cleared, access granted, models invoked, records approved — and then, *after the fact*, attempt to prove those decisions happened correctly. Today that proof is almost always **testimonial**: logs, reports, screenshots, and attestations that a trusted party asserts are accurate. Testimonial evidence is fragile. It can be edited, backfilled, or lost; it usually requires exposing raw data to be examined; and its trustworthiness collapses to "do you trust the system that produced it?"
 
 **Proof Infrastructure** is a proposed architectural pattern in which a system emits, at the moment a consequential event occurs, a **Proof Artifact**: a deterministic, cryptographically signed, content-addressed statement about that event that **any authorized party can verify independently, offline, using only a public key** — without contacting, trusting, or gaining access to the originating system, and without necessarily exposing the underlying sensitive data.
 
@@ -78,7 +81,7 @@ This paper contributes: a vendor-neutral **conceptual model** and **reference ar
 
 ## 2. Why Proof Infrastructure Matters Now
 
-Three converging pressures make this pattern timely. None of them are unique to any one industry.
+Three converging pressures make this pattern timely. None is unique to any one industry.
 
 **2.1 Audit is shifting from periodic and manual to continuous and programmatic.**
 Regulators and internal risk functions increasingly expect evidence that can be *checked*, not merely *read*. A verifier that can validate a million artifacts in software behaves fundamentally differently from an auditor sampling PDFs.
@@ -311,7 +314,7 @@ The pattern makes its trust assumptions explicit rather than implicit.
 
 **10.2 What it does *not* demonstrate (by itself)**
 
-- **Truth of the underlying facts.** A signature proves *who said it* and *that it is unaltered* — not that the asserted facts are correct. Garbage-in still signs. This is a fundamental and intentional boundary of the pattern.
+- **Truth of the underlying facts.** A signature proves *who said it* and *that it is unaltered* — not that the asserted facts are correct. Incorrect input still produces a perfectly valid signature. This is a fundamental and intentional boundary of the pattern.
 - **Real-world identity of the issuer** beyond "controls this key," unless the key is bound to an identity by an external mechanism (PKI, VC issuer metadata, organizational registry).
 - **Non-equivocation / global consistency**, unless a transparency layer (L8) is present.
 
@@ -368,7 +371,7 @@ The Key Registry is the operational heart of trust. The pattern defines a minima
 - **pending** — registered but not yet trusted (used when onboarding externally-held keys; a proof-of-possession step confirms the registrant controls the private key, defeating key-substitution).
 - **active** — signs new artifacts and verifies.
 - **retired** — no longer signs, but *still verifies* artifacts issued while it was active. This is what preserves historical verifiability across rotation.
-- **revoked** — fails verification immediately and at verification time (no cache staleness). Reserved for compromise.
+- **revoked** — fails verification immediately, evaluated at verification time so there is no cache staleness. Reserved for compromise.
 
 **Selection at verification.** Each artifact carries a `public_key_id`; verifiers resolve the exact key that signed it. Rotation therefore never breaks old artifacts. Optional `not_before`/`not_after` validity windows are enforced against the artifact's issuance time.
 
@@ -490,7 +493,7 @@ A future standardization effort could promote a subset of these to normative req
 
 ## 18. Reference Implementation: Proof Fabric Protocol (PFP)
 
-> **Scope and honesty note.** This section describes **one early reference implementation** of the pattern. It is included as evidence that the pattern is buildable, not as a maturity or adoption claim. Where a capability is preview-only, flag-gated, or not deployed, this is stated. The authors inspected the implementation's source and test artifacts directly; statements below are limited to what that inspection supports. Removing this section does not affect the validity of Sections 1–17.
+> **Scope and honesty note.** This section describes **one early reference implementation** of the pattern. It is included as evidence that the pattern is buildable, not as a maturity or adoption claim. Where a capability is preview-only, flag-gated, or not deployed, this is stated. The author inspected the implementation's source and test artifacts directly; statements below are limited to what that inspection supports. Removing this section does not affect the validity of Sections 1–17.
 
 ### 18.1 What PFP is
 
@@ -526,7 +529,7 @@ All signing flows through a single KMS abstraction (`core/kms.py`) selected by c
 
 The project's own most recent internal readiness assessment rates it **"D / Pilot Ready — 8/10,"** with the remaining gaps to production being operational (HSM-grade signing, an enabled external time anchor, third-party penetration test and cryptographic audit) rather than architectural. This paper reports that verdict as-is and does not upgrade it. (Source: `docs/PRODUCT_READINESS_ASSESSMENT_V2.md`.)
 
-### 18.7 What the authors could **not** evidence
+### 18.7 What the author could **not** evidence
 
 - Any implemented L8 transparency-log code path (documented as roadmap only).
 - Production enablement of L6 (independent RFC-3161) and L7 (AI provenance): both are preview/flag-gated per the sources above.
@@ -593,7 +596,7 @@ Enterprises increasingly need evidence that can be *verified*, not merely *belie
 
 The reference implementation (PFP) demonstrates that the core (L0–L4) is buildable and testable today, that agility, independent time, and privacy-preserving AI provenance (L5–L7) are feasible as additive, feature-gated layers, and that transparency (L8) remains future work. Its maturity is pilot-grade and reported as such.
 
-This is offered as a **Version 2.0 practitioner draft for community discussion**, not a finished standard. The most valuable next steps are external review, shared conformance test vectors, and alignment with existing standards bodies rather than the creation of a competing silo.
+This is offered as a **Version 2.1 practitioner draft for community discussion**, not a finished standard. The most valuable next steps are external review, shared conformance test vectors, and alignment with existing standards bodies rather than the creation of a competing silo.
 
 ---
 
@@ -651,8 +654,8 @@ Normative/technical references (as used conceptually in this paper):
 7. **FIPS 186-4/186-5** — Digital Signature Standard (DSS), incl. ECDSA. NIST.
 8. **FIPS 180-4** — Secure Hash Standard (SHA-2). NIST.
 9. **SEC 2** — Recommended Elliptic Curve Domain Parameters (secp256r1, secp256k1). Certicom/SECG.
-10. **W3C Verifiable Credentials Data Model v2.0.** W3C Recommendation.
-11. **W3C Data Integrity (Verifiable Credential proofs).** W3C.
+10. **W3C Verifiable Credentials Data Model v2.0** — W3C Recommendation, 2025.
+11. **W3C Verifiable Credential Data Integrity 1.0** — W3C (Candidate Recommendation at time of writing).
 12. **RFC 6962** — Certificate Transparency. IETF, 2013 (transparency-log design reference).
 13. **IETF SCITT** — Supply Chain Integrity, Transparency, and Trust (Working Group drafts).
 14. **in-toto** — A framework to secure the integrity of software supply chains. (in-toto specification.)
@@ -666,4 +669,4 @@ Implementation artifacts inspected for the reference-implementation section (Sec
 
 ---
 
-*End of Version 2.0 practitioner draft. Prepared for community discussion and future evaluation. Corrections that improve technical accuracy, especially regarding the reference implementation's maturity, are welcome and expected.*
+*End of Version 2.1 practitioner draft by Muzamil Pasha. Prepared for community discussion and future evaluation. Corrections that improve technical accuracy, especially regarding the reference implementation's maturity, are welcome and expected.*
