@@ -38,6 +38,27 @@ def _dig(payload: Any, path: str):
     return cur if cur not in (None, "") else None
 
 
+def _deep_find_key(obj: Any, key: str, depth: int = 0):
+    """Recursively search a nested dict/list for the first non-empty value whose
+    key exactly matches ``key`` (depth-bounded). Used only as a last-resort
+    identifier fallback so unusual provider nestings still resolve."""
+    if depth > 6:
+        return None
+    if isinstance(obj, dict):
+        if key in obj and obj[key] not in (None, ""):
+            return obj[key]
+        for v in obj.values():
+            r = _deep_find_key(v, key, depth + 1)
+            if r not in (None, ""):
+                return r
+    elif isinstance(obj, list):
+        for v in obj:
+            r = _deep_find_key(v, key, depth + 1)
+            if r not in (None, ""):
+                return r
+    return None
+
+
 def _first(payload: Dict[str, Any], *keys: str):
     for k in keys:
         val = _dig(payload, k) if "." in k else (payload.get(k) if isinstance(payload, dict) else None)
@@ -104,6 +125,14 @@ class GenericEventAdapter(EventAdapter):
 
         event_type = self._resolve("event_type", payload, field_map) or "event"
         external_id = self._resolve("external_id", payload, field_map)
+        if not external_id:
+            # Last-resort: recursively locate a common identifier anywhere in the
+            # payload (priority-ordered), so unusual provider nestings still work.
+            for k in ("order_id", "cf_payment_id", "payment_id", "transaction_id",
+                      "reference", "event_id", "id"):
+                external_id = _deep_find_key(payload, k)
+                if external_id not in (None, ""):
+                    break
         if not external_id:
             # Non-sensitive diagnostic: report the payload's key NAMES only (never
             # values) so operators can see the actual structure and map the id field.
