@@ -14,13 +14,20 @@ import { toast } from "sonner";
 const ADAPTERS = ["generic"];
 const AUTH_PROVIDERS = ["hmac_sha256", "hmac_sha1", "api_key", "bearer", "basic", "jwt", "oauth2", "mtls", "custom", "none"];
 const EXTERNAL_PROVIDERS = ["jwt", "oauth2", "mtls", "custom"]; // externally configured (no PFP-minted credential)
+const HMAC_PROVIDERS = ["hmac_sha256", "hmac_sha1"];
+const SIGNATURE_SCHEMES = [
+  { v: "plain", label: "Plain (PFP-minted secret)" },
+  { v: "cashfree", label: "Cashfree (x-webhook-signature · base64)" },
+  { v: "stripe", label: "Stripe (stripe-signature)" },
+  { v: "slack", label: "Slack (x-slack-signature)" },
+];
 
 export default function Integrations() {
   const { user } = useAuth();
   const writable = canWrite(user?.role);
   const [items, setItems] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ name: "", slug: "", adapter: "generic", auth_provider: "hmac_sha256", default_currency: "USD", auth_config: "", secret: "", require_timestamp: false, replay_protection: false });
+  const [form, setForm] = useState({ name: "", slug: "", adapter: "generic", auth_provider: "hmac_sha256", default_currency: "USD", auth_config: "", secret: "", sig_scheme: "plain", require_timestamp: false, replay_protection: false });
   const [credential, setCredential] = useState(null);
   const [selected, setSelected] = useState(null);
   const [stats, setStats] = useState(null);
@@ -43,6 +50,9 @@ export default function Integrations() {
       try { auth_config = JSON.parse(form.auth_config); }
       catch { toast.error("Advanced auth config is not valid JSON"); setBusy(false); return; }
     }
+    if (HMAC_PROVIDERS.includes(form.auth_provider) && form.sig_scheme && form.sig_scheme !== "plain") {
+      auth_config.signature_scheme = form.sig_scheme;
+    }
     const body = {
       name: form.name, slug: form.slug, adapter: form.adapter, auth_provider: form.auth_provider,
       default_currency: form.default_currency, auth_config,
@@ -53,7 +63,7 @@ export default function Integrations() {
       const r = await api.createIntegration(body);
       if (r.credential) setCredential({ slug: r.slug, credential: r.credential, url: r.inbound_url });
       toast.success(r.credential ? "Integration created" : `Integration created (external ${form.auth_provider} auth)`);
-      setForm({ name: "", slug: "", adapter: "generic", auth_provider: "hmac_sha256", default_currency: "USD", auth_config: "", secret: "", require_timestamp: false, replay_protection: false });
+      setForm({ name: "", slug: "", adapter: "generic", auth_provider: "hmac_sha256", default_currency: "USD", auth_config: "", secret: "", sig_scheme: "plain", require_timestamp: false, replay_protection: false });
       load();
     } catch (e) { toast.error(e?.response?.data?.detail || "Create failed"); }
     finally { setBusy(false); }
@@ -151,6 +161,24 @@ export default function Integrations() {
                 <SelectContent>{AUTH_PROVIDERS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
               </Select>
             </div>
+            {HMAC_PROVIDERS.includes(form.auth_provider) && (
+              <>
+                <div>
+                  <Label>Signature scheme</Label>
+                  <Select value={form.sig_scheme} onValueChange={(v) => setForm({ ...form, sig_scheme: v })}>
+                    <SelectTrigger className="mt-1" data-testid="integration-sig-scheme"><SelectValue /></SelectTrigger>
+                    <SelectContent>{SIGNATURE_SCHEMES.map((s) => <SelectItem key={s.v} value={s.v}>{s.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                {form.sig_scheme !== "plain" && (
+                  <div>
+                    <Label>Provider signing secret</Label>
+                    <Input type="password" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })}
+                      placeholder="e.g. Cashfree PG secret key" className="mt-1" data-testid="integration-hmac-secret" />
+                  </div>
+                )}
+              </>
+            )}
             {EXTERNAL_PROVIDERS.includes(form.auth_provider) && (
               <div className="col-span-2 grid grid-cols-2 gap-3">
                 <div>

@@ -33,7 +33,7 @@ PUBLIC_FIELDS = (
 # Only these (non-secret) auth_config keys may appear in a public response.
 ALLOWED_AUTH_CONFIG_KEYS = {
     "signature_scheme", "signature_header", "signature_prefix", "signed_payload_format",
-    "timestamp_header", "token_header", "jwt_algorithms", "issuer", "audience", "leeway",
+    "signature_encoding", "timestamp_header", "token_header", "jwt_algorithms", "issuer", "audience", "leeway",
     "public_key", "jwks_url", "oauth_mode", "oauth_client_id", "introspection_url",
     "required_scopes", "basic_username", "mtls_verify_header", "mtls_success_value",
     "mtls_fingerprint_header", "allowed_fingerprints", "mtls_subject_header", "allowed_subjects",

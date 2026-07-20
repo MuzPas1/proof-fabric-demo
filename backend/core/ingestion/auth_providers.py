@@ -142,7 +142,11 @@ class HmacProvider(InboundAuthProvider):
         return hashlib.sha1 if self.algorithm == "sha1" else hashlib.sha256
 
     def verify(self, integration, headers, raw_body) -> AuthResult:
-        secret = integration.get("hmac_secret")
+        # Prefer an externally-provided signing secret (e.g. a Cashfree/Stripe
+        # merchant key defined in the provider's own dashboard) over a
+        # PFP-minted one. Generic PFP HMAC integrations only set ``hmac_secret``,
+        # so their behaviour is unchanged.
+        secret = integration.get("external_secret") or integration.get("hmac_secret")
         if not secret:
             return AuthResult(False, "integration missing HMAC secret")
         cfg = _cfg(integration)
@@ -154,6 +158,9 @@ class HmacProvider(InboundAuthProvider):
         prefix = cfg.get("signature_prefix", "")
         signed = body
         provided = ""
+        # Output encoding of the HMAC digest: hex (default) or base64.
+        encoding = (cfg.get("signature_encoding")
+                    or ("base64" if scheme == "cashfree" else "hex")).lower()
 
         if scheme == "stripe":
             default_header = "stripe-signature"
@@ -170,6 +177,18 @@ class HmacProvider(InboundAuthProvider):
             prefix = prefix or "v0="
             signed = f"v0:{t}:{body}"
             provided = headers.get(cfg.get("signature_header", default_header).lower(), "")
+        elif scheme == "cashfree":
+            # Cashfree PG webhooks: Base64(HMAC-SHA256("{timestamp}.{rawBody}",
+            # merchantSecret)). Signature in ``x-webhook-signature``; the
+            # timestamp is an epoch-milliseconds value in ``x-webhook-timestamp``
+            # and is part of the signed string (raw string, no reformatting).
+            default_header = "x-webhook-signature"
+            t = headers.get(cfg.get("timestamp_header", "x-webhook-timestamp").lower())
+            signed = f"{t}.{body}"
+            provided = headers.get(cfg.get("signature_header", default_header).lower(), "")
+            ts = _to_epoch(t)
+            if ts is not None and ts > 1e12:  # Cashfree sends epoch milliseconds
+                ts /= 1000.0
         else:
             header_name = (cfg.get("signature_header") or integration.get("signature_header") or default_header).lower()
             provided = headers.get(header_name, "")
@@ -185,7 +204,9 @@ class HmacProvider(InboundAuthProvider):
         elif prefix and provided.startswith(prefix):
             provided = provided[len(prefix):]
 
-        expected = hmac.new(secret.encode("utf-8"), signed.encode("utf-8"), self._digestmod()).hexdigest()
+        digest = hmac.new(secret.encode("utf-8"), signed.encode("utf-8"), self._digestmod())
+        expected = (base64.b64encode(digest.digest()).decode("ascii")
+                    if encoding == "base64" else digest.hexdigest())
         if provided and _ct_eq(provided.strip(), expected):
             return AuthResult(True, replay_key=expected, timestamp=ts)
         return AuthResult(False, f"invalid {self.name} signature")

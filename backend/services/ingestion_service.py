@@ -86,6 +86,10 @@ async def create_integration(
     if await db.integrations.find_one({"slug": slug}):
         raise IngestionError(f"integration slug already exists: {slug}", 409)
     raw, cred = _issue_credential(auth_provider)
+    # External-webhook HMAC schemes (e.g. Cashfree/Stripe/Slack) sign with the
+    # provider's OWN secret supplied via ``secret`` — do NOT mint a PFP secret.
+    if secret and auth_provider in ("hmac", "hmac_sha256", "hmac_sha1"):
+        raw, cred = None, {"hmac_secret": None, "token_hash": None, "basic_password_hash": None}
     cfg = IntegrationConfig(
         integration_id=str(uuid.uuid4()), slug=slug, name=name, description=description,
         tenant_id=tenant_id, adapter=adapter, auth_provider=auth_provider,
