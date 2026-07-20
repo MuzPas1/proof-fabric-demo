@@ -120,15 +120,41 @@ External System        Inbound Endpoint         Ingestion Service        Proof P
 
 ## 5. Authentication providers (pluggable)
 
-| Provider | External sends | PFP stores | Verification |
-|---|---|---|---|
-| `hmac` | `X-PFP-Signature: <hex>` or `sha256=<hex>` | shared secret | `HMAC-SHA256(secret, raw_body)` constant-time compare |
-| `api_key` | `X-Integration-Key: <token>` | SHA-256 hash of token | hash compare |
-| `bearer` | `Authorization: Bearer <token>` | SHA-256 hash of token | hash compare |
-| `none` | — | — | open (explicit opt-in; not recommended for production) |
+The framework supports the major enterprise authentication and webhook
+verification patterns. New providers are onboarded through **configuration** or
+lightweight adapters; custom code is reserved for proprietary schemes.
 
-Credentials are returned **once** at create/rotate and never retrievable
-afterward. Stored secrets are redacted from every API response.
+| Provider | External sends | PFP stores | Verification | Credential source |
+|---|---|---|---|---|
+| `hmac_sha256` (alias `hmac`) | `X-PFP-Signature: <hex>` / `sha256=<hex>` (or Stripe/Slack scheme) | shared secret | `HMAC-SHA256` over raw body or `{timestamp}.{body}`, constant-time | PFP-minted |
+| `hmac_sha1` | `X-…-Signature: <hex>` | shared secret | `HMAC-SHA1`, constant-time | PFP-minted |
+| `api_key` | `X-Integration-Key: <token>` | SHA-256 hash | hash compare | PFP-minted |
+| `bearer` | `Authorization: Bearer <token>` | SHA-256 hash | hash compare | PFP-minted |
+| `basic` | `Authorization: Basic <b64>` | username + password hash | user + password-hash compare | PFP-minted (password) |
+| `jwt` | `Authorization: Bearer <jwt>` | (none) / HS secret | PyJWT: HS256 secret, or RS256/ES256 via PEM or cached JWKS; validates `exp`/`iss`/`aud` with leeway; `alg` never trusted | Externally configured |
+| `oauth2` | `Authorization: Bearer <token>` | (none) / client secret | JWKS local verify **or** RFC 7662 introspection (cached, timeout, scope/aud checks) | Externally configured |
+| `mtls` | ingress-forwarded cert headers | (none) | `X-Client-Verify: SUCCESS` + optional subject/fingerprint allow-list (trust edge-set headers only) | Externally configured |
+| `custom` | provider-specific | (none) | a registered callable (`register_custom_provider`) | Externally configured |
+| `none` | — | — | open (explicit opt-in; not recommended) | — |
+
+**Provider config** lives in `auth_config` (non-secret; sensitive sub-keys are
+redacted in API responses). Externally-provided secrets (JWT HS256 shared
+secret, OAuth introspection client secret) are supplied via the `secret` field
+and stored redacted. PFP-minted credentials are returned **once** at
+create/rotate and never retrievable afterward.
+
+### Cross-cutting controls (apply to every provider)
+- **Timestamp validation** — `require_timestamp` + `timestamp_tolerance_seconds`;
+  enforced against the timestamp a scheme carries (e.g. Stripe `t=`, Slack
+  `X-Slack-Request-Timestamp`, or a configured `timestamp_header`).
+- **Replay protection** — `replay_protection`; a per-request key (signature /
+  `jti` / body hash) is recorded in `inbound_nonces` with a TTL and a unique
+  index, so a replayed request returns `409`.
+- **Idempotency** — inherited from the existing proof pipeline via the derived
+  `idempotency_key`.
+
+These controls are enforced by the ingestion framework using the provider's
+`AuthResult`, so they compose with all providers without core changes.
 
 ---
 

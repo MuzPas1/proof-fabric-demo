@@ -5,6 +5,50 @@ published by appending a new section to this document.
 
 ---
 
+## v2.4.0 — Generalized Inbound Authentication Providers
+**Release date:** 2026-06-28
+
+> Additive and **fully backward compatible**. Existing `hmac`/`api_key`/`bearer`/
+> `none` integrations are unchanged (`hmac` is now an alias of `hmac_sha256`).
+> No change to the core ingestion or Proof Artifact pipeline. See
+> `INBOUND_EVENT_INGESTION.md` §5.
+
+### Features added
+- **Generalized provider framework** — the inbound auth layer is now a pluggable
+  registry supporting the major enterprise auth / webhook verification patterns:
+  `hmac_sha256`, `hmac_sha1`, `api_key`, `bearer`, `basic`, `jwt`, `oauth2`,
+  `mtls` (edge-forwarded headers), and configurable `custom` providers.
+- **JWT verification** (PyJWT): HS256 shared secret, or RS256/ES256 via static
+  PEM or a cached remote **JWKS URL**; validates `exp`/`iss`/`aud` with leeway
+  and never trusts the token's `alg`.
+- **OAuth 2.0**: inbound access-token validation via local JWKS verification or
+  **RFC 7662 introspection** (cached, strict timeout, scope/audience checks),
+  selectable per integration.
+- **HMAC schemes**: raw-body, or `{timestamp}.{body}` templates including
+  Stripe (`t=,v1=`) and Slack (`v0:ts:body`) styles, driven by `auth_config`.
+- **Cross-cutting controls** (compose with every provider): **timestamp
+  validation** (`require_timestamp` + tolerance), **replay protection**
+  (`inbound_nonces` with unique index + TTL → `409` on replay), and idempotency.
+- **Config-first onboarding**: new providers are added via `auth_config` or a
+  lightweight `register_custom_provider(...)` adapter — no core change.
+- **Admin Portal**: provider dropdown expanded; advanced `auth_config` (JSON) +
+  provider-secret fields and timestamp/replay toggles for externally-configured
+  providers. Secrets (incl. sensitive `auth_config` sub-keys) are redacted.
+
+### Data / schema
+- `integrations` gains optional `auth_config`, `require_timestamp`,
+  `timestamp_tolerance_seconds`, `replay_protection`, `basic_password_hash`,
+  `external_secret` (redacted). New `inbound_nonces` collection (TTL). No change
+  to `feas` or existing collections; no migration required.
+
+### Dependencies
+- `pyjwt[crypto]`, `httpx` (added to `requirements.txt`).
+
+### Breaking changes
+- None.
+
+---
+
 ## v2.3.0 — Inbound Event Ingestion Framework
 **Release date:** 2026-06-25
 

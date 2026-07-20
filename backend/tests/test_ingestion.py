@@ -142,7 +142,114 @@ def test_create_request_slug_validation():
 
 def test_integration_public_redacts_secrets():
     from models.ingestion import IntegrationConfig
-    cfg = IntegrationConfig(integration_id="i1", slug="s", name="n", hmac_secret="whsec_x", token_hash="abc")
+    cfg = IntegrationConfig(integration_id="i1", slug="s", name="n", hmac_secret="whsec_x", token_hash="abc",
+                            basic_password_hash="def", external_secret="ghi",
+                            auth_config={"jwks_url": "https://x/jwks", "client_secret": "shh"})
     pub = cfg.public()
-    assert "hmac_secret" not in pub and "token_hash" not in pub
+    for s in ("hmac_secret", "token_hash", "basic_password_hash", "external_secret"):
+        assert s not in pub
     assert pub["auth_configured"] is True
+    # sensitive sub-keys inside auth_config are redacted, non-sensitive kept
+    assert pub["auth_config"]["client_secret"] == "***redacted***"
+    assert pub["auth_config"]["jwks_url"] == "https://x/jwks"
+
+
+# --------------------------------------------------------------------------
+# Generalized providers
+# --------------------------------------------------------------------------
+def test_hmac_sha1_provider():
+    secret = "whsec_1"
+    body = b'{"id":"1"}'
+    sig = hmac.new(secret.encode(), body, hashlib.sha1).hexdigest()
+    integ = {"auth_provider": "hmac_sha1", "hmac_secret": secret, "auth_config": {"signature_header": "x-sig"}}
+    r = auth_providers.authenticate(integ, {"x-sig": sig}, body)
+    assert r.ok
+    assert not auth_providers.authenticate(integ, {"x-sig": "bad"}, body).ok
+
+
+def test_hmac_stripe_scheme_extracts_timestamp():
+    import time
+    secret = "whsec_stripe"
+    body = b'{"id":"evt_1"}'
+    ts = str(int(time.time()))
+    signed = f"{ts}.{body.decode()}".encode()
+    v1 = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    integ = {"auth_provider": "hmac_sha256", "hmac_secret": secret,
+             "auth_config": {"signature_scheme": "stripe"}}
+    r = auth_providers.authenticate(integ, {"stripe-signature": f"t={ts},v1={v1}"}, body)
+    assert r.ok and r.timestamp is not None
+    assert r.replay_key == v1
+
+
+def test_basic_provider():
+    import base64
+    integ = {"auth_provider": "basic", "basic_password_hash": hashlib.sha256(b"pw123").hexdigest(),
+             "auth_config": {"basic_username": "acme"}}
+    tok = base64.b64encode(b"acme:pw123").decode()
+    assert auth_providers.authenticate(integ, {"authorization": f"Basic {tok}"}, b"{}").ok
+    bad = base64.b64encode(b"acme:wrong").decode()
+    assert not auth_providers.authenticate(integ, {"authorization": f"Basic {bad}"}, b"{}").ok
+
+
+def test_jwt_provider_hs256():
+    import jwt as pyjwt
+    import time
+    secret = "jwt-shared-secret-at-least-32-bytes-long!!"
+    token = pyjwt.encode({"sub": "svc-1", "iss": "acme", "aud": "pfp",
+                          "exp": int(time.time()) + 300}, secret, algorithm="HS256")
+    integ = {"auth_provider": "jwt", "external_secret": secret,
+             "auth_config": {"jwt_algorithms": ["HS256"], "issuer": "acme", "audience": "pfp"}}
+    r = auth_providers.authenticate(integ, {"authorization": f"Bearer {token}"}, b"{}")
+    assert r.ok and r.principal == "svc-1"
+    # expired token rejected
+    expired = pyjwt.encode({"sub": "x", "iss": "acme", "aud": "pfp", "exp": int(time.time()) - 3600},
+                           secret, algorithm="HS256")
+    assert not auth_providers.authenticate(integ, {"authorization": f"Bearer {expired}"}, b"{}").ok
+    # wrong secret rejected
+    bad = pyjwt.encode({"sub": "x", "iss": "acme", "aud": "pfp", "exp": int(time.time()) + 300},
+                       "other", algorithm="HS256")
+    assert not auth_providers.authenticate(integ, {"authorization": f"Bearer {bad}"}, b"{}").ok
+
+
+def test_jwt_never_trusts_alg_none():
+    import jwt as pyjwt
+    import time
+    unsigned = pyjwt.encode({"sub": "x", "exp": int(time.time()) + 300}, key=None, algorithm="none")
+    integ = {"auth_provider": "jwt", "external_secret": "s", "auth_config": {"jwt_algorithms": ["HS256"]}}
+    assert not auth_providers.authenticate(integ, {"authorization": f"Bearer {unsigned}"}, b"{}").ok
+
+
+def test_mtls_header_provider():
+    integ = {"auth_provider": "mtls", "auth_config": {"allowed_fingerprints": ["AA:BB"]}}
+    ok = auth_providers.authenticate(integ, {"x-client-verify": "SUCCESS", "x-client-cert-fingerprint": "AA:BB"}, b"{}")
+    assert ok.ok
+    assert not auth_providers.authenticate(integ, {"x-client-verify": "NONE"}, b"{}").ok
+    assert not auth_providers.authenticate(integ, {"x-client-verify": "SUCCESS", "x-client-cert-fingerprint": "ZZ"}, b"{}").ok
+
+
+def test_custom_provider_registry():
+    from core.ingestion.auth_providers import register_custom_provider, AuthResult
+    register_custom_provider("always_ok", lambda i, h, b: AuthResult(True))
+    integ = {"auth_provider": "custom", "auth_config": {"custom_handler": "always_ok"}}
+    assert auth_providers.authenticate(integ, {}, b"{}").ok
+    integ2 = {"auth_provider": "custom", "auth_config": {"custom_handler": "missing"}}
+    assert not auth_providers.authenticate(integ2, {}, b"{}").ok
+
+
+def test_credential_providers_set():
+    from models.ingestion import CREDENTIAL_PROVIDERS
+    assert "basic" in CREDENTIAL_PROVIDERS
+    assert "jwt" not in CREDENTIAL_PROVIDERS
+    raw, cred = ingestion_service._issue_credential("basic")
+    assert raw and cred["basic_password_hash"] == hashlib.sha256(raw.encode()).hexdigest()
+    raw2, _ = ingestion_service._issue_credential("jwt")
+    assert raw2 is None
+
+
+def test_backward_compat_verify_wrapper():
+    secret = "whsec_bc"
+    body = b'{"id":"1"}'
+    sig = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    integ = {"auth_provider": "hmac", "hmac_secret": secret, "signature_header": "x-pfp-signature"}
+    ok, reason = auth_providers.verify(integ, {"x-pfp-signature": sig}, body)
+    assert ok and reason == "ok"

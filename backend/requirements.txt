@@ -136,3 +136,5 @@ websockets==16.0
 wrapt==2.1.2
 yarl==1.23.0
 zipp==3.23.0
+httpx==0.28.1
+PyJWT==2.11.0

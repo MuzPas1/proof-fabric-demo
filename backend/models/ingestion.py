@@ -14,7 +14,12 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
-AUTH_PROVIDERS = {"hmac", "api_key", "bearer", "none"}
+AUTH_PROVIDERS = {
+    "none", "hmac", "hmac_sha256", "hmac_sha1", "api_key", "bearer",
+    "basic", "jwt", "oauth2", "mtls", "custom",
+}
+# Providers for which PFP mints a shared secret/token (others are externally configured)
+CREDENTIAL_PROVIDERS = {"hmac", "hmac_sha256", "hmac_sha1", "api_key", "bearer", "basic"}
 ADAPTERS = {"generic"}
 
 
@@ -52,13 +57,20 @@ class IntegrationConfig(BaseModel):
     tenant_id: str = "default"
     adapter: str = "generic"
     auth_provider: str = "hmac"
+    auth_config: Dict[str, Any] = Field(default_factory=dict)
     default_currency: str = "USD"
     field_map: Dict[str, str] = Field(default_factory=dict)
     enabled: bool = True
     status: str = "active"
+    # --- cross-cutting inbound controls ---
+    require_timestamp: bool = False
+    timestamp_tolerance_seconds: int = 300
+    replay_protection: bool = False
     # --- credentials (sensitive; never serialized to clients) ---
     hmac_secret: Optional[str] = None
     token_hash: Optional[str] = None
+    basic_password_hash: Optional[str] = None
+    external_secret: Optional[str] = None  # externally-provided (JWT HS / OAuth client secret)
     signature_header: str = "x-pfp-signature"
     token_header: str = "x-integration-key"
     # --- monitoring counters ---
@@ -74,9 +86,18 @@ class IntegrationConfig(BaseModel):
     def public(self) -> dict:
         """Redacted view safe for API responses (no secrets)."""
         d = self.model_dump()
-        d.pop("hmac_secret", None)
-        d.pop("token_hash", None)
-        d["auth_configured"] = bool(self.hmac_secret or self.token_hash) or self.auth_provider == "none"
+        for secret in ("hmac_secret", "token_hash", "basic_password_hash", "external_secret"):
+            d.pop(secret, None)
+        # redact any sensitive keys that may have been placed in auth_config
+        cfg = dict(d.get("auth_config") or {})
+        for k in list(cfg.keys()):
+            if any(s in k.lower() for s in ("secret", "password", "private", "key")) and k != "public_key":
+                cfg[k] = "***redacted***"
+        d["auth_config"] = cfg
+        d["auth_configured"] = bool(
+            self.hmac_secret or self.token_hash or self.basic_password_hash
+            or self.external_secret or self.auth_config
+        ) or self.auth_provider in ("none", "mtls")
         return d
 
 
@@ -89,9 +110,14 @@ class CreateIntegrationRequest(BaseModel):
     description: Optional[str] = Field(None, max_length=512)
     adapter: str = "generic"
     auth_provider: str = "hmac"
+    auth_config: Dict[str, Any] = Field(default_factory=dict)
     default_currency: str = Field("USD", min_length=3, max_length=3)
     field_map: Dict[str, str] = Field(default_factory=dict)
     tenant_id: Optional[str] = None
+    require_timestamp: bool = False
+    timestamp_tolerance_seconds: int = Field(300, ge=1, le=86400)
+    replay_protection: bool = False
+    secret: Optional[str] = Field(None, description="Externally-provided secret for jwt(HS)/oauth2 introspection")
 
     @field_validator("slug")
     @classmethod
@@ -120,8 +146,13 @@ class UpdateIntegrationRequest(BaseModel):
     name: Optional[str] = Field(None, max_length=128)
     description: Optional[str] = Field(None, max_length=512)
     adapter: Optional[str] = None
+    auth_config: Optional[Dict[str, Any]] = None
     default_currency: Optional[str] = Field(None, min_length=3, max_length=3)
     field_map: Optional[Dict[str, str]] = None
+    require_timestamp: Optional[bool] = None
+    timestamp_tolerance_seconds: Optional[int] = Field(None, ge=1, le=86400)
+    replay_protection: Optional[bool] = None
+    secret: Optional[str] = None
 
     @field_validator("adapter")
     @classmethod

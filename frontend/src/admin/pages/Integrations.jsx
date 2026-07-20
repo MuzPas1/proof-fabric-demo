@@ -12,14 +12,15 @@ import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, 
 import { toast } from "sonner";
 
 const ADAPTERS = ["generic"];
-const AUTH_PROVIDERS = ["hmac", "api_key", "bearer", "none"];
+const AUTH_PROVIDERS = ["hmac_sha256", "hmac_sha1", "api_key", "bearer", "basic", "jwt", "oauth2", "mtls", "custom", "none"];
+const EXTERNAL_PROVIDERS = ["jwt", "oauth2", "mtls", "custom"]; // externally configured (no PFP-minted credential)
 
 export default function Integrations() {
   const { user } = useAuth();
   const writable = canWrite(user?.role);
   const [items, setItems] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ name: "", slug: "", adapter: "generic", auth_provider: "hmac", default_currency: "USD" });
+  const [form, setForm] = useState({ name: "", slug: "", adapter: "generic", auth_provider: "hmac_sha256", default_currency: "USD", auth_config: "", secret: "", require_timestamp: false, replay_protection: false });
   const [credential, setCredential] = useState(null);
   const [selected, setSelected] = useState(null);
   const [stats, setStats] = useState(null);
@@ -37,11 +38,22 @@ export default function Integrations() {
 
   const create = async () => {
     setBusy(true); setCredential(null);
+    let auth_config = {};
+    if (form.auth_config.trim()) {
+      try { auth_config = JSON.parse(form.auth_config); }
+      catch { toast.error("Advanced auth config is not valid JSON"); setBusy(false); return; }
+    }
+    const body = {
+      name: form.name, slug: form.slug, adapter: form.adapter, auth_provider: form.auth_provider,
+      default_currency: form.default_currency, auth_config,
+      require_timestamp: form.require_timestamp, replay_protection: form.replay_protection,
+    };
+    if (form.secret.trim()) body.secret = form.secret.trim();
     try {
-      const r = await api.createIntegration(form);
+      const r = await api.createIntegration(body);
       if (r.credential) setCredential({ slug: r.slug, credential: r.credential, url: r.inbound_url });
-      toast.success("Integration created");
-      setForm({ name: "", slug: "", adapter: "generic", auth_provider: "hmac", default_currency: "USD" });
+      toast.success(r.credential ? "Integration created" : `Integration created (external ${form.auth_provider} auth)`);
+      setForm({ name: "", slug: "", adapter: "generic", auth_provider: "hmac_sha256", default_currency: "USD", auth_config: "", secret: "", require_timestamp: false, replay_protection: false });
       load();
     } catch (e) { toast.error(e?.response?.data?.detail || "Create failed"); }
     finally { setBusy(false); }
@@ -138,6 +150,31 @@ export default function Integrations() {
                 <SelectTrigger className="mt-1" data-testid="integration-auth"><SelectValue /></SelectTrigger>
                 <SelectContent>{AUTH_PROVIDERS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
               </Select>
+            </div>
+            {EXTERNAL_PROVIDERS.includes(form.auth_provider) && (
+              <div className="col-span-2 grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Advanced auth config (JSON)</Label>
+                  <textarea value={form.auth_config} onChange={(e) => setForm({ ...form, auth_config: e.target.value })}
+                    rows={4} placeholder='{"jwks_url":"https://idp/.well-known/jwks.json","issuer":"...","audience":"..."}'
+                    className="mt-1 w-full font-mono text-xs border border-slate-200 rounded p-2" data-testid="integration-auth-config" />
+                </div>
+                <div>
+                  <Label>Provider secret (optional — JWT HS / OAuth client secret)</Label>
+                  <Input type="password" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })}
+                    placeholder="stored redacted" className="mt-1" data-testid="integration-secret" />
+                </div>
+              </div>
+            )}
+            <div className="col-span-2 flex items-center gap-6">
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input type="checkbox" checked={form.require_timestamp} data-testid="integration-require-timestamp"
+                  onChange={(e) => setForm({ ...form, require_timestamp: e.target.checked })} /> Require timestamp
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input type="checkbox" checked={form.replay_protection} data-testid="integration-replay-protection"
+                  onChange={(e) => setForm({ ...form, replay_protection: e.target.checked })} /> Replay protection
+              </label>
             </div>
             <div className="col-span-2 flex justify-end">
               <Button onClick={create} disabled={busy || !form.name.trim() || !form.slug.trim()}

@@ -8,8 +8,10 @@ idempotency, replay protection and signing paths are unchanged.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import secrets
+import time as _time
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
@@ -47,20 +49,26 @@ async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db.integrations.create_index("tenant_id")
     await db.inbound_events.create_index("integration_id")
     await db.inbound_events.create_index("received_at")
+    await db.inbound_nonces.create_index([("integration_id", 1), ("replay_key", 1)], unique=True)
+    await db.inbound_nonces.create_index("expires_at", expireAfterSeconds=0)
 
 
 # ---------------------------------------------------------------------------
 # Credential helpers
 # ---------------------------------------------------------------------------
 def _issue_credential(auth_provider: str) -> Tuple[Optional[str], dict]:
-    """Return (raw_secret_shown_once, stored_fields). None raw for 'none'."""
-    if auth_provider == "hmac":
+    """Return (raw_secret_shown_once, stored_fields). None raw for externally-configured providers."""
+    if auth_provider in ("hmac", "hmac_sha256", "hmac_sha1"):
         secret = f"whsec_{secrets.token_hex(32)}"
-        return secret, {"hmac_secret": secret, "token_hash": None}
+        return secret, {"hmac_secret": secret, "token_hash": None, "basic_password_hash": None}
     if auth_provider in ("api_key", "bearer"):
         token = f"pfp_evt_{secrets.token_hex(24)}"
-        return token, {"hmac_secret": None, "token_hash": _sha256_hex(token)}
-    return None, {"hmac_secret": None, "token_hash": None}
+        return token, {"hmac_secret": None, "token_hash": _sha256_hex(token), "basic_password_hash": None}
+    if auth_provider == "basic":
+        password = f"pfp_{secrets.token_hex(18)}"
+        return password, {"hmac_secret": None, "token_hash": None, "basic_password_hash": _sha256_hex(password)}
+    # jwt / oauth2 / mtls / custom / none -> externally configured (no PFP-minted credential)
+    return None, {"hmac_secret": None, "token_hash": None, "basic_password_hash": None}
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +79,9 @@ async def create_integration(
     adapter: str = "generic", auth_provider: str = "hmac",
     default_currency: str = "USD", field_map: Optional[Dict[str, str]] = None,
     description: Optional[str] = None, created_by: Optional[str] = None,
+    auth_config: Optional[Dict] = None, require_timestamp: bool = False,
+    timestamp_tolerance_seconds: int = 300, replay_protection: bool = False,
+    secret: Optional[str] = None,
 ) -> Tuple[IntegrationConfig, Optional[str]]:
     if await db.integrations.find_one({"slug": slug}):
         raise IngestionError(f"integration slug already exists: {slug}", 409)
@@ -78,8 +89,10 @@ async def create_integration(
     cfg = IntegrationConfig(
         integration_id=str(uuid.uuid4()), slug=slug, name=name, description=description,
         tenant_id=tenant_id, adapter=adapter, auth_provider=auth_provider,
-        default_currency=default_currency.upper(), field_map=field_map or {},
-        created_by=created_by, updated_at=_now(), **cred,
+        auth_config=auth_config or {}, require_timestamp=require_timestamp,
+        timestamp_tolerance_seconds=timestamp_tolerance_seconds, replay_protection=replay_protection,
+        external_secret=secret, default_currency=default_currency.upper(),
+        field_map=field_map or {}, created_by=created_by, updated_at=_now(), **cred,
     )
     await db.integrations.insert_one(cfg.model_dump())
     return cfg, raw
@@ -110,6 +123,8 @@ async def update_integration(db, integration_id: str, tenant_id: Optional[str], 
     clean = {k: v for k, v in updates.items() if v is not None}
     if "default_currency" in clean:
         clean["default_currency"] = clean["default_currency"].upper()
+    if "secret" in clean:  # externally-provided secret is stored redacted
+        clean["external_secret"] = clean.pop("secret")
     clean["updated_at"] = _now()
     await db.integrations.update_one({"integration_id": integration_id}, {"$set": clean})
     return await get_integration(db, integration_id, tenant_id)
@@ -223,10 +238,34 @@ async def process_inbound(db, slug: str, raw_body: bytes, headers: Dict[str, str
 
     lower_headers = {k.lower(): v for k, v in headers.items()}
 
-    ok, reason = auth_providers.verify(doc, lower_headers, raw_body)
-    if not ok:
-        await _record_event(db, doc["integration_id"], None, "rejected", None, f"auth: {reason}")
-        raise IngestionError(f"authentication failed: {reason}", 401)
+    result = await asyncio.to_thread(auth_providers.authenticate, doc, lower_headers, raw_body)
+    if not result.ok:
+        await _record_event(db, doc["integration_id"], None, "rejected", None, f"auth: {result.reason}")
+        raise IngestionError(f"authentication failed: {result.reason}", 401)
+
+    # --- cross-cutting: timestamp validation ---
+    tol = int(doc.get("timestamp_tolerance_seconds") or 300)
+    if doc.get("require_timestamp") and result.timestamp is None:
+        await _record_event(db, doc["integration_id"], None, "rejected", None, "timestamp: missing")
+        raise IngestionError("authentication failed: missing timestamp", 401)
+    if result.timestamp is not None and abs(_time.time() - result.timestamp) > tol:
+        await _record_event(db, doc["integration_id"], None, "rejected", None, "timestamp: stale")
+        raise IngestionError("authentication failed: stale request", 401)
+
+    # --- cross-cutting: replay protection ---
+    if doc.get("replay_protection"):
+        from datetime import timedelta
+        from pymongo.errors import DuplicateKeyError
+        replay_key = result.replay_key or hashlib.sha256(raw_body).hexdigest()
+        try:
+            await db.inbound_nonces.insert_one({
+                "integration_id": doc["integration_id"],
+                "replay_key": replay_key,
+                "expires_at": datetime.now(timezone.utc) + timedelta(seconds=max(tol, 600)),
+            })
+        except DuplicateKeyError:
+            await _record_event(db, doc["integration_id"], None, "rejected", None, "replay: duplicate")
+            raise IngestionError("authentication failed: replay detected", 409)
 
     try:
         payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}

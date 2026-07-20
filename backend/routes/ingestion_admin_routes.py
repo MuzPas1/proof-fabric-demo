@@ -49,6 +49,9 @@ async def create_integration(
             adapter=body.adapter, auth_provider=body.auth_provider,
             default_currency=body.default_currency, field_map=body.field_map,
             description=body.description, created_by=user.email,
+            auth_config=body.auth_config, require_timestamp=body.require_timestamp,
+            timestamp_tolerance_seconds=body.timestamp_tolerance_seconds,
+            replay_protection=body.replay_protection, secret=body.secret,
         )
     except ingestion_service.IngestionError as e:
         raise HTTPException(e.status_code, str(e))
@@ -60,7 +63,7 @@ async def create_integration(
     if raw is not None:
         result["credential"] = raw  # shown ONCE — not retrievable later
         result["credential_notice"] = "Store this now; it cannot be retrieved again."
-        result["inbound_url"] = f"/api/ingest/{cfg.slug}"
+    result["inbound_url"] = f"/api/ingest/{cfg.slug}"
     return result
 
 
