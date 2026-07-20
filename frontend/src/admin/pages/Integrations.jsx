@@ -27,7 +27,8 @@ export default function Integrations() {
   const writable = canWrite(user?.role);
   const [items, setItems] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ name: "", slug: "", adapter: "generic", auth_provider: "hmac_sha256", default_currency: "USD", auth_config: "", secret: "", sig_scheme: "plain", require_timestamp: false, replay_protection: false });
+  const [form, setForm] = useState({ name: "", slug: "", adapter: "generic", auth_provider: "hmac_sha256", default_currency: "USD", auth_config: "", secret: "", sig_scheme: "plain", provider: "generic", requires_secret: false, secret_label: "Provider signing secret", secret_hint: "", require_timestamp: false, timestamp_tolerance_seconds: 300, replay_protection: false });
+  const [presets, setPresets] = useState([]);
   const [credential, setCredential] = useState(null);
   const [selected, setSelected] = useState(null);
   const [stats, setStats] = useState(null);
@@ -41,7 +42,30 @@ export default function Integrations() {
     try { const d = await api.listIntegrations(); setItems(d.integrations || []); }
     catch (e) { toast.error(e?.response?.data?.detail || "Failed to load integrations"); setItems([]); }
   };
-  useEffect(() => { load(); }, []);
+  const loadPresets = async () => {
+    try { const d = await api.listIntegrationPresets(); setPresets(d.presets || []); } catch { setPresets([]); }
+  };
+  useEffect(() => { load(); loadPresets(); }, []);
+
+  const applyPreset = (id) => {
+    const p = presets.find((x) => x.id === id) || {};
+    const cfg = p.auth_config && Object.keys(p.auth_config).length ? JSON.stringify(p.auth_config, null, 2) : "";
+    setForm((f) => ({
+      ...f,
+      provider: id,
+      auth_provider: p.auth_provider || "hmac_sha256",
+      auth_config: cfg,
+      requires_secret: !!p.requires_secret,
+      secret_label: p.secret_label || "Provider signing secret",
+      secret_hint: p.secret_hint || "",
+      require_timestamp: !!p.require_timestamp,
+      timestamp_tolerance_seconds: p.timestamp_tolerance_seconds || 300,
+      replay_protection: !!p.replay_protection,
+      secret: "",
+      sig_scheme: "plain",
+    }));
+  };
+  const activePreset = presets.find((x) => x.id === form.provider);
 
   const create = async () => {
     setBusy(true); setCredential(null);
@@ -57,13 +81,14 @@ export default function Integrations() {
       name: form.name, slug: form.slug, adapter: form.adapter, auth_provider: form.auth_provider,
       default_currency: form.default_currency, auth_config,
       require_timestamp: form.require_timestamp, replay_protection: form.replay_protection,
+      timestamp_tolerance_seconds: form.timestamp_tolerance_seconds || 300,
     };
     if (form.secret.trim()) body.secret = form.secret.trim();
     try {
       const r = await api.createIntegration(body);
       if (r.credential) setCredential({ slug: r.slug, credential: r.credential, url: r.inbound_url });
-      toast.success(r.credential ? "Integration created" : `Integration created (external ${form.auth_provider} auth)`);
-      setForm({ name: "", slug: "", adapter: "generic", auth_provider: "hmac_sha256", default_currency: "USD", auth_config: "", secret: "", sig_scheme: "plain", require_timestamp: false, replay_protection: false });
+      toast.success(r.credential ? "Integration created" : `Integration created (${form.provider !== "generic" ? form.provider : "external"} auth)`);
+      setForm({ name: "", slug: "", adapter: "generic", auth_provider: "hmac_sha256", default_currency: "USD", auth_config: "", secret: "", sig_scheme: "plain", provider: "generic", requires_secret: false, secret_label: "Provider signing secret", secret_hint: "", require_timestamp: false, timestamp_tolerance_seconds: 300, replay_protection: false });
       load();
     } catch (e) { toast.error(e?.response?.data?.detail || "Create failed"); }
     finally { setBusy(false); }
@@ -137,6 +162,21 @@ export default function Integrations() {
       {writable && (
         <Panel title="New integration" className="mb-4">
           <div className="p-4 grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <Label>Provider preset</Label>
+              <Select value={form.provider} onValueChange={applyPreset}>
+                <SelectTrigger className="mt-1" data-testid="integration-provider"><SelectValue placeholder="Select a provider" /></SelectTrigger>
+                <SelectContent>{presets.map((p) => <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>)}</SelectContent>
+              </Select>
+              {activePreset && form.provider !== "generic" && (
+                <div className="mt-1.5 text-xs text-slate-500" data-testid="integration-provider-note">
+                  {activePreset.description}
+                  {activePreset.docs_url && (
+                    <> · <a href={activePreset.docs_url} target="_blank" rel="noreferrer" className="text-blue-600 underline">Vendor signing spec</a></>
+                  )}
+                </div>
+              )}
+            </div>
             <div>
               <Label>Name</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -154,6 +194,7 @@ export default function Integrations() {
                 <SelectContent>{ADAPTERS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
               </Select>
             </div>
+            {form.provider === "generic" ? (<>
             <div>
               <Label>Auth provider</Label>
               <Select value={form.auth_provider} onValueChange={(v) => setForm({ ...form, auth_provider: v })}>
@@ -194,6 +235,24 @@ export default function Integrations() {
                 </div>
               </div>
             )}
+            </>) : (<>
+            <div>
+              <Label>Auth provider (recommended)</Label>
+              <Input value={form.auth_provider} disabled className="mt-1 font-mono text-xs" data-testid="integration-auth-readonly" />
+            </div>
+            {form.requires_secret && (
+              <div>
+                <Label>{form.secret_label}</Label>
+                <Input type="password" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })}
+                  placeholder={form.secret_hint || "stored redacted"} className="mt-1" data-testid="integration-hmac-secret" />
+              </div>
+            )}
+            <div className="col-span-2">
+              <Label>Recommended auth config (JSON — review &amp; override)</Label>
+              <textarea value={form.auth_config} onChange={(e) => setForm({ ...form, auth_config: e.target.value })}
+                rows={5} className="mt-1 w-full font-mono text-xs border border-slate-200 rounded p-2" data-testid="integration-auth-config" />
+            </div>
+            </>)}
             <div className="col-span-2 flex items-center gap-6">
               <label className="flex items-center gap-2 text-sm text-slate-600">
                 <input type="checkbox" checked={form.require_timestamp} data-testid="integration-require-timestamp"
@@ -203,6 +262,14 @@ export default function Integrations() {
                 <input type="checkbox" checked={form.replay_protection} data-testid="integration-replay-protection"
                   onChange={(e) => setForm({ ...form, replay_protection: e.target.checked })} /> Replay protection
               </label>
+              {form.require_timestamp && (
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  Tolerance (s)
+                  <Input type="number" min={1} value={form.timestamp_tolerance_seconds}
+                    onChange={(e) => setForm({ ...form, timestamp_tolerance_seconds: parseInt(e.target.value || "300", 10) })}
+                    className="h-8 w-24" data-testid="integration-timestamp-tolerance" />
+                </label>
+              )}
             </div>
             <div className="col-span-2 flex justify-end">
               <Button onClick={create} disabled={busy || !form.name.trim() || !form.slug.trim()}

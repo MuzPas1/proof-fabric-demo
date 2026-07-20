@@ -77,6 +77,21 @@ async def list_integrations(
     return {"integrations": items, "total": len(items)}
 
 
+@router.get("/presets")
+async def list_provider_presets(
+    user: User = Depends(require_permission(Permission.INTEGRATIONS_READ)),
+):
+    """Vendor-spec-derived recommended DEFAULTS (config-only, no secrets).
+
+    Presets pre-fill the existing generic inbound configuration; every value
+    remains reviewable and overridable before saving.
+    """
+    _guard()
+    from core.ingestion import presets
+    items = presets.list_presets()
+    return {"presets": items, "total": len(items)}
+
+
 @router.get("/{integration_id}")
 async def get_integration(
     integration_id: str,

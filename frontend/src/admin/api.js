@@ -103,6 +103,7 @@ export const api = {
 
   // --- Inbound event integrations (control plane) ---
   listIntegrations: () => cp.get("/admin/integrations").then((r) => r.data),
+  listIntegrationPresets: () => cp.get("/admin/integrations/presets").then((r) => r.data),
   createIntegration: (body) => cp.post("/admin/integrations", body).then((r) => r.data),
   getIntegration: (id) => cp.get(`/admin/integrations/${id}`).then((r) => r.data),
   updateIntegration: (id, body) => cp.patch(`/admin/integrations/${id}`, body).then((r) => r.data),

@@ -172,6 +172,36 @@ These controls are enforced by the ingestion framework using the provider's
 
 ---
 
+## 5a. Provider presets (configuration-only onboarding)
+
+To simplify onboarding, the Admin Portal offers a **Provider** selector whose
+options are vendor-spec-derived, recommended DEFAULT configurations. A preset
+**only pre-fills the existing generic fields** (auth provider, signature scheme,
+header, encoding, timestamp/replay handling) — it adds **no** code path to the
+ingestion framework or the Proof Artifact pipeline, and **every value stays
+reviewable and overridable** before saving.
+
+| Preset | Auth provider | Signature scheme | Header | Encoding | Timestamp | Secret source |
+|---|---|---|---|---|---|---|
+| Generic (PFP-signed) | `hmac_sha256` | plain | `X-PFP-Signature` | hex | — | PFP-minted |
+| Cashfree | `hmac_sha256` | cashfree | `x-webhook-signature` | base64 | `x-webhook-timestamp` (ms) | Vendor secret |
+| Stripe | `hmac_sha256` | stripe | `Stripe-Signature` (`t`,`v1`) | hex | `t=` in header | Vendor `whsec_…` |
+| Razorpay | `hmac_sha256` | plain | `X-Razorpay-Signature` | hex | — | Vendor secret |
+| GitHub | `hmac_sha256` | plain (`sha256=` prefix) | `X-Hub-Signature-256` | hex | — | Vendor secret |
+| Slack | `hmac_sha256` | slack (`v0=` prefix) | `X-Slack-Signature` | hex | `X-Slack-Request-Timestamp` | Vendor signing secret |
+| Shopify | `hmac_sha256` | plain | `X-Shopify-Hmac-Sha256` | base64 | — | Vendor secret |
+
+- **Config-only & secret-free.** Presets contain only non-secret configuration.
+  Vendors that sign with their own key are flagged so the operator supplies that
+  secret (stored redacted); PFP never embeds secrets in a preset.
+- **Extensible.** Add a provider by appending a `ProviderPreset` to
+  `core/ingestion/presets.py` — no core change, because a preset is just a bundle
+  of the same config keys the framework already understands.
+- **API.** `GET /api/admin/integrations/presets` (RBAC `integrations:read`)
+  returns the catalog for the Admin Portal.
+
+---
+
 ## 6. Extension model — adding a new integration
 
 Most integrations need **no code**: create an integration with the `generic`
