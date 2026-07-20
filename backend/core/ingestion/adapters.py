@@ -105,7 +105,15 @@ class GenericEventAdapter(EventAdapter):
         event_type = self._resolve("event_type", payload, field_map) or "event"
         external_id = self._resolve("external_id", payload, field_map)
         if not external_id:
-            raise AdapterError("event must include an identifier (external_id/id/event_id or a mapped field)")
+            # Non-sensitive diagnostic: report the payload's key NAMES only (never
+            # values) so operators can see the actual structure and map the id field.
+            top = sorted(payload.keys())
+            nested = sorted(payload["data"].keys()) if isinstance(payload.get("data"), dict) else None
+            hint = f"top-level keys={top}" + (f"; data.* keys={nested}" if nested else "")
+            raise AdapterError(
+                "event must include an identifier (external_id/id/event_id, a nested "
+                "id like data.order.order_id, or a mapped field). Payload structure: " + hint
+            )
         occurred_at = self._resolve("occurred_at", payload, field_map) or _now_iso()
 
         amount_raw = self._resolve("amount", payload, field_map)
