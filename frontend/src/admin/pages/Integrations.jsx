@@ -24,7 +24,9 @@ export default function Integrations() {
   const [selected, setSelected] = useState(null);
   const [stats, setStats] = useState(null);
   const [events, setEvents] = useState(null);
-  const [testPayload, setTestPayload] = useState('{\n  "type": "invoice.created",\n  "id": "INV-1001",\n  "timestamp": "2026-06-10T12:00:00Z",\n  "actor": "system-a",\n  "subject": "account-42",\n  "amount": 25000,\n  "currency": "USD"\n}');
+  const [testPayload, setTestPayload] = useState(
+    `{\n  "type": "invoice.created",\n  "id": "INV-${Date.now()}",\n  "timestamp": "2026-06-10T12:00:00Z",\n  "actor": "system-a",\n  "subject": "account-42",\n  "amount": 25000,\n  "currency": "USD"\n}`
+  );
   const [testResult, setTestResult] = useState(null);
 
   const load = async () => {
@@ -66,10 +68,14 @@ export default function Integrations() {
     catch (e) { toast.error(e?.response?.data?.detail || "Delete failed"); }
   };
 
-  const openDetails = async (it) => {
-    setSelected(it); setStats(null); setEvents(null); setTestResult(null);
+  const loadStatsEvents = async (it) => {
     try { setStats(await api.integrationStats(it.integration_id)); } catch { /* noop */ }
     try { const e = await api.integrationEvents(it.integration_id); setEvents(e.events || []); } catch { setEvents([]); }
+  };
+
+  const openDetails = async (it) => {
+    setSelected(it); setStats(null); setEvents(null); setTestResult(null);
+    loadStatsEvents(it);
   };
 
   const runTest = async (issue) => {
@@ -79,8 +85,8 @@ export default function Integrations() {
     try {
       const r = await api.testIntegration(selected.integration_id, payload, issue);
       setTestResult(r);
-      toast.success(issue ? "Test event issued" : "Dry-run OK");
-      if (issue) openDetails(selected);
+      toast.success(issue ? `Test event issued${r.fea_id ? ` (proof ${r.fea_id.slice(0, 8)}…)` : ""}` : "Dry-run OK");
+      if (issue) loadStatsEvents(selected); // refresh counters/events WITHOUT clearing the result
     } catch (e) { toast.error(e?.response?.data?.detail || "Test failed"); }
   };
 
