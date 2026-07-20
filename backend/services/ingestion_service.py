@@ -43,6 +43,24 @@ def _sha256_hex(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def _is_connectivity_test(payload) -> bool:
+    """Detect a provider connectivity/handshake ping (not a real business event).
+
+    These carry NO domain identifier by design and are sent when an operator
+    clicks "Test webhook" in a provider dashboard. Examples:
+      - Cashfree: ``{"data": {"test_object": ...}, "type": "WEBHOOK"}``
+      - Generic:  a top-level ``type`` of ``webhook`` / ``test`` / ``ping``.
+    We acknowledge them (200) so onboarding succeeds, without minting a proof.
+    """
+    if not isinstance(payload, dict):
+        return False
+    data = payload.get("data")
+    if isinstance(data, dict) and "test_object" in data:
+        return True
+    t = str(payload.get("type") or payload.get("event_type") or "").strip().lower()
+    return t in ("webhook", "test", "ping", "test_webhook", "connectivity_test")
+
+
 async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db.integrations.create_index("integration_id", unique=True)
     await db.integrations.create_index("slug", unique=True)
@@ -211,6 +229,8 @@ async def _record_event(db, integration_id: str, event: Optional[CommonEvent],
     inc = {"total_received": 1}
     if status == "accepted":
         inc["total_accepted"] = 1
+    elif status == "test":
+        pass  # connectivity/handshake ping — neither accepted nor rejected
     else:
         inc["total_rejected"] = 1
     set_fields = {"last_event_at": _now(), "last_error": error}
@@ -218,7 +238,7 @@ async def _record_event(db, integration_id: str, event: Optional[CommonEvent],
     await db.inbound_events.insert_one({
         "event_log_id": str(uuid.uuid4()),
         "integration_id": integration_id,
-        "event_type": event.event_type if event else None,
+        "event_type": event.event_type if event else ("connectivity.test" if status == "test" else None),
         "external_id": event.external_id if event else None,
         "status": status,
         "fea_id": fea_id,
@@ -301,6 +321,14 @@ async def process_inbound(db, slug: str, raw_body: bytes, headers: Dict[str, str
     except Exception:
         await _record_event(db, doc["integration_id"], None, "rejected", None, "invalid JSON body")
         raise IngestionError("request body must be valid JSON", 400)
+
+    # Provider connectivity/handshake ping (e.g. Cashfree "Test webhook"): the
+    # signature already verified above, but there is no business event to prove.
+    # Acknowledge it so onboarding succeeds; do NOT mint a Proof Artifact.
+    if _is_connectivity_test(payload):
+        await _record_event(db, doc["integration_id"], None, "test", None, None)
+        return {"status": "test_acknowledged", "integration": slug,
+                "detail": "connectivity test received; no proof issued"}
 
     try:
         event = get_adapter(doc.get("adapter", "generic")).normalize(payload, doc)
