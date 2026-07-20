@@ -9,6 +9,13 @@ without trusting or contacting the issuer. (The data-plane API and storage use
 the historical identifier `fea` / `fea_id` for these artifacts; this is a stable
 contract name, not a finance-only scope.)
 
+An additive **Inbound Event Ingestion Framework** (feature-gated by
+`ENABLE_EVENT_INGESTION`) lets any external system push business events to
+`POST /api/ingest/{slug}`; pluggable auth providers and modular adapters
+normalize each event into a common model and feed the *existing* Proof Artifact
+pipeline unchanged. See [`INBOUND_EVENT_INGESTION.md`](INBOUND_EVENT_INGESTION.md).
+
+
 ## 2. Component topology
 
 ```
@@ -32,6 +39,8 @@ contract name, not a finance-only scope.)
                          │   /api/public (none)         │
                          │   /api/demo   (rate-limited) │
                          │   /api/webhooks (API key)    │
+                         │   /api/ingest (provider auth)│
+                         │   /api/admin/integrations    │
                          └───┬───────────────┬──────────┘
                              │               │
               ┌──────────────▼──┐   ┌────────▼───────────┐

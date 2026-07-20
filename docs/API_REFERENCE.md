@@ -85,6 +85,34 @@ Delivery header: `X-PFP-Signature: sha256=<hmac-sha256(secret, body)>`.
 | POST | `/api/demo/artifact` | Downloadable Ed25519 artifact (demo key) |
 | POST | `/api/demo/artifact/verify` | Independent artifact verification |
 
+## Inbound Event Ingestion (feature-gated: `ENABLE_EVENT_INGESTION`)
+External-facing inbound endpoint — **no PFP admin auth**; protected by the
+integration's configured provider auth (HMAC / API key / bearer).
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/api/ingest/{slug}` | per-integration (HMAC/api_key/bearer/none) | Submit a business event → Proof Artifact. `201 {status, integration, event_id, fea_id}` |
+
+Management (JWT + RBAC; `integrations:manage` for writes, `integrations:read` for reads):
+
+| Method | Path | Permission |
+|---|---|---|
+| POST | `/api/admin/integrations` | `integrations:manage` |
+| GET | `/api/admin/integrations` | `integrations:read` |
+| GET | `/api/admin/integrations/{id}` | `integrations:read` |
+| PATCH | `/api/admin/integrations/{id}` | `integrations:manage` |
+| POST | `/api/admin/integrations/{id}/enable` | `integrations:manage` |
+| POST | `/api/admin/integrations/{id}/disable` | `integrations:manage` |
+| POST | `/api/admin/integrations/{id}/rotate-secret` | `integrations:manage` |
+| DELETE | `/api/admin/integrations/{id}` | `integrations:manage` |
+| GET | `/api/admin/integrations/{id}/stats` | `integrations:read` |
+| GET | `/api/admin/integrations/{id}/events` | `integrations:read` |
+| POST | `/api/admin/integrations/{id}/test` | `integrations:manage` |
+
+Full architecture, sequence diagram, and the adapter extension model:
+[`INBOUND_EVENT_INGESTION.md`](INBOUND_EVENT_INGESTION.md). The credential is
+returned **once** at create/rotate and never retrievable afterward.
+
 ## Status codes
 `400` bad input · `401` auth · `403` scope/tenant/role · `404` not found ·
 `409` idempotency/replay · `413` body too large · `422` schema · `429` rate limit.

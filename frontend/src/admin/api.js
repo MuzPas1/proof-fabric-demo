@@ -100,6 +100,20 @@ export const api = {
   testWebhook: (apiKey, id) =>
     dp(apiKey).post(`/webhooks/test?webhook_id=${encodeURIComponent(id)}`).then((r) => r.data),
   deleteWebhook: (apiKey, id) => dp(apiKey).delete(`/webhooks/${id}`).then((r) => r.data),
+
+  // --- Inbound event integrations (control plane) ---
+  listIntegrations: () => cp.get("/admin/integrations").then((r) => r.data),
+  createIntegration: (body) => cp.post("/admin/integrations", body).then((r) => r.data),
+  getIntegration: (id) => cp.get(`/admin/integrations/${id}`).then((r) => r.data),
+  updateIntegration: (id, body) => cp.patch(`/admin/integrations/${id}`, body).then((r) => r.data),
+  enableIntegration: (id) => cp.post(`/admin/integrations/${id}/enable`).then((r) => r.data),
+  disableIntegration: (id) => cp.post(`/admin/integrations/${id}/disable`).then((r) => r.data),
+  rotateIntegrationSecret: (id) => cp.post(`/admin/integrations/${id}/rotate-secret`).then((r) => r.data),
+  deleteIntegration: (id) => cp.delete(`/admin/integrations/${id}`).then((r) => r.data),
+  integrationStats: (id) => cp.get(`/admin/integrations/${id}/stats`).then((r) => r.data),
+  integrationEvents: (id) => cp.get(`/admin/integrations/${id}/events`).then((r) => r.data),
+  testIntegration: (id, payload, issue) =>
+    cp.post(`/admin/integrations/${id}/test`, { payload, issue }).then((r) => r.data),
 };
 
 // Parse Prometheus exposition text -> sum of a metric family

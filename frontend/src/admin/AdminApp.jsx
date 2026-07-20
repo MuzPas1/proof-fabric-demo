@@ -9,6 +9,7 @@ import ApiKeys from "./pages/ApiKeys";
 import SigningKeys from "./pages/SigningKeys";
 import ProofExplorer from "./pages/ProofExplorer";
 import Webhooks from "./pages/Webhooks";
+import Integrations from "./pages/Integrations";
 import Audit from "./pages/Audit";
 import Evaluations from "./pages/Evaluations";
 import { Loader2 } from "lucide-react";
@@ -38,6 +39,7 @@ export default function AdminApp() {
         <Route path="signing-keys" element={<Protected><SigningKeys /></Protected>} />
         <Route path="proofs" element={<Protected><ProofExplorer /></Protected>} />
         <Route path="webhooks" element={<Protected><Webhooks /></Protected>} />
+        <Route path="integrations" element={<Protected><Integrations /></Protected>} />
         <Route path="audit" element={<Protected><Audit /></Protected>} />
         <Route path="evaluations" element={<Protected><Evaluations /></Protected>} />
         <Route path="*" element={<Navigate to="/admin" replace />} />

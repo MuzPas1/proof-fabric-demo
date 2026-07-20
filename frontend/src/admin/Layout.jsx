@@ -4,7 +4,7 @@ import { useAuth } from "./AuthContext";
 import { ReadOnlyBadge } from "./ui";
 import {
   LayoutDashboard, Building2, KeyRound, Webhook, ScrollText,
-  Fingerprint, FileSearch, ShieldCheck, LogOut, ExternalLink, Code, BookOpen, UserCheck,
+  Fingerprint, FileSearch, ShieldCheck, LogOut, ExternalLink, Code, BookOpen, UserCheck, Plug,
 } from "lucide-react";
 
 const NAV = [
@@ -14,6 +14,7 @@ const NAV = [
   { to: "/admin/signing-keys", label: "Signing Keys", icon: Fingerprint },
   { to: "/admin/proofs", label: "Proof Explorer", icon: FileSearch },
   { to: "/admin/webhooks", label: "Webhooks", icon: Webhook },
+  { to: "/admin/integrations", label: "Integrations", icon: Plug },
   { to: "/admin/evaluations", label: "Evaluations", icon: UserCheck },
   { to: "/admin/audit", label: "Audit Log", icon: ScrollText },
 ];

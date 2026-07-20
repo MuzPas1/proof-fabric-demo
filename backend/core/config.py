@@ -52,6 +52,9 @@ class Settings:
     # --- Trust Layer 2: AI Provenance & Accountability (default OFF; additive) ---
     ENABLE_AI_PROVENANCE: bool = os.environ.get("ENABLE_AI_PROVENANCE", "false").lower() == "true"
 
+    # --- Inbound Event Ingestion framework (default OFF; additive module) ---
+    ENABLE_EVENT_INGESTION: bool = os.environ.get("ENABLE_EVENT_INGESTION", "false").lower() == "true"
+
     # --- Crypto policy ---
     ACCEPT_LEGACY_V1: bool = os.environ.get("ACCEPT_LEGACY_V1", "false").lower() == "true"
     ENFORCE_VERIFY_TIMESTAMP: bool = (

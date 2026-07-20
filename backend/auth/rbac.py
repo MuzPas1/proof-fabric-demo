@@ -26,6 +26,8 @@ class Permission(str, Enum):
     FEA_VERIFY = "fea:verify"            # verify FEAs
     WEBHOOKS_MANAGE = "webhooks:manage"  # manage webhook subscriptions
     WEBHOOKS_READ = "webhooks:read"      # VIEW webhook subscriptions
+    INTEGRATIONS_MANAGE = "integrations:manage"  # manage inbound event integrations
+    INTEGRATIONS_READ = "integrations:read"      # VIEW inbound event integrations
 
 
 ROLE_PERMISSIONS: dict[Role, Set[Permission]] = {
@@ -42,6 +44,8 @@ ROLE_PERMISSIONS: dict[Role, Set[Permission]] = {
         Permission.FEA_VERIFY,
         Permission.WEBHOOKS_MANAGE,
         Permission.WEBHOOKS_READ,
+        Permission.INTEGRATIONS_MANAGE,
+        Permission.INTEGRATIONS_READ,
     },
     Role.AUDITOR: {
         Permission.AUDIT_READ,
@@ -49,6 +53,7 @@ ROLE_PERMISSIONS: dict[Role, Set[Permission]] = {
         Permission.APIKEYS_READ,
         Permission.FEA_READ,
         Permission.FEA_VERIFY,
+        Permission.INTEGRATIONS_READ,
     },
     Role.VERIFIER: {
         Permission.FEA_VERIFY,
@@ -65,6 +70,7 @@ ROLE_PERMISSIONS: dict[Role, Set[Permission]] = {
         Permission.FEA_READ,
         Permission.FEA_VERIFY,
         Permission.WEBHOOKS_READ,
+        Permission.INTEGRATIONS_READ,
     },
     # Enterprise Evaluator: NO control-plane permissions at all. Access is limited
     # to ENTERPRISE-tier documentation (enforced by role membership in

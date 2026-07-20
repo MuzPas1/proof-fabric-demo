@@ -82,9 +82,12 @@ from routes.admin_routes import router as admin_router
 from routes.webhook_routes import router as webhook_router
 from routes.resources_routes import router as resources_router
 from routes.evaluation_routes import router as evaluation_router
+from routes.ingestion_routes import router as ingestion_router
+from routes.ingestion_admin_routes import router as ingestion_admin_router
 
 for r in (fea_router, public_router, demo_router, auth_router, admin_router,
-          webhook_router, resources_router, evaluation_router):
+          webhook_router, resources_router, evaluation_router,
+          ingestion_router, ingestion_admin_router):
     app.include_router(r, prefix="/api")
 
 # Developer assets (docs, OpenAPI, Postman, SDKs) are served through the
@@ -208,6 +211,13 @@ async def startup_event():
         await evaluation_service.ensure_indexes(db)
     except Exception as e:
         logger.warning(f"Federated key index warning: {e}")
+
+    # Inbound event ingestion framework (additive; independent module)
+    try:
+        from services import ingestion_service
+        await ingestion_service.ensure_indexes(db)
+    except Exception as e:
+        logger.warning(f"Ingestion index warning: {e}")
 
     await tenant_service.ensure_tenant(db, settings.DEFAULT_TENANT_ID, "Default Tenant")
     await user_service.seed_admin(db, settings.ADMIN_EMAIL, settings.ADMIN_PASSWORD, settings.DEFAULT_TENANT_ID)

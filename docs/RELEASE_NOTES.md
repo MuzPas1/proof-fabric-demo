@@ -5,6 +5,48 @@ published by appending a new section to this document.
 
 ---
 
+## v2.3.0 — Inbound Event Ingestion Framework
+**Release date:** 2026-06-25
+
+> Additive, **feature-flagged and default OFF** (`ENABLE_EVENT_INGESTION`).
+> **Fully backward compatible** — the core proof engine, existing APIs, auth,
+> admin features and customer flows are unchanged. See
+> `INBOUND_EVENT_INGESTION.md`.
+
+### Features added
+- **Generic inbound ingestion:** any external application/platform/enterprise
+  system can submit verifiable business events to `POST /api/ingest/{slug}`; each
+  is transformed into a Proof Artifact via the *existing* generation pipeline
+  (no core change). Application-, department-, industry- and sector-agnostic.
+- **Common Event Model + modular adapters:** a vendor-neutral `CommonEvent` and a
+  configurable `generic` adapter (field-mapping driven). New integrations need
+  only a lightweight adapter — often just a `field_map`.
+- **Pluggable inbound authentication:** `hmac` (HMAC-SHA256 over the raw body),
+  `api_key`, `bearer`, or `none`. Credentials are shown once and stored hashed
+  (or, for HMAC, redacted); external endpoints require the provider credential,
+  **not** PFP admin auth.
+- **Full Admin Portal management** (`PFP Admin → Integrations`,
+  `/api/admin/integrations`): create, configure, enable/disable, rotate
+  credentials, monitoring/health, recent-event log, audit, and a test tool
+  (dry-run or issue a real test proof). Guarded by new RBAC permissions
+  `integrations:manage` / `integrations:read`.
+- **Privacy-preserving mapping:** actor/subject are tokenized (hashed) and extra
+  fields are committed only as a metadata hash before signing.
+
+### Data / schema
+- New collections `integrations` and `inbound_events`. No change to `feas`,
+  `key_registry`, or any existing collection. No migration required.
+
+### Security
+- Structured error handling (401/403/404/409/422), per-integration constant-time
+  credential verification, rate-limited inbound endpoint, and hash-chained audit
+  entries for all management actions.
+
+### Breaking changes
+- None.
+
+---
+
 ## v2.2.0 — Crypto Agility, Federated Key Registry & Bring-Your-Own-Signing
 **Release date:** 2026-06-18
 

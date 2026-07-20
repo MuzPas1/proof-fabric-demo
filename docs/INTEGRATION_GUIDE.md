@@ -89,3 +89,29 @@ the raw body — verify it with the secret. Test with `POST /api/webhooks/test?w
 - First signed FEA over REST: ~0.5 day.
 - Independent verification: **drop in an SDK** (Python/JS/Java/.NET) — no need to
   re-implement canonicalization. Hours, not weeks.
+
+## 10. Inbound event ingestion (push events, no SDK required)
+For source systems that should *push* business events instead of calling
+`/api/fea/generate` directly, a PFP administrator configures an **inbound
+integration**. Your system then posts events to a standardized endpoint and PFP
+transforms each into a Proof Artifact automatically.
+
+```
+POST /api/ingest/{slug}
+X-PFP-Signature: <hmac-sha256(secret, raw_body) hex>   # for the hmac provider
+Content-Type: application/json
+
+{ "type": "invoice.created", "id": "INV-1001",
+  "timestamp": "2026-06-10T12:00:00Z",
+  "actor": "system-a", "subject": "account-42",
+  "amount": 25000, "currency": "USD" }
+```
+Response `201`: `{ "status":"accepted", "integration":"{slug}", "event_id":"INV-1001", "fea_id":"…" }`.
+
+- **Auth is per-integration** (HMAC / API key / bearer) — not PFP admin auth.
+- **Agnostic:** any JSON shape works; unmapped systems use a `field_map`, custom
+  ones use a lightweight adapter (no core change).
+- **Privacy:** `actor`/`subject` are tokenized (hashed) and extra fields are
+  committed only as a metadata hash — no raw content is signed.
+- Verify results exactly like any other proof via `GET /api/public/verify/{fea_id}`.
+- Full details: [`INBOUND_EVENT_INGESTION.md`](INBOUND_EVENT_INGESTION.md).

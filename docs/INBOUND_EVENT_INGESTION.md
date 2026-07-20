@@ -1,0 +1,199 @@
+# PFP — Inbound Event Ingestion Framework
+
+> **Status:** Implemented (backend + Admin Portal + SDK-free HTTP interface).
+> **Feature flag:** `ENABLE_EVENT_INGESTION` (default OFF; additive). When OFF,
+> the inbound and admin-integration routes return `404` and no existing behaviour
+> changes. **Fully backward compatible** — the core proof engine, existing APIs,
+> auth, admin features and customer flows are untouched.
+
+The Inbound Event Ingestion Framework lets **any** external application,
+platform, enterprise system, or service securely submit verifiable business
+events that are transformed into **Proof Artifacts** using the *existing*
+generation pipeline. It is application-, department-, industry-, and
+sector-agnostic. New integrations require only a lightweight **adapter** (often
+just a field mapping) — never a change to the core platform.
+
+---
+
+## 1. Design goals
+
+| Goal | How it is met |
+|---|---|
+| Agnostic to app/industry/sector | Vendor-neutral `CommonEvent` + configurable `generic` adapter |
+| Standardized inbound API | Single endpoint shape `POST /api/ingest/{slug}` |
+| Pluggable authentication | `hmac` \| `api_key` \| `bearer` \| `none` providers |
+| Payload normalization | Adapters map any JSON → `CommonEvent` |
+| Event validation | Model + adapter validation, explicit error codes |
+| Audit logging | Every accept/reject recorded; admin actions hash-chained |
+| Robust error handling | Structured status codes (401/403/404/422/409) |
+| Modular adapter architecture | `core/ingestion/adapters.py` registry + `register_adapter()` |
+| No core proof-engine change | Reuses `routes.fea_routes._generate_one` |
+| Scalable / reusable | DB-backed config; stateless request path; horizontal-scale safe |
+| Lightweight new integrations | Add an adapter (or only a `field_map`) — no platform change |
+
+---
+
+## 2. Component architecture
+
+```
+                         External systems (ERP, ITSM, HR, IoT, SaaS, …)
+                                          │  HTTPS POST /api/ingest/{slug}
+                                          ▼
+        ┌───────────────────────────────────────────────────────────────┐
+        │  Public Inbound Endpoint (routes/ingestion_routes.py)           │
+        │   • NO PFP admin auth  • rate-limited  • feature-gated          │
+        └───────────────┬───────────────────────────────────────────────┘
+                        │ raw body + headers
+                        ▼
+        ┌───────────────────────────────────────────────────────────────┐
+        │  Ingestion Service (services/ingestion_service.py)              │
+        │   1) resolve integration by slug + enabled check                │
+        │   2) Auth Provider .verify()  (core/ingestion/auth_providers)   │  ◀── pluggable
+        │   3) parse JSON                                                  │
+        │   4) Adapter .normalize() → CommonEvent (core/ingestion/adapters)│ ◀── modular
+        │   5) map CommonEvent → GenerateFEARequest (tokenize actor/subj.) │
+        │   6) audit + monitoring counters                                │
+        └───────────────┬───────────────────────────────────────────────┘
+                        │ GenerateFEARequest
+                        ▼
+        ┌───────────────────────────────────────────────────────────────┐
+        │  EXISTING Proof Artifact pipeline  (_generate_one → fea_service)│
+        │   idempotency · replay protection · canonicalize · sign · store │   (UNCHANGED)
+        └───────────────┬───────────────────────────────────────────────┘
+                        ▼
+                Proof Artifact (fea_id, signature) → verifiable via /api/public/verify/{fea_id}
+
+        ┌───────────────────────────────────────────────────────────────┐
+        │  Admin Control Plane (routes/ingestion_admin_routes.py)         │
+        │   /api/admin/integrations — JWT + RBAC (integrations:manage/read)│
+        │   create · configure · enable/disable · rotate-secret · delete  │
+        │   · stats/health · events · test                                │
+        └───────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 3. Common Event Model
+
+All adapters normalize inbound payloads into this single shape:
+
+| Field | Type | Notes |
+|---|---|---|
+| `event_type` | string | e.g. `invoice.created`, `access.granted` |
+| `external_id` | string | source system's event/reference id → proof `transaction_id` |
+| `occurred_at` | string (ISO-8601) | event time |
+| `source` | string | integration slug / originating system |
+| `actor` | string (optional) | tokenized (SHA-256) before signing |
+| `subject` | string (optional) | tokenized (SHA-256) before signing |
+| `amount` | integer (default 0) | smallest unit; `0` for non-financial events |
+| `currency` | string(3) (default per integration) | ISO currency code |
+| `attributes` | object | any remaining fields → proof metadata (hashed) |
+| `idempotency_key` | string (optional) | defaults to `{slug}:{external_id}:{occurred_at}` |
+
+**Privacy:** `actor`/`subject` are hashed and free-form `attributes` are folded
+into the proof's `metadata_hash` — no raw business content enters the signed
+payload.
+
+---
+
+## 4. Inbound sequence
+
+```
+External System        Inbound Endpoint         Ingestion Service        Proof Pipeline
+      │  POST /api/ingest/{slug}  │                      │                       │
+      │ ─────────────────────────▶│                      │                       │
+      │  (body + auth header)     │  process_inbound()   │                       │
+      │                           │ ────────────────────▶│                       │
+      │                           │      resolve + enabled check                 │
+      │                           │      auth_providers.verify() ──┐             │
+      │                           │      (401 on failure) ◀────────┘             │
+      │                           │      adapter.normalize() → CommonEvent       │
+      │                           │      map → GenerateFEARequest                │
+      │                           │                      │ _generate_one() ─────▶│
+      │                           │                      │   sign + persist      │
+      │                           │                      │ ◀──── fea_id ─────────│
+      │                           │      audit + counters│                       │
+      │ ◀──── 201 {fea_id} ───────│                      │                       │
+```
+
+---
+
+## 5. Authentication providers (pluggable)
+
+| Provider | External sends | PFP stores | Verification |
+|---|---|---|---|
+| `hmac` | `X-PFP-Signature: <hex>` or `sha256=<hex>` | shared secret | `HMAC-SHA256(secret, raw_body)` constant-time compare |
+| `api_key` | `X-Integration-Key: <token>` | SHA-256 hash of token | hash compare |
+| `bearer` | `Authorization: Bearer <token>` | SHA-256 hash of token | hash compare |
+| `none` | — | — | open (explicit opt-in; not recommended for production) |
+
+Credentials are returned **once** at create/rotate and never retrievable
+afterward. Stored secrets are redacted from every API response.
+
+---
+
+## 6. Extension model — adding a new integration
+
+Most integrations need **no code**: create an integration with the `generic`
+adapter and (optionally) a `field_map` that maps canonical fields to the source
+system's JSON keys.
+
+When a source needs bespoke logic, add a lightweight adapter:
+
+```python
+# core/ingestion/adapters.py
+class MySystemAdapter(EventAdapter):
+    name = "my-system"
+    def normalize(self, payload, integration) -> CommonEvent:
+        return CommonEvent(
+            event_type=payload["kind"],
+            external_id=payload["ref"],
+            occurred_at=payload["ts"],
+            attributes={"region": payload.get("region")},
+        )
+
+register_adapter(MySystemAdapter())
+```
+
+No change to routes, services, the proof engine, or the admin portal is
+required — the new adapter name becomes selectable on an integration.
+
+---
+
+## 7. Administrative management (Admin Portal)
+
+`PFP Admin → Integrations` (and `/api/admin/integrations`) provides:
+create, configure, enable/disable, credential rotation, monitoring counters &
+health, recent-event log, audit, and a **test** tool (dry-run normalization or
+issue a real test proof). All management requires `integrations:manage`
+(read views require `integrations:read`); external inbound endpoints do **not**
+use admin auth.
+
+---
+
+## 8. Error handling
+
+| Condition | HTTP | Body |
+|---|---|---|
+| Feature disabled | 404 | `Event ingestion is not enabled` |
+| Unknown slug | 404 | `integration not found` |
+| Integration disabled | 403 | `integration is disabled` |
+| Auth failure | 401 | `authentication failed: <reason>` |
+| Invalid JSON | 400 | `request body must be valid JSON` |
+| Normalization/validation failure | 422 | `event validation failed: <reason>` |
+| Idempotency/replay conflict | 409 | (from the existing pipeline) |
+| Accepted | 201 | `{ "status":"accepted", "integration", "event_id", "fea_id" }` |
+
+---
+
+## 9. Backward compatibility & safety
+
+- Additive module; **default OFF**. No change to existing collections, APIs,
+  auth, proof format, admin features, or customer flows.
+- Reuses the existing generator, so idempotency, replay protection, signing,
+  and verification behave identically.
+- New collections: `integrations`, `inbound_events`. New permissions:
+  `integrations:manage`, `integrations:read` (granted to super/tenant admins;
+  read to auditor/external-reviewer).
+- Implementation-safe documentation: no secrets, keys, credentials, or
+  production configuration are exposed here.
