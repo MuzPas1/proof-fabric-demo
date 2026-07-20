@@ -147,6 +147,7 @@ class HmacProvider(InboundAuthProvider):
         # PFP-minted one. Generic PFP HMAC integrations only set ``hmac_secret``,
         # so their behaviour is unchanged.
         secret = integration.get("external_secret") or integration.get("hmac_secret")
+        secret_src = "external" if integration.get("external_secret") else ("minted" if integration.get("hmac_secret") else "none")
         if not secret:
             return AuthResult(False, "integration missing HMAC secret")
         cfg = _cfg(integration)
@@ -211,7 +212,11 @@ class HmacProvider(InboundAuthProvider):
                     if encoding == "base64" else digest.hexdigest())
         if provided and _ct_eq(provided.strip(), expected):
             return AuthResult(True, replay_key=expected, timestamp=ts)
-        return AuthResult(False, f"invalid {self.name} signature")
+        # Non-sensitive diagnostic: which branch/encoding ran, whether a signature
+        # header was present, and which secret source was used. No secret or
+        # signature material is ever included.
+        diag = f"scheme={scheme}, enc={encoding}, header={'present' if provided else 'missing'}, secret={secret_src}"
+        return AuthResult(False, f"invalid {self.name} signature [{diag}]")
 
 
 class ApiKeyProvider(InboundAuthProvider):
