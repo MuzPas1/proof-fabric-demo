@@ -156,6 +156,20 @@ create/rotate and never retrievable afterward.
 These controls are enforced by the ingestion framework using the provider's
 `AuthResult`, so they compose with all providers without core changes.
 
+### Enterprise hardening (defense-in-depth)
+- **Tenant binding at ingest.** Every inbound request re-asserts the
+  slug → single-active-tenant invariant at request time and refuses an ambiguous
+  slug or a request whose owning tenant has been deactivated, so events can never
+  cross a tenant boundary.
+- **Allow-list responses.** Public/admin responses are built from an explicit
+  field allow-list (and `auth_config` from an approved-key allow-list), so no
+  secret — present or future — can ever be serialized, even if a new sensitive
+  field is later added to the model.
+- **OAuth 2.0 introspection resilience.** Introspection calls use a strict
+  timeout plus a per-endpoint circuit breaker (fail-fast when the IdP is
+  repeatedly unavailable) and a short negative cache for known-bad tokens,
+  preventing repeated slow calls while still failing closed on any error.
+
 ---
 
 ## 6. Extension model — adding a new integration
