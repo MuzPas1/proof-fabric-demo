@@ -5,10 +5,10 @@ import pytest
 import os
 
 # Set environment variable for tests
-os.environ.setdefault('REACT_APP_BACKEND_URL', 'https://trust-layer-12.preview.emergentagent.com')
+os.environ.setdefault('REACT_APP_BACKEND_URL', 'https://provenance-chain-1.preview.emergentagent.com')
 
 
 @pytest.fixture(scope="session")
 def base_url():
     """Get the base URL for API tests"""
-    return os.environ.get('REACT_APP_BACKEND_URL', 'https://trust-layer-12.preview.emergentagent.com').rstrip('/')
+    return os.environ.get('REACT_APP_BACKEND_URL', 'https://provenance-chain-1.preview.emergentagent.com').rstrip('/')
