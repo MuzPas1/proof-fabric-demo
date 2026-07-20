@@ -111,12 +111,24 @@ def test_cashfree_preset_e2e(hdr):
     body = json.dumps({"event": "PAYMENT_SUCCESS", "event_id": f"evt_{uuid.uuid4().hex[:10]}"},
                       separators=(",", ":")).encode()
     ts = str(int(time.time() * 1000))
-    sig = _b64(secret, f"{ts}.".encode() + body)
+    # Official Cashfree SDK: signatureString = timestamp + rawBody (NO dot separator)
+    sig = _b64(secret, ts.encode() + body)
     r = requests.post(f"{BASE}/api/ingest/{slug}", data=body,
                       headers={"Content-Type": "application/json",
                                "x-webhook-timestamp": ts, "x-webhook-signature": sig}, timeout=20)
     assert r.status_code == 201, f"cashfree ingest: {r.status_code} {r.text}"
     assert r.json().get("fea_id")
+
+    # Negative: old dot format must now FAIL
+    ts2 = str(int(time.time() * 1000))
+    body2 = json.dumps({"event": "PAYMENT_SUCCESS", "event_id": f"evt_{uuid.uuid4().hex[:10]}"},
+                       separators=(",", ":")).encode()
+    dot_sig = _b64(secret, f"{ts2}.".encode() + body2)
+    r_dot = requests.post(f"{BASE}/api/ingest/{slug}", data=body2,
+                          headers={"Content-Type": "application/json",
+                                   "x-webhook-timestamp": ts2, "x-webhook-signature": dot_sig}, timeout=20)
+    assert r_dot.status_code == 401, f"dot format should be rejected, got {r_dot.status_code}: {r_dot.text}"
+    assert "invalid hmac_sha256 signature" in r_dot.text.lower() or "authentication failed" in r_dot.text.lower()
 
     r_bad = requests.post(f"{BASE}/api/ingest/{slug}", data=body,
                           headers={"Content-Type": "application/json",

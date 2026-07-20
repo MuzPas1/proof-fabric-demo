@@ -53,7 +53,7 @@ def test_cashfree_preset_config_authenticates():
     secret = "cfsk_test_key"
     body = json.dumps({"id": "ord_1"}).encode()
     ts = str(int(time.time() * 1000))
-    sig = _sign_b64(secret, f"{ts}.".encode() + body)
+    sig = _sign_b64(secret, f"{ts}".encode() + body)
     integ = {"auth_provider": p.auth_provider, "external_secret": secret, "auth_config": p.auth_config}
     r = auth_providers.authenticate(integ, {"x-webhook-signature": sig, "x-webhook-timestamp": ts}, body)
     assert r.ok, r.reason

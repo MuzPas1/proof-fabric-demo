@@ -178,13 +178,15 @@ class HmacProvider(InboundAuthProvider):
             signed = f"v0:{t}:{body}"
             provided = headers.get(cfg.get("signature_header", default_header).lower(), "")
         elif scheme == "cashfree":
-            # Cashfree PG webhooks: Base64(HMAC-SHA256("{timestamp}.{rawBody}",
-            # merchantSecret)). Signature in ``x-webhook-signature``; the
-            # timestamp is an epoch-milliseconds value in ``x-webhook-timestamp``
-            # and is part of the signed string (raw string, no reformatting).
+            # Cashfree PG webhooks: Base64(HMAC-SHA256(timestamp + rawBody,
+            # merchantSecret)). Per Cashfree's official SDK the signed string is
+            # the timestamp DIRECTLY concatenated with the raw body — there is NO
+            # separator (the "." in the docs pseudo-code is PHP concatenation).
+            # Signature in ``x-webhook-signature``; the timestamp is an
+            # epoch-milliseconds value in ``x-webhook-timestamp``.
             default_header = "x-webhook-signature"
             t = headers.get(cfg.get("timestamp_header", "x-webhook-timestamp").lower())
-            signed = f"{t}.{body}"
+            signed = f"{t}{body}"
             provided = headers.get(cfg.get("signature_header", default_header).lower(), "")
             ts = _to_epoch(t)
             if ts is not None and ts > 1e12:  # Cashfree sends epoch milliseconds

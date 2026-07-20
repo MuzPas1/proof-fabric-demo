@@ -42,7 +42,7 @@ def _uslug(prefix):
 
 
 def _cashfree_sig(secret: str, ts: str, body: str) -> str:
-    mac = hmac.new(secret.encode(), f"{ts}.{body}".encode(), hashlib.sha256).digest()
+    mac = hmac.new(secret.encode(), f"{ts}{body}".encode(), hashlib.sha256).digest()
     return base64.b64encode(mac).decode()
 
 
@@ -114,7 +114,7 @@ def test_cashfree_hex_signature_rejected():
     secret = pytest.cashfree_secret
     raw = json.dumps({"event": "PAYMENT_SUCCESS", "id": 1}, separators=(",", ":"))
     ts = str(int(time.time() * 1000))
-    hex_sig = hmac.new(secret.encode(), f"{ts}.{raw}".encode(), hashlib.sha256).hexdigest()
+    hex_sig = hmac.new(secret.encode(), f"{ts}{raw}".encode(), hashlib.sha256).hexdigest()
     r = requests.post(
         f"{BASE}/api/ingest/{slug}",
         data=raw.encode(),
