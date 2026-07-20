@@ -9,7 +9,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, Activity, Pencil } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
 const ADAPTERS = ["generic"];
@@ -432,8 +432,11 @@ export default function Integrations() {
 
       {editing && editForm && (
         <Dialog open onOpenChange={(o) => { if (!o) { setEditing(null); setEditForm(null); } }}>
-          <DialogContent className="text-slate-900 max-w-lg" data-testid="integration-edit-dialog">
-            <DialogHeader><DialogTitle>Edit integration — {editing.name}</DialogTitle></DialogHeader>
+          <DialogContent className="text-slate-900 bg-white max-w-lg" data-testid="integration-edit-dialog">
+            <DialogHeader>
+              <DialogTitle>Edit integration — {editing.name}</DialogTitle>
+              <DialogDescription>Update settings or replace the signing secret. The current secret is never shown.</DialogDescription>
+            </DialogHeader>
             <div className="space-y-3">
               <div className="text-xs text-slate-500">
                 <Mono>/api/ingest/{editing.slug}</Mono> · auth <Mono>{editForm.auth_provider}</Mono>
