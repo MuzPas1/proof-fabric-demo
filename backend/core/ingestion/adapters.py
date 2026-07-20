@@ -23,10 +23,26 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
+def _dig(payload: Any, path: str):
+    """Resolve a (possibly dotted) path against a nested dict.
+
+    ``"data.order.order_id"`` -> payload["data"]["order"]["order_id"]. Returns
+    ``None`` if any segment is missing or the value is empty.
+    """
+    cur = payload
+    for part in str(path).split("."):
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        else:
+            return None
+    return cur if cur not in (None, "") else None
+
+
 def _first(payload: Dict[str, Any], *keys: str):
     for k in keys:
-        if k in payload and payload[k] not in (None, ""):
-            return payload[k]
+        val = _dig(payload, k) if "." in k else (payload.get(k) if isinstance(payload, dict) else None)
+        if val not in (None, ""):
+            return val
     return None
 
 
@@ -45,25 +61,39 @@ class GenericEventAdapter(EventAdapter):
       1. the integration's ``field_map`` (canonical -> source key), then
       2. a set of common fallback aliases, then
       3. safe defaults.
+    Field values may be referenced with **dotted paths** (e.g.
+    ``data.order.order_id``) so nested provider payloads (Cashfree, etc.)
+    normalize with no bespoke code — either via ``field_map`` or the built-in
+    nested fallback aliases below.
     """
     name = "generic"
 
     _ALIASES = {
         "event_type": ("event_type", "type", "eventType", "action", "name"),
-        "external_id": ("external_id", "id", "event_id", "eventId", "reference", "ref"),
-        "occurred_at": ("occurred_at", "timestamp", "time", "created_at", "createdAt", "date"),
-        "actor": ("actor", "actor_id", "user", "user_id", "userId", "source_id", "initiator"),
-        "subject": ("subject", "subject_id", "resource", "target", "object"),
+        "external_id": (
+            "external_id", "id", "event_id", "eventId", "reference", "ref",
+            # nested webhook identifiers (Cashfree PG order/payment ids, etc.)
+            "data.order.order_id", "data.payment.cf_payment_id", "data.payment.payment_id",
+            "order_id", "cf_payment_id", "payment_id", "orderId", "transaction_id",
+        ),
+        "occurred_at": (
+            "occurred_at", "timestamp", "time", "created_at", "createdAt", "date",
+            "event_time", "data.payment.payment_time", "data.order.order_time",
+        ),
+        "actor": ("actor", "actor_id", "user", "user_id", "userId", "source_id", "initiator",
+                  "data.customer_details.customer_id"),
+        "subject": ("subject", "subject_id", "resource", "target", "object",
+                    "data.order.order_id"),
         "amount": ("amount", "value", "quantity"),
-        "currency": ("currency", "ccy"),
+        "currency": ("currency", "ccy", "data.order.order_currency"),
         "idempotency_key": ("idempotency_key", "idempotencyKey", "dedupe_key"),
     }
 
     def _resolve(self, canonical: str, payload: Dict[str, Any], field_map: Dict[str, str]):
         if canonical in field_map:
-            mapped = field_map[canonical]
-            if mapped in payload:
-                return payload[mapped]
+            mapped = _dig(payload, field_map[canonical])
+            if mapped not in (None, ""):
+                return mapped
         return _first(payload, *self._ALIASES.get(canonical, (canonical,)))
 
     def normalize(self, payload: Dict[str, Any], integration: dict) -> CommonEvent:
