@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, Activity } from "lucide-react";
+import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, Activity, Pencil } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
 const ADAPTERS = ["generic"];
@@ -37,6 +38,9 @@ export default function Integrations() {
     `{\n  "type": "invoice.created",\n  "id": "INV-${Date.now()}",\n  "timestamp": "2026-06-10T12:00:00Z",\n  "actor": "system-a",\n  "subject": "account-42",\n  "amount": 25000,\n  "currency": "USD"\n}`
   );
   const [testResult, setTestResult] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editBusy, setEditBusy] = useState(false);
 
   const load = async () => {
     try { const d = await api.listIntegrations(); setItems(d.integrations || []); }
@@ -138,6 +142,49 @@ export default function Integrations() {
   };
 
   const copy = (v) => { navigator.clipboard.writeText(v); toast.success("Copied"); };
+
+  const openEdit = async (it) => {
+    try {
+      const full = await api.getIntegration(it.integration_id);
+      setEditForm({
+        name: full.name || "",
+        description: full.description || "",
+        auth_config: full.auth_config && Object.keys(full.auth_config).length ? JSON.stringify(full.auth_config, null, 2) : "",
+        secret: "",
+        require_timestamp: !!full.require_timestamp,
+        replay_protection: !!full.replay_protection,
+        timestamp_tolerance_seconds: full.timestamp_tolerance_seconds || 300,
+        has_external_secret: !!full.has_external_secret,
+        has_hmac_secret: !!full.has_hmac_secret,
+        auth_provider: full.auth_provider,
+        signature_scheme: full.signature_scheme,
+      });
+      setEditing(it);
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed to load integration"); }
+  };
+
+  const saveEdit = async () => {
+    setEditBusy(true);
+    const body = {
+      name: editForm.name,
+      description: editForm.description,
+      require_timestamp: editForm.require_timestamp,
+      replay_protection: editForm.replay_protection,
+      timestamp_tolerance_seconds: editForm.timestamp_tolerance_seconds || 300,
+    };
+    if (editForm.auth_config.trim()) {
+      try { body.auth_config = JSON.parse(editForm.auth_config); }
+      catch { toast.error("Auth config is not valid JSON"); setEditBusy(false); return; }
+    }
+    const secretReplaced = !!editForm.secret.trim();
+    if (secretReplaced) body.secret = editForm.secret.trim();
+    try {
+      await api.updateIntegration(editing.integration_id, body);
+      toast.success(secretReplaced ? "Integration updated — secret replaced" : "Integration updated");
+      setEditing(null); setEditForm(null); load();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Update failed"); }
+    finally { setEditBusy(false); }
+  };
 
   return (
     <div data-testid="integrations-page">
@@ -311,6 +358,8 @@ export default function Integrations() {
                         data-testid={`integration-toggle-${it.slug}`}>
                         {it.enabled ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
                       </Button>
+                      <Button variant="outline" size="sm" className="h-7" onClick={() => openEdit(it)}
+                        data-testid={`integration-edit-${it.slug}`}><Pencil className="h-3.5 w-3.5" /></Button>
                       <Button variant="outline" size="sm" className="h-7" onClick={() => rotate(it)}
                         data-testid={`integration-rotate-${it.slug}`}><RefreshCw className="h-3.5 w-3.5" /></Button>
                       <Button variant="outline" size="sm" className="h-7 text-red-600 border-red-200 hover:bg-red-50"
@@ -379,6 +428,73 @@ export default function Integrations() {
             </div>
           </div>
         </Panel>
+      )}
+
+      {editing && editForm && (
+        <Dialog open onOpenChange={(o) => { if (!o) { setEditing(null); setEditForm(null); } }}>
+          <DialogContent className="text-slate-900 max-w-lg" data-testid="integration-edit-dialog">
+            <DialogHeader><DialogTitle>Edit integration — {editing.name}</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              <div className="text-xs text-slate-500">
+                <Mono>/api/ingest/{editing.slug}</Mono> · auth <Mono>{editForm.auth_provider}</Mono>
+                {editForm.signature_scheme ? <> · scheme <Mono>{editForm.signature_scheme}</Mono></> : null}
+              </div>
+              <div>
+                <Label>Name</Label>
+                <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  className="mt-1" data-testid="edit-name" />
+              </div>
+              <div>
+                <Label>Description</Label>
+                <Input value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  className="mt-1" data-testid="edit-description" />
+              </div>
+              <div>
+                <Label>
+                  Replace external secret{" "}
+                  <span className={editForm.has_external_secret ? "text-emerald-600" : "text-amber-600"}>
+                    {editForm.has_external_secret ? "(a secret is currently set)" : (editForm.has_hmac_secret ? "(uses a PFP-minted secret)" : "(no secret set)")}
+                  </span>
+                </Label>
+                <Input type="password" value={editForm.secret} onChange={(e) => setEditForm({ ...editForm, secret: e.target.value })}
+                  placeholder={editForm.has_external_secret ? "Enter new secret to replace the current one" : "Enter external signing secret"}
+                  className="mt-1" data-testid="edit-secret" autoComplete="new-password" />
+                <div className="text-xs text-slate-500 mt-1">
+                  For security the current secret is never shown. Leave blank to keep it unchanged.
+                </div>
+              </div>
+              <div>
+                <Label>Auth config (JSON — review &amp; override)</Label>
+                <textarea value={editForm.auth_config} onChange={(e) => setEditForm({ ...editForm, auth_config: e.target.value })}
+                  rows={5} className="mt-1 w-full font-mono text-xs border border-slate-200 rounded p-2" data-testid="edit-auth-config" />
+              </div>
+              <div className="flex items-center gap-6">
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input type="checkbox" checked={editForm.require_timestamp} data-testid="edit-require-timestamp"
+                    onChange={(e) => setEditForm({ ...editForm, require_timestamp: e.target.checked })} /> Require timestamp
+                </label>
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  <input type="checkbox" checked={editForm.replay_protection} data-testid="edit-replay-protection"
+                    onChange={(e) => setEditForm({ ...editForm, replay_protection: e.target.checked })} /> Replay protection
+                </label>
+                {editForm.require_timestamp && (
+                  <label className="flex items-center gap-2 text-sm text-slate-600">
+                    Tolerance (s)
+                    <Input type="number" min={1} value={editForm.timestamp_tolerance_seconds}
+                      onChange={(e) => setEditForm({ ...editForm, timestamp_tolerance_seconds: parseInt(e.target.value || "300", 10) })}
+                      className="h-8 w-24" data-testid="edit-tolerance" />
+                  </label>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setEditing(null); setEditForm(null); }} data-testid="edit-cancel">Cancel</Button>
+              <Button className="bg-slate-900 hover:bg-slate-800" onClick={saveEdit} disabled={editBusy || !editForm.name.trim()} data-testid="edit-save">
+                {editBusy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null} Save changes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
