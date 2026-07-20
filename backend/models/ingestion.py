@@ -20,6 +20,25 @@ AUTH_PROVIDERS = {
 }
 # Providers for which PFP mints a shared secret/token (others are externally configured)
 CREDENTIAL_PROVIDERS = {"hmac", "hmac_sha256", "hmac_sha1", "api_key", "bearer", "basic"}
+
+# Enterprise hardening: public responses are built from an explicit ALLOW-LIST.
+# Only these fields are ever exposed; any secret or future field is excluded by default.
+PUBLIC_FIELDS = (
+    "integration_id", "slug", "name", "description", "tenant_id", "adapter",
+    "auth_provider", "default_currency", "field_map", "enabled", "status",
+    "require_timestamp", "timestamp_tolerance_seconds", "replay_protection",
+    "signature_header", "token_header", "total_received", "total_accepted",
+    "total_rejected", "last_event_at", "last_error", "created_at", "created_by", "updated_at",
+)
+# Only these (non-secret) auth_config keys may appear in a public response.
+ALLOWED_AUTH_CONFIG_KEYS = {
+    "signature_scheme", "signature_header", "signature_prefix", "signed_payload_format",
+    "timestamp_header", "token_header", "jwt_algorithms", "issuer", "audience", "leeway",
+    "public_key", "jwks_url", "oauth_mode", "oauth_client_id", "introspection_url",
+    "required_scopes", "basic_username", "mtls_verify_header", "mtls_success_value",
+    "mtls_fingerprint_header", "allowed_fingerprints", "mtls_subject_header", "allowed_subjects",
+    "custom_handler",
+}
 ADAPTERS = {"generic"}
 
 
@@ -84,16 +103,15 @@ class IntegrationConfig(BaseModel):
     updated_at: Optional[str] = None
 
     def public(self) -> dict:
-        """Redacted view safe for API responses (no secrets)."""
-        d = self.model_dump()
-        for secret in ("hmac_secret", "token_hash", "basic_password_hash", "external_secret"):
-            d.pop(secret, None)
-        # redact any sensitive keys that may have been placed in auth_config
-        cfg = dict(d.get("auth_config") or {})
-        for k in list(cfg.keys()):
-            if any(s in k.lower() for s in ("secret", "password", "private", "key")) and k != "public_key":
-                cfg[k] = "***redacted***"
-        d["auth_config"] = cfg
+        """Safe API view built from an explicit ALLOW-LIST (never a deny-list).
+
+        Only fields in ``PUBLIC_FIELDS`` are exposed, and ``auth_config`` is
+        filtered to ``ALLOWED_AUTH_CONFIG_KEYS`` — so no secret (present or
+        future) can leak, even if a new sensitive field is later added.
+        """
+        d = {f: getattr(self, f) for f in PUBLIC_FIELDS}
+        cfg = self.auth_config or {}
+        d["auth_config"] = {k: v for k, v in cfg.items() if k in ALLOWED_AUTH_CONFIG_KEYS}
         d["auth_configured"] = bool(
             self.hmac_secret or self.token_hash or self.basic_password_hash
             or self.external_secret or self.auth_config

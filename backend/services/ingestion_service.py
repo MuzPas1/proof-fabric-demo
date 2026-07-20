@@ -226,6 +226,29 @@ async def _record_event(db, integration_id: str, event: Optional[CommonEvent],
 # ---------------------------------------------------------------------------
 # Inbound processing (public entry point)
 # ---------------------------------------------------------------------------
+async def _validate_tenant_binding(db, slug: str, doc: dict) -> None:
+    """Defense-in-depth: guarantee an inbound request resolves to exactly one
+    active tenant and can never cross a tenant boundary.
+
+    Slugs are globally unique (unique index), so this re-asserts that invariant
+    at request time and refuses to serve a slug that is ambiguous or whose owning
+    tenant is missing or explicitly deactivated.
+    """
+    tenant_id = doc.get("tenant_id")
+    if not tenant_id:
+        raise IngestionError("integration has no tenant binding", 403)
+
+    # Re-assert the slug -> single-tenant invariant (never trust a stale read).
+    matches = await db.integrations.count_documents({"slug": slug})
+    if matches != 1:
+        raise IngestionError("integration slug is ambiguous across tenants", 409)
+
+    # Refuse ingestion for a tenant that has been explicitly deactivated.
+    tdoc = await db.tenants.find_one({"tenant_id": tenant_id}, {"_id": 0, "status": 1})
+    if tdoc and str(tdoc.get("status", "active")).lower() in ("disabled", "suspended", "revoked", "inactive"):
+        raise IngestionError("owning tenant is not active", 403)
+
+
 async def process_inbound(db, slug: str, raw_body: bytes, headers: Dict[str, str]) -> dict:
     """Authenticate, normalize, validate, and issue a Proof Artifact for one event."""
     import json
@@ -235,6 +258,8 @@ async def process_inbound(db, slug: str, raw_body: bytes, headers: Dict[str, str
         raise IngestionError("integration not found", 404)
     if not doc.get("enabled", False) or doc.get("status") != "active":
         raise IngestionError("integration is disabled", 403)
+
+    await _validate_tenant_binding(db, slug, doc)
 
     lower_headers = {k.lower(): v for k, v in headers.items()}
 

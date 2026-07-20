@@ -256,7 +256,8 @@ def test_external_provider_never_leaks_secrets(admin_headers, created_integratio
     got = g.json()
     for forbidden in ("external_secret", "hmac_secret", "token_hash", "basic_password_hash"):
         assert forbidden not in got
-    assert got["auth_config"].get("client_secret") == "***redacted***"
+    # ALLOW-LIST: client_secret (and any non-approved key) is fully OMITTED
+    assert "client_secret" not in got["auth_config"]
     assert got["auth_config"].get("jwks_url") == "https://x/jwks"
 
 

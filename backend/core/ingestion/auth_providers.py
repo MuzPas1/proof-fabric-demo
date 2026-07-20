@@ -30,6 +30,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Callable, Dict, Optional, Tuple
@@ -37,6 +38,37 @@ from typing import Callable, Dict, Optional, Tuple
 # --- knobs for the (optional) outbound verification calls ---
 _HTTP_TIMEOUT = 4.0          # seconds — strict; verification must not stall ingest
 _JWKS_CACHE_LIFESPAN = 300   # seconds — cached signing keys with fallback
+_CB_FAIL_THRESHOLD = 3       # consecutive failures before the circuit opens
+_CB_COOLDOWN = 30            # seconds the circuit stays open (fail-fast)
+_NEG_CACHE_TTL = 10          # seconds to cache a negative introspection verdict
+
+
+class _CircuitBreaker:
+    """Minimal per-endpoint circuit breaker: after N consecutive failures it
+    opens for a cooldown window and short-circuits (fail-fast) so an unavailable
+    IdP cannot cause repeated slow calls. Not shared across processes (best-effort)."""
+
+    def __init__(self, threshold: int, cooldown: float):
+        self.threshold = threshold
+        self.cooldown = cooldown
+        self._state: Dict[str, dict] = {}
+
+    def allow(self, key: str) -> bool:
+        st = self._state.get(key)
+        return not (st and st.get("open_until", 0.0) > time.monotonic())
+
+    def record_success(self, key: str) -> None:
+        self._state[key] = {"fails": 0, "open_until": 0.0}
+
+    def record_failure(self, key: str) -> None:
+        st = self._state.setdefault(key, {"fails": 0, "open_until": 0.0})
+        st["fails"] += 1
+        if st["fails"] >= self.threshold:
+            st["open_until"] = time.monotonic() + self.cooldown
+
+
+_INTROSPECTION_BREAKER = _CircuitBreaker(_CB_FAIL_THRESHOLD, _CB_COOLDOWN)
+_INTROSPECTION_NEG_CACHE: Dict[str, float] = {}  # token-hash -> expiry (monotonic)
 
 
 @dataclass
@@ -306,14 +338,29 @@ class OAuth2Provider(InboundAuthProvider):
         client_secret = integration.get("external_secret")
         if not (url and client_id and client_secret):
             return AuthResult(False, "oauth2 introspection not fully configured")
+
+        # Negative cache: short-circuit repeated calls for a known-bad token.
+        token_key = _sha256_hex(f"{url}|{token}")
+        exp = _INTROSPECTION_NEG_CACHE.get(token_key)
+        if exp and exp > time.monotonic():
+            return AuthResult(False, "inactive token (cached)")
+
+        # Circuit breaker: fail fast when the IdP is repeatedly unavailable.
+        if not _INTROSPECTION_BREAKER.allow(url):
+            return AuthResult(False, "introspection endpoint unavailable (circuit open)")
+
         try:
             resp = httpx.post(url, data={"token": token, "token_type_hint": "access_token"},
                               auth=(client_id, client_secret), headers={"Accept": "application/json"},
                               timeout=_HTTP_TIMEOUT)
             data = resp.json()
         except Exception as e:
+            _INTROSPECTION_BREAKER.record_failure(url)
             return AuthResult(False, f"introspection failed: {type(e).__name__}")
+        _INTROSPECTION_BREAKER.record_success(url)  # reachable IdP resets the breaker
+
         if not data.get("active"):
+            _INTROSPECTION_NEG_CACHE[token_key] = time.monotonic() + _NEG_CACHE_TTL
             return AuthResult(False, "inactive token")
         audience = cfg.get("audience")
         if audience:

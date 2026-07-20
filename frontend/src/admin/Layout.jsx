@@ -24,7 +24,7 @@ export default function Layout({ children }) {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-slate-50 flex text-slate-900">
       {/* Sidebar */}
       <aside className="w-60 bg-white border-r border-slate-200 flex flex-col fixed inset-y-0">
         <div className="h-14 flex items-center gap-2 px-4 border-b border-slate-200">

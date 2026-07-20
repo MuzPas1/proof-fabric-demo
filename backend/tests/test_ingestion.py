@@ -140,18 +140,40 @@ def test_create_request_slug_validation():
     assert ok.slug == "acme-events"
 
 
-def test_integration_public_redacts_secrets():
+def test_integration_public_allowlist_redaction():
     from models.ingestion import IntegrationConfig
     cfg = IntegrationConfig(integration_id="i1", slug="s", name="n", hmac_secret="whsec_x", token_hash="abc",
                             basic_password_hash="def", external_secret="ghi",
-                            auth_config={"jwks_url": "https://x/jwks", "client_secret": "shh"})
+                            auth_config={"jwks_url": "https://x/jwks", "issuer": "acme", "client_secret": "shh",
+                                         "some_future_secret": "leak?"})
     pub = cfg.public()
+    # secret fields are never present (allow-list omits them)
     for s in ("hmac_secret", "token_hash", "basic_password_hash", "external_secret"):
         assert s not in pub
     assert pub["auth_configured"] is True
-    # sensitive sub-keys inside auth_config are redacted, non-sensitive kept
-    assert pub["auth_config"]["client_secret"] == "***redacted***"
+    # only approved auth_config keys are exposed; everything else omitted entirely
     assert pub["auth_config"]["jwks_url"] == "https://x/jwks"
+    assert pub["auth_config"]["issuer"] == "acme"
+    assert "client_secret" not in pub["auth_config"]
+    assert "some_future_secret" not in pub["auth_config"]
+
+
+def test_circuit_breaker_opens_and_resets():
+    from core.ingestion.auth_providers import _CircuitBreaker
+    cb = _CircuitBreaker(threshold=2, cooldown=60)
+    assert cb.allow("u")
+    cb.record_failure("u")
+    assert cb.allow("u")            # 1 failure, still closed
+    cb.record_failure("u")
+    assert not cb.allow("u")        # threshold reached -> open (fail-fast)
+    cb.record_success("u")          # reachable IdP resets
+    assert cb.allow("u")
+
+
+def test_oauth2_introspection_fails_closed_when_unconfigured():
+    integ = {"auth_provider": "oauth2", "auth_config": {"oauth_mode": "introspection"}}
+    r = auth_providers.authenticate(integ, {"authorization": "Bearer x"}, b"{}")
+    assert not r.ok
 
 
 # --------------------------------------------------------------------------
