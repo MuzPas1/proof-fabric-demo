@@ -144,6 +144,15 @@ def _render_signed_format(fmt: str, *, body: str, header_ts, raw_body: bytes) ->
     return out
 
 
+# Common signature header names across providers. Used ONLY as a fallback when a
+# generic integration's configured header is absent, so a naming mismatch (e.g.
+# Tazapay docs list both `webhook-signature` and `signature`) still resolves.
+_SIGNATURE_HEADER_CANDIDATES = (
+    "signature", "webhook-signature", "x-webhook-signature", "x-signature",
+    "x-hub-signature-256", "x-hub-signature",
+)
+
+
 # ---------------------------------------------------------------------------
 # Provider base + implementations
 # ---------------------------------------------------------------------------
@@ -233,6 +242,16 @@ class HmacProvider(InboundAuthProvider):
         else:
             header_name = (cfg.get("signature_header") or integration.get("signature_header") or default_header).lower()
             provided = headers.get(header_name, "")
+            # Robustness: if the configured header is absent, auto-detect the
+            # signature among common vendor header names (providers disagree on
+            # naming — e.g. Tazapay's own docs list both `webhook-signature` and
+            # `signature`). No effect when the configured header IS present.
+            if not provided:
+                for cand in _SIGNATURE_HEADER_CANDIDATES:
+                    if headers.get(cand):
+                        provided = headers.get(cand)
+                        header_name = cand
+                        break
             ts_header = cfg.get("timestamp_header")
             header_ts = headers.get(ts_header.lower()) if ts_header else None
             if header_ts is not None:
@@ -265,8 +284,13 @@ class HmacProvider(InboundAuthProvider):
             return AuthResult(True, replay_key=expected, timestamp=ts)
         # Non-sensitive diagnostic: which branch/encoding ran, whether a signature
         # header was present, and which secret source was used. No secret or
-        # signature material is ever included.
-        diag = f"scheme={scheme}, enc={encoding}, header={'present' if provided else 'missing'}, secret={secret_src}"
+        # signature material is ever included. When the header is missing we also
+        # list the incoming header NAMES (values are never included) so operators
+        # can see exactly what the provider sent and map the correct header.
+        present = bool(provided)
+        diag = f"scheme={scheme}, enc={encoding}, header={'present' if present else 'missing'}, secret={secret_src}"
+        if not present:
+            diag += f", headers_seen={sorted(headers.keys())}"
         return AuthResult(False, f"invalid {self.name} signature [{diag}]")
 
 
