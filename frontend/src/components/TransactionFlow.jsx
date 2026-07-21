@@ -1505,7 +1505,7 @@ export default function TransactionFlow() {
 
             {/* Verify Proof view */}
             {activeTab === "verify" && (
-            <div className="p-6 space-y-5" data-testid="verify-view">
+            <div className="p-6 space-y-5 text-gray-900" data-testid="verify-view">
       <main className="space-y-5" data-testid="verify-steps">
         {/* 4. Auditor / External Verification */}
         <SectionCard
@@ -1547,24 +1547,24 @@ export default function TransactionFlow() {
           </div>
 
           {auditorResult && (
-            <div className="mt-5 space-y-4" data-testid="auditor-result">
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+            <div className="mt-5 grid grid-cols-1 xl:grid-cols-2 gap-4 items-start" data-testid="auditor-result">
+              <div className="space-y-4">
                 <AuditorResult result={auditorResult} />
-                <AuditorTrustSection trust={auditorTrust} />
+                {auditorResult.valid && auditorTrust?.pub?.fea_payload && (
+                  <EvidenceSummary
+                    artifact={{
+                      fea_id: auditorTrust.pub.fea_id,
+                      fea_payload: auditorTrust.pub.fea_payload,
+                      signature: auditorTrust.pub.signature,
+                      signature_version: auditorTrust.pub.signature_version,
+                      public_key_id: auditorTrust.pub.fea_payload?.public_key_id,
+                      created_at: auditorTrust.pub.created_at,
+                    }}
+                    valid={auditorTrust.pub.signature_valid}
+                  />
+                )}
               </div>
-              {auditorResult.valid && auditorTrust?.pub?.fea_payload && (
-                <EvidenceSummary
-                  artifact={{
-                    fea_id: auditorTrust.pub.fea_id,
-                    fea_payload: auditorTrust.pub.fea_payload,
-                    signature: auditorTrust.pub.signature,
-                    signature_version: auditorTrust.pub.signature_version,
-                    public_key_id: auditorTrust.pub.fea_payload?.public_key_id,
-                    created_at: auditorTrust.pub.created_at,
-                  }}
-                  valid={auditorTrust.pub.signature_valid}
-                />
-              )}
+              <AuditorTrustSection trust={auditorTrust} />
             </div>
           )}
 

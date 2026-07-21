@@ -67,6 +67,35 @@ def _first(payload: Dict[str, Any], *keys: str):
     return None
 
 
+def _to_minor_units(raw: Any) -> int:
+    """Normalize a provider amount to the canonical smallest unit (cents).
+
+    Providers report amounts inconsistently: some send major-unit decimals
+    (Tazapay/Cashfree ``100.00`` == $100.00) while others already send the
+    smallest unit as an integer (Stripe/Razorpay ``10000`` == $100.00). Any value
+    carrying a fractional part (a float or a decimal string) is treated as MAJOR
+    units and scaled to cents; bare integers are assumed to already be the
+    smallest unit. Missing amounts default to 0 (non-financial events).
+    """
+    if raw in (None, ""):
+        return 0
+    if isinstance(raw, bool):
+        raise AdapterError("amount must be a number")
+    if isinstance(raw, float):
+        return int(round(raw * 100))
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str):
+        s = raw.strip().replace(",", "")
+        try:
+            if "." in s:
+                return int(round(float(s) * 100))
+            return int(s)
+        except ValueError:
+            raise AdapterError("amount must be a valid number")
+    raise AdapterError("amount must be a number")
+
+
 class EventAdapter:
     """Base adapter. Subclasses implement ``normalize``."""
     name = "base"
@@ -105,8 +134,18 @@ class GenericEventAdapter(EventAdapter):
                   "data.customer_details.customer_id"),
         "subject": ("subject", "subject_id", "resource", "target", "object",
                     "data.order.order_id"),
-        "amount": ("amount", "value", "quantity"),
-        "currency": ("currency", "ccy", "data.order.order_currency"),
+        "amount": (
+            "amount", "value", "quantity",
+            # nested webhook amounts (Tazapay/Cashfree send major-unit decimals)
+            "data.amount", "data.order.amount", "data.order.order_amount",
+            "data.payment.amount", "data.payment.payment_amount",
+            "data.transaction_amount", "amount.value",
+        ),
+        "currency": (
+            "currency", "ccy", "currency_code",
+            "data.currency", "data.order.order_currency",
+            "data.payment.currency", "data.currency_code",
+        ),
         "idempotency_key": ("idempotency_key", "idempotencyKey", "dedupe_key"),
     }
 
@@ -146,10 +185,14 @@ class GenericEventAdapter(EventAdapter):
         occurred_at = self._resolve("occurred_at", payload, field_map) or _now_iso()
 
         amount_raw = self._resolve("amount", payload, field_map)
-        try:
-            amount = int(amount_raw) if amount_raw is not None else 0
-        except (TypeError, ValueError):
-            raise AdapterError("amount must be an integer in the smallest unit")
+        if amount_raw is None:
+            # Last-resort: recursively locate a common amount field anywhere in
+            # the payload so unusual provider nestings still capture the value.
+            for k in ("amount", "order_amount", "transaction_amount", "payment_amount"):
+                amount_raw = _deep_find_key(payload, k)
+                if amount_raw not in (None, ""):
+                    break
+        amount = _to_minor_units(amount_raw)
         if amount < 0:
             raise AdapterError("amount must be >= 0")
 

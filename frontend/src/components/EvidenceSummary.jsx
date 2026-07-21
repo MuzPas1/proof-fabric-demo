@@ -70,7 +70,9 @@ const fmtTs = (iso) => {
 
 const fmtAmount = (amount, currency) => {
   if (amount === undefined || amount === null || amount === "") return null;
-  const n = Number(amount);
+  // Proof Artifact amounts are stored in the smallest unit (cents) per the FEA
+  // contract — divide by 100 to present the human-readable major-unit value.
+  const n = Number(amount) / 100;
   if (Number.isNaN(n)) return String(amount);
   const s = n.toLocaleString(undefined, {
     minimumFractionDigits: 2,
@@ -257,7 +259,7 @@ export default function EvidenceSummary({ artifact, valid }) {
 
   return (
     <div
-      className="rounded-lg border border-slate-200 bg-white overflow-hidden"
+      className="rounded-lg border border-slate-200 bg-white overflow-hidden text-gray-900"
       data-testid="evidence-summary"
     >
       <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50/70">
@@ -278,7 +280,7 @@ export default function EvidenceSummary({ artifact, valid }) {
         </span>
       </div>
 
-      <p className="px-4 pt-3 text-xs text-gray-500 leading-relaxed">
+      <p className="px-4 pt-3 text-xs text-gray-600 leading-relaxed">
         The fields below were cryptographically authenticated by the proof's
         signature. No sensitive or confidential content is stored or shown.
       </p>
@@ -287,7 +289,7 @@ export default function EvidenceSummary({ artifact, valid }) {
       <div className="px-4 pt-2 pb-1">
         <div className="flex items-center gap-1.5 pt-1 pb-1">
           <FileSignature className="w-3.5 h-3.5 text-slate-500" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
             Authenticated Evidence
           </span>
         </div>
@@ -315,7 +317,7 @@ export default function EvidenceSummary({ artifact, valid }) {
       <div className="px-4 pt-3 pb-1">
         <div className="flex items-center gap-1.5">
           <Fingerprint className="w-3.5 h-3.5 text-slate-500" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
             Verification Metadata
           </span>
         </div>
