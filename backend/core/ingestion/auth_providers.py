@@ -31,11 +31,14 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Callable, Dict, Optional, Tuple
+
+logger = logging.getLogger("pfp.ingestion.auth")
 
 # --- knobs for the (optional) outbound verification calls ---
 _HTTP_TIMEOUT = 4.0          # seconds — strict; verification must not stall ingest
@@ -250,6 +253,15 @@ class HmacProvider(InboundAuthProvider):
                 for cand in _SIGNATURE_HEADER_CANDIDATES:
                     if headers.get(cand):
                         provided = headers.get(cand)
+                        # DEBUG-only (kept out of INFO+ production logs): record
+                        # which header the signature was actually found under when
+                        # it differs from the configured one — helps map how each
+                        # provider signs. Header NAMES only; never values/secrets.
+                        logger.debug(
+                            "generic HMAC signature header auto-detected: configured=%r "
+                            "absent, used=%r (integration=%r)",
+                            header_name, cand, integration.get("slug"),
+                        )
                         header_name = cand
                         break
             ts_header = cfg.get("timestamp_header")
