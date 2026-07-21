@@ -1,7 +1,7 @@
 """FEA generation, verification, batch, and listing routes (authenticated)."""
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from models.fea import (
@@ -297,6 +297,47 @@ async def get_fea(fea_id: str, key: ApiKeyRecord = Depends(require_scope("fea:re
         public_key_id=doc["public_key_id"], created_at=doc["created_at"],
     )
 
+
+class PublicFEAVerifyResponse(BaseModel):
+    found: bool
+    fea_id: str
+    valid: Optional[bool] = None
+    reason: Optional[str] = None
+    signature_version: Optional[str] = None
+    public_key_id: Optional[str] = None
+    created_at: Optional[str] = None
+    transaction_id: Optional[str] = None
+    artifact: Optional[Dict[str, Any]] = None
+
+
+@router.get("/public/{fea_id}", response_model=PublicFEAVerifyResponse)
+@limiter.limit("120/minute")
+async def public_verify_fea_by_id(request: Request, fea_id: str):
+    """Public, cross-tenant lookup + independent verification of a Proof Artifact
+    by its (unguessable) FEA ID. Returns the signature verdict and the full signed
+    artifact JSON so an auditor can verify and/or download it. The payload is
+    privacy-preserving (hashes/tokenized ids only)."""
+    from server import db as database
+    doc = await database.feas.find_one({"fea_id": fea_id}, {"_id": 0})
+    if not doc:
+        return PublicFEAVerifyResponse(found=False, fea_id=fea_id, reason="Proof not found")
+    valid, reason, sig_version = await verify_fea_with_registry(
+        doc["fea_payload"], doc["signature"], doc.get("signature_version")
+    )
+    txid = (doc.get("fea_payload", {}) or {}).get("transaction_summary", {}).get("transaction_id")
+    artifact = {
+        "fea_id": doc["fea_id"],
+        "fea_payload": doc["fea_payload"],
+        "signature": doc["signature"],
+        "signature_version": doc.get("signature_version", "v2"),
+        "public_key_id": doc["public_key_id"],
+        "created_at": doc["created_at"],
+    }
+    return PublicFEAVerifyResponse(
+        found=True, fea_id=fea_id, valid=valid, reason=reason,
+        signature_version=sig_version, public_key_id=doc["public_key_id"],
+        created_at=doc["created_at"], transaction_id=txid, artifact=artifact,
+    )
 
 
 @router.post("/{fea_id}/anchor")

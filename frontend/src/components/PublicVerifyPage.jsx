@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import {
   ShieldCheck,
   Upload,
@@ -21,6 +22,7 @@ import {
   Loader2,
   ArrowLeft,
   Link2,
+  KeyRound,
 } from "lucide-react";
 import { decodeProofFromLinkParam } from "@/lib/proofLink";
 
@@ -50,9 +52,13 @@ export default function PublicVerifyPage() {
   const [result, setResult] = useState(null);
   const [loadedFromLink, setLoadedFromLink] = useState(false);
   const [linkError, setLinkError] = useState(null);
+  const [feaId, setFeaId] = useState("");
+  const [feaResult, setFeaResult] = useState(null);
+  const [feaLoading, setFeaLoading] = useState(false);
   const fileRef = useRef(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const autoVerifiedRef = useRef(false);
+  const autoFeaRef = useRef(false);
 
   const canVerify = useMemo(() => rawJson.trim().length > 0, [rawJson]);
 
@@ -149,6 +155,41 @@ export default function PublicVerifyPage() {
 
   const verify = () => runVerification();
 
+  // Verify a production Proof Artifact by its FEA ID (looked up + independently
+  // verified server-side against the DB-backed key registry).
+  const verifyByFeaId = async (idArg) => {
+    const id = (idArg ?? feaId).trim();
+    if (!id) return;
+    setFeaLoading(true);
+    setFeaResult(null);
+    try {
+      const { data } = await axios.get(`${API}/fea/public/${encodeURIComponent(id)}`);
+      setFeaResult(data);
+      if (data.artifact) {
+        setRawJson(JSON.stringify(data.artifact, null, 2));
+      }
+    } catch (e) {
+      setFeaResult({
+        found: false,
+        fea_id: id,
+        reason: e?.response?.data?.detail || e?.message || "Lookup failed",
+      });
+    } finally {
+      setFeaLoading(false);
+    }
+  };
+
+  // Auto-load from ?fea_id=<uuid> on first mount (opened from the Integration Monitor).
+  useEffect(() => {
+    if (autoFeaRef.current) return;
+    const id = searchParams.get("fea_id");
+    if (!id) return;
+    autoFeaRef.current = true;
+    setFeaId(id);
+    verifyByFeaId(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const clearAll = () => {
     setRawJson("");
     setResult(null);
@@ -237,6 +278,52 @@ export default function PublicVerifyPage() {
             <div className="text-sm font-medium text-red-800">{linkError}</div>
           </div>
         )}
+
+        {/* Verify by FEA ID (production Proof Artifact) */}
+        <Card className="bg-white border-gray-200 shadow-sm" data-testid="fea-id-verify-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold text-gray-900 tracking-tight flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-blue-600" />
+              Verify by FEA ID
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-gray-500 -mt-1">
+              Paste the full FEA ID (the Proof Artifact identifier shown in the Integration
+              Monitor). We look it up and verify its signature against the key registry.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                value={feaId}
+                onChange={(e) => setFeaId(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") verifyByFeaId(); }}
+                placeholder="e.g. cfff04a7-cd2a-4b33-9bff-d67c926e8897"
+                className="font-mono text-xs bg-white border-gray-200 text-gray-900"
+                data-testid="fea-id-input"
+              />
+              <Button
+                onClick={() => verifyByFeaId()}
+                disabled={!feaId.trim() || feaLoading}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-medium shrink-0"
+                data-testid="fea-id-verify-btn"
+              >
+                {feaLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : (
+                  <ShieldCheck className="w-4 h-4 mr-2" />
+                )}
+                Verify FEA
+              </Button>
+            </div>
+            {feaResult && <FeaVerifyResult result={feaResult} />}
+          </CardContent>
+        </Card>
+
+        <div className="flex items-center gap-3 text-xs text-gray-400">
+          <div className="h-px bg-gray-200 flex-1" />
+          or paste / upload a signed artifact
+          <div className="h-px bg-gray-200 flex-1" />
+        </div>
 
         {/* Input */}
         <Card className="bg-white border-gray-200 shadow-sm">
@@ -478,6 +565,44 @@ function Row({ label, value, valueClass = "text-gray-900", testId }) {
       >
         {value}
       </span>
+    </div>
+  );
+}
+
+
+function FeaVerifyResult({ result }) {
+  const { found, valid, reason, fea_id, public_key_id, signature_version, transaction_id, created_at } = result;
+  const ok = found && valid;
+  const tone = ok
+    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+    : "bg-red-50 border-red-200 text-red-800";
+  const Icon = ok ? CheckCircle2 : AlertTriangle;
+  const headline = !found
+    ? "Proof not found"
+    : valid
+    ? "Valid Proof — Signature Verified"
+    : "Invalid Proof — Verification Failed";
+
+  return (
+    <div className="mt-1" data-testid="fea-verify-result">
+      <div className={`rounded-lg border ${tone} p-4`}>
+        <div className="flex items-center gap-2 text-sm font-semibold" data-testid="fea-verify-headline">
+          <Icon className="w-4 h-4" />
+          {headline}
+        </div>
+        {!ok && reason && (
+          <div className="mt-1.5 text-xs" data-testid="fea-verify-reason">{reason}</div>
+        )}
+      </div>
+      {found && (
+        <div className="mt-3 rounded-md border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+          <Row label="FEA ID" value={fea_id} valueClass="font-mono text-xs" testId="fea-verify-id" />
+          {transaction_id && <Row label="Transaction ID" value={transaction_id} testId="fea-verify-txid" />}
+          {public_key_id && <Row label="Key ID" value={public_key_id} valueClass="font-mono text-xs" testId="fea-verify-kid" />}
+          {signature_version && <Row label="Signature Version" value={signature_version} testId="fea-verify-sigver" />}
+          {created_at && <Row label="Issued" value={formatTs(created_at)} testId="fea-verify-issued" />}
+        </div>
+      )}
     </div>
   );
 }

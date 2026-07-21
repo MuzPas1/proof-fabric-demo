@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, Activity, Pencil } from "lucide-react";
+import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, Activity, Pencil, ShieldCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
@@ -22,6 +22,51 @@ const SIGNATURE_SCHEMES = [
   { v: "stripe", label: "Stripe (stripe-signature)" },
   { v: "slack", label: "Slack (x-slack-signature)" },
 ];
+
+// Renders the issued Proof Artifact for an inbound event: full FEA ID (canonical
+// proof identifier), a copy control, and an independent-verify action that opens
+// the Auditor Verification page pre-filled with this FEA ID.
+function ProofCell({ event }) {
+  const id = event.fea_id;
+  if (!id) {
+    return <span className="font-mono text-[11px] text-slate-400">{event.error || "—"}</span>;
+  }
+  const copy = () => {
+    navigator.clipboard.writeText(id)
+      .then(() => toast.success("Full FEA ID copied"))
+      .catch(() => toast.error("Copy failed — select and copy manually"));
+  };
+  return (
+    <div className="flex items-center gap-2 min-w-[260px]">
+      <span
+        className="font-mono text-[11px] text-slate-700 break-all leading-tight"
+        title={`FEA ID (Proof Artifact identifier): ${id}`}
+        data-testid={`fea-id-${id}`}
+      >
+        {id}
+      </span>
+      <button
+        type="button"
+        onClick={copy}
+        className="shrink-0 text-slate-400 hover:text-slate-700"
+        title="Copy full FEA ID"
+        data-testid={`copy-fea-${id}`}
+      >
+        <Copy className="h-3.5 w-3.5" />
+      </button>
+      <a
+        href={`/verify?fea_id=${encodeURIComponent(id)}`}
+        target="_blank"
+        rel="noreferrer"
+        className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800"
+        title="Independently verify this proof on the Auditor Verification page"
+        data-testid={`verify-fea-${id}`}
+      >
+        <ShieldCheck className="h-3.5 w-3.5" /> Verify
+      </a>
+    </div>
+  );
+}
 
 export default function Integrations() {
   const { user } = useAuth();
@@ -410,7 +455,7 @@ export default function Integrations() {
               {events === null ? <Empty>Loading…</Empty> : events.length === 0 ? <Empty>No events yet</Empty> : (
                 <table className="w-full text-xs" data-testid="integration-events-table">
                   <thead><tr className="text-left text-slate-400 border-b border-slate-200">
-                    <th className="py-1.5">When</th><th>Type</th><th>External ID</th><th>Status</th><th>Proof</th>
+                    <th className="py-1.5">When</th><th>Type</th><th>External ID</th><th>Status</th><th>Proof (FEA ID)</th>
                   </tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {events.map((e) => (
@@ -419,7 +464,7 @@ export default function Integrations() {
                         <td>{e.event_type || "—"}</td>
                         <td>{e.external_id || "—"}</td>
                         <td>{e.status}</td>
-                        <td><Mono>{e.fea_id ? e.fea_id.slice(0, 8) : (e.error || "—")}</Mono></td>
+                        <td className="py-1.5"><ProofCell event={e} /></td>
                       </tr>
                     ))}
                   </tbody>
