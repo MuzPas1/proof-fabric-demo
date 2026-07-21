@@ -339,6 +339,7 @@ export default function EvidenceSummary({ artifact, valid }) {
           <button
             type="button"
             onClick={() => setShowCommit((s) => !s)}
+            aria-expanded={showCommit}
             className="w-full flex items-center gap-1.5 px-4 py-2.5 text-left hover:bg-slate-50/60 transition-colors"
             data-testid="evidence-commitments-toggle"
           >
