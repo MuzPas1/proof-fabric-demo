@@ -55,7 +55,9 @@ const isHashLike = (k) =>
 const fmtTs = (iso) => {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(iso);
+    return d.toLocaleString(undefined, {
       year: "numeric",
       month: "short",
       day: "2-digit",
@@ -64,7 +66,7 @@ const fmtTs = (iso) => {
       second: "2-digit",
     });
   } catch {
-    return iso;
+    return String(iso);
   }
 };
 
