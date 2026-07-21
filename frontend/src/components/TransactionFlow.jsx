@@ -34,6 +34,7 @@ import {
   DEFAULT_INDUSTRY,
 } from "@/lib/industries";
 import WorkflowBuilder from "@/components/WorkflowBuilder";
+import EvidenceSummary from "@/components/EvidenceSummary";
 import {
   cloneStarter,
   saveTemplate,
@@ -1546,12 +1547,24 @@ export default function TransactionFlow() {
           </div>
 
           {auditorResult && (
-            <div
-              className="mt-5 grid grid-cols-1 xl:grid-cols-2 gap-4 items-start"
-              data-testid="auditor-result"
-            >
-              <AuditorResult result={auditorResult} />
-              <AuditorTrustSection trust={auditorTrust} />
+            <div className="mt-5 space-y-4" data-testid="auditor-result">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+                <AuditorResult result={auditorResult} />
+                <AuditorTrustSection trust={auditorTrust} />
+              </div>
+              {auditorResult.valid && auditorTrust?.pub?.fea_payload && (
+                <EvidenceSummary
+                  artifact={{
+                    fea_id: auditorTrust.pub.fea_id,
+                    fea_payload: auditorTrust.pub.fea_payload,
+                    signature: auditorTrust.pub.signature,
+                    signature_version: auditorTrust.pub.signature_version,
+                    public_key_id: auditorTrust.pub.fea_payload?.public_key_id,
+                    created_at: auditorTrust.pub.created_at,
+                  }}
+                  valid={auditorTrust.pub.signature_valid}
+                />
+              )}
             </div>
           )}
 

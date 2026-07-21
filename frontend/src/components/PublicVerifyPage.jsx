@@ -25,6 +25,7 @@ import {
   KeyRound,
 } from "lucide-react";
 import { decodeProofFromLinkParam } from "@/lib/proofLink";
+import EvidenceSummary from "@/components/EvidenceSummary";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -571,7 +572,7 @@ function Row({ label, value, valueClass = "text-gray-900", testId }) {
 
 
 function FeaVerifyResult({ result }) {
-  const { found, valid, reason, fea_id, public_key_id, signature_version, transaction_id, created_at } = result;
+  const { found, valid, reason, artifact } = result;
   const ok = found && valid;
   const tone = ok
     ? "bg-emerald-50 border-emerald-200 text-emerald-800"
@@ -584,7 +585,7 @@ function FeaVerifyResult({ result }) {
     : "Invalid Proof — Verification Failed";
 
   return (
-    <div className="mt-1" data-testid="fea-verify-result">
+    <div className="mt-1 space-y-3" data-testid="fea-verify-result">
       <div className={`rounded-lg border ${tone} p-4`}>
         <div className="flex items-center gap-2 text-sm font-semibold" data-testid="fea-verify-headline">
           <Icon className="w-4 h-4" />
@@ -594,14 +595,8 @@ function FeaVerifyResult({ result }) {
           <div className="mt-1.5 text-xs" data-testid="fea-verify-reason">{reason}</div>
         )}
       </div>
-      {found && (
-        <div className="mt-3 rounded-md border border-gray-200 divide-y divide-gray-100 overflow-hidden">
-          <Row label="FEA ID" value={fea_id} valueClass="font-mono text-xs" testId="fea-verify-id" />
-          {transaction_id && <Row label="Transaction ID" value={transaction_id} testId="fea-verify-txid" />}
-          {public_key_id && <Row label="Key ID" value={public_key_id} valueClass="font-mono text-xs" testId="fea-verify-kid" />}
-          {signature_version && <Row label="Signature Version" value={signature_version} testId="fea-verify-sigver" />}
-          {created_at && <Row label="Issued" value={formatTs(created_at)} testId="fea-verify-issued" />}
-        </div>
+      {found && artifact && (
+        <EvidenceSummary artifact={artifact} valid={valid} />
       )}
     </div>
   );
