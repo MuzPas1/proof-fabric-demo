@@ -200,6 +200,37 @@ reviewable and overridable** before saving.
 - **API.** `GET /api/admin/integrations/presets` (RBAC `integrations:read`)
   returns the catalog for the Admin Portal.
 
+### Body-derived signed payloads (`{body:...}` placeholders)
+
+Some providers sign a string assembled from fields **inside the JSON body**
+rather than from headers. The generic HMAC branch supports this via the
+`signed_payload_format` template, which understands three placeholders:
+
+| Placeholder | Resolves to |
+|---|---|
+| `{body}` | the raw request body, verbatim |
+| `{timestamp}` | the value of the configured `timestamp_header` |
+| `{body:a.b.c}` | a value read from the JSON body at a dotted path |
+
+`{body:...}` is resolved before the literal `{body}`, so they never collide.
+An optional `timestamp_field` (a dotted path into the body) supplies the epoch
+used for replay/skew checks when the timestamp lives in the body.
+
+**Tazapay** — signs `HMAC-SHA256(secret, <event_id><rawBody><created_at>)`,
+Base64-encoded, in the `webhook-signature` header, where `event_id` is the
+top-level `id` and `created_at` is the top-level timestamp (both in the body).
+Configure as a generic `hmac_sha256` integration with the vendor's webhook
+secret and this `auth_config` (no bespoke scheme, no preset required):
+
+```json
+{
+  "signature_header": "webhook-signature",
+  "signature_encoding": "base64",
+  "signed_payload_format": "{body:id}{body}{body:created_at}",
+  "timestamp_field": "created_at"
+}
+```
+
 ---
 
 ## 6. Extension model — adding a new integration

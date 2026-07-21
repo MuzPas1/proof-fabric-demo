@@ -30,6 +30,8 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
+import re
 import time
 from dataclasses import dataclass
 from functools import lru_cache
@@ -104,6 +106,42 @@ def _to_epoch(value) -> Optional[float]:
         return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
     except Exception:
         return None
+
+
+def _body_field(raw_body: bytes, path: str) -> str:
+    """Extract a (dotted-path) value from the JSON body as a string; empty on miss.
+
+    Enables signed-payload templates to reference fields carried INSIDE the body
+    (e.g. Tazapay signs ``<event_id><rawBody><created_at>`` where event_id and
+    created_at are top-level body fields, not headers)."""
+    try:
+        data = json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        return ""
+    cur = data
+    for part in str(path).split("."):
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        else:
+            return ""
+    if cur is None:
+        return ""
+    return cur if isinstance(cur, str) else json.dumps(cur, separators=(",", ":"), ensure_ascii=False)
+
+
+_BODY_FIELD_RE = re.compile(r"\{body:([^}]+)\}")
+
+
+def _render_signed_format(fmt: str, *, body: str, header_ts, raw_body: bytes) -> str:
+    """Render a signed-payload template. Supported placeholders:
+       ``{body}``       -> raw request body, verbatim
+       ``{timestamp}``  -> value of the configured timestamp header
+       ``{body:a.b.c}`` -> value extracted from the JSON body at a dotted path
+    ``{body:...}`` is resolved first so the literal ``{body}`` replace can't corrupt it."""
+    out = _BODY_FIELD_RE.sub(lambda m: _body_field(raw_body, m.group(1)), fmt)
+    out = out.replace("{timestamp}", "" if header_ts is None else str(header_ts))
+    out = out.replace("{body}", body)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -196,11 +234,24 @@ class HmacProvider(InboundAuthProvider):
             header_name = (cfg.get("signature_header") or integration.get("signature_header") or default_header).lower()
             provided = headers.get(header_name, "")
             ts_header = cfg.get("timestamp_header")
-            if ts_header:
-                t = headers.get(ts_header.lower())
-                ts = _to_epoch(t)
-                fmt = cfg.get("signed_payload_format", "{timestamp}.{body}")
-                signed = fmt.replace("{timestamp}", str(t)).replace("{body}", body)
+            header_ts = headers.get(ts_header.lower()) if ts_header else None
+            if header_ts is not None:
+                ts = _to_epoch(header_ts)
+            # Signed-payload template. Historic behaviour: a configured
+            # ``timestamp_header`` (with no explicit format) defaults to
+            # ``{timestamp}.{body}``. New: ``{body:dotted.path}`` placeholders let
+            # a provider sign body-derived fields (e.g. Tazapay:
+            # ``{body:id}{body}{body:created_at}``) — WITHOUT a bespoke scheme.
+            fmt = cfg.get("signed_payload_format")
+            if fmt is None and ts_header:
+                fmt = "{timestamp}.{body}"
+            if fmt:
+                signed = _render_signed_format(fmt, body=body, header_ts=header_ts, raw_body=raw_body)
+            # A timestamp carried INSIDE the body (e.g. Tazapay top-level
+            # ``created_at``) — resolved for optional replay/skew enforcement.
+            ts_field = cfg.get("timestamp_field")
+            if ts_field:
+                ts = _to_epoch(_body_field(raw_body, ts_field))
 
         if provided.startswith("sha256=") or provided.startswith("sha1="):
             provided = provided.split("=", 1)[1]
