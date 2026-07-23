@@ -24,6 +24,18 @@ const SIGNATURE_SCHEMES = [
   { v: "docusign", label: "DocuSign Connect (x-docusign-signature-1 · base64)" },
 ];
 
+// Recommended auth_config for each HMAC signature scheme (vendor-spec derived).
+// Used to pre-fill the raw auth_config JSON when a scheme is picked in the Edit
+// dialog, so switching an existing integration to (e.g.) DocuSign is one click.
+const SCHEME_DEFAULTS = {
+  plain: {},
+  cashfree: { signature_scheme: "cashfree", signature_header: "x-webhook-signature", signature_encoding: "base64", timestamp_header: "x-webhook-timestamp" },
+  stripe: { signature_scheme: "stripe", signature_header: "stripe-signature", signature_encoding: "hex" },
+  slack: { signature_scheme: "slack", signature_header: "x-slack-signature", timestamp_header: "x-slack-request-timestamp", signature_prefix: "v0=", signature_encoding: "hex" },
+  docusign: { signature_scheme: "docusign", signature_header: "x-docusign-signature-1", signature_encoding: "base64" },
+};
+const isHmacProvider = (p) => p === "hmac" || HMAC_PROVIDERS.includes(p);
+
 // Renders the issued Proof Artifact for an inbound event: full FEA ID (canonical
 // proof identifier), a copy control, and an independent-verify action that opens
 // the Auditor Verification page pre-filled with this FEA ID.
@@ -309,6 +321,15 @@ export default function Integrations() {
       });
       setEditing(it);
     } catch (e) { toast.error(e?.response?.data?.detail || "Failed to load integration"); }
+  };
+
+  const applyEditScheme = (scheme) => {
+    const cfg = SCHEME_DEFAULTS[scheme] || {};
+    setEditForm((f) => ({
+      ...f,
+      signature_scheme: scheme,
+      auth_config: Object.keys(cfg).length ? JSON.stringify(cfg, null, 2) : "",
+    }));
   };
 
   const saveEdit = async () => {
@@ -616,6 +637,18 @@ export default function Integrations() {
                   For security the current secret is never shown. Leave blank to keep it unchanged.
                 </div>
               </div>
+              {isHmacProvider(editForm.auth_provider) && (
+                <div>
+                  <Label>Signature scheme</Label>
+                  <Select value={editForm.signature_scheme || "plain"} onValueChange={applyEditScheme}>
+                    <SelectTrigger className="mt-1" data-testid="edit-sig-scheme"><SelectValue /></SelectTrigger>
+                    <SelectContent>{SIGNATURE_SCHEMES.map((s) => <SelectItem key={s.v} value={s.v}>{s.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <div className="text-xs text-slate-500 mt-1">
+                    Picking a scheme pre-fills the recommended header + encoding below. For DocuSign, also set the HMAC secret above to match your DocuSign Connect secret.
+                  </div>
+                </div>
+              )}
               <div>
                 <Label>Auth config (JSON — review &amp; override)</Label>
                 <textarea value={editForm.auth_config} onChange={(e) => setEditForm({ ...editForm, auth_config: e.target.value })}
