@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
+import logging
 import secrets
 import time as _time
 import uuid
@@ -22,6 +24,8 @@ from core.ingestion import auth_providers
 from core.ingestion.adapters import AdapterError, get_adapter
 from models.fea import GenerateFEARequest
 from models.ingestion import CommonEvent, IntegrationConfig
+
+logger = logging.getLogger("pfp.ingestion.service")
 
 
 class IngestionError(Exception):
@@ -149,7 +153,15 @@ async def update_integration(db, integration_id: str, tenant_id: Optional[str], 
         clean["external_secret"] = clean.pop("secret")
     clean["updated_at"] = _now()
     await db.integrations.update_one({"integration_id": integration_id}, {"$set": clean})
-    return await get_integration(db, integration_id, tenant_id)
+    result = await get_integration(db, integration_id, tenant_id)
+    # Persistence visibility: print the EXACTLY-persisted auth_config immediately
+    # after save so operators can confirm (e.g.) that signature_scheme=docusign
+    # actually landed in the DB for this integration_id/slug.
+    logger.info(
+        "integration saved: id=%s slug=%s persisted auth_config=%s",
+        integration_id, result.get("slug"), json.dumps(result.get("auth_config") or {}),
+    )
+    return result
 
 
 async def set_enabled(db, integration_id: str, tenant_id: Optional[str], enabled: bool) -> dict:
@@ -284,6 +296,17 @@ async def process_inbound(db, slug: str, raw_body: bytes, headers: Dict[str, str
         raise IngestionError("integration is disabled", 403)
 
     await _validate_tenant_binding(db, slug, doc)
+
+    # Read-path visibility: print the integration_id + auth_config the inbound
+    # webhook actually loaded from the DB (fresh read; no cache). Compare this
+    # id/auth_config against the "integration saved" log above — if they differ,
+    # the webhook is hitting a DIFFERENT integration record than the one edited
+    # (e.g. a duplicate slug or the DocuSign endpoint URL points elsewhere).
+    logger.info(
+        "inbound webhook loaded integration: slug=%s id=%s auth_provider=%s auth_config=%s",
+        slug, doc.get("integration_id"), doc.get("auth_provider"),
+        json.dumps(doc.get("auth_config") or {}),
+    )
 
     lower_headers = {k.lower(): v for k, v in headers.items()}
 

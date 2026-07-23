@@ -663,9 +663,9 @@ def authenticate(integration: dict, headers: Dict[str, str], raw_body: bytes) ->
     # from the logs alone. Non-sensitive: names only, never secrets/signatures.
     scheme = (cfg.get("signature_scheme") or ("plain" if provider.name.startswith("hmac") else "n/a")).lower()
     logger.info(
-        "auth provider selected: integration=%r auth_provider=%s signature_scheme=%s "
+        "auth provider selected: integration=%r id=%s auth_provider=%s signature_scheme=%s "
         "signature_header=%s",
-        integration.get("slug"), provider.name, scheme,
+        integration.get("slug"), integration.get("integration_id"), provider.name, scheme,
         (cfg.get("signature_header") or integration.get("signature_header") or "-"),
     )
     try:
