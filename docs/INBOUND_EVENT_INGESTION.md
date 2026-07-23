@@ -190,6 +190,7 @@ reviewable and overridable** before saving.
 | GitHub | `hmac_sha256` | plain (`sha256=` prefix) | `X-Hub-Signature-256` | hex | — | Vendor secret |
 | Slack | `hmac_sha256` | slack (`v0=` prefix) | `X-Slack-Signature` | hex | `X-Slack-Request-Timestamp` | Vendor signing secret |
 | Shopify | `hmac_sha256` | plain | `X-Shopify-Hmac-Sha256` | base64 | — | Vendor secret |
+| DocuSign Connect | `hmac_sha256` | docusign | `X-DocuSign-Signature-1..N` | base64 | — | Vendor HMAC secret |
 
 - **Config-only & secret-free.** Presets contain only non-secret configuration.
   Vendors that sign with their own key are flagged so the operator supplies that
@@ -230,6 +231,32 @@ secret and this `auth_config` (no bespoke scheme, no preset required):
   "timestamp_field": "created_at"
 }
 ```
+
+### DocuSign Connect (adapter-specific `docusign` scheme)
+
+DocuSign Connect signs the **exact raw request body**:
+`signature = Base64(HMAC-SHA256(secret, raw_body_bytes))`, and sends one
+signature per active HMAC key in headers `X-DocuSign-Signature-1 … -N`
+(case-insensitive). A match against **any** key trusts the message. Verification
+runs over the raw bytes (line endings preserved) and compares in constant time.
+This is a dedicated scheme (`signature_scheme: "docusign"`) so the
+Stripe/Cashfree/Slack/plain paths are untouched. Use the **DocuSign Connect**
+preset, or configure a generic `hmac_sha256` integration with the vendor HMAC
+secret and this `auth_config`:
+
+```json
+{
+  "signature_scheme": "docusign",
+  "signature_header": "x-docusign-signature-1",
+  "signature_encoding": "base64"
+}
+```
+
+DocuSign envelope events normalize automatically — the envelope id is read from
+`envelopeId` / `data.envelopeId`. Detailed (non-sensitive) debug logs are emitted
+at INFO: header detected, signature present/absent, payload length, expected &
+received signature previews (first 8 chars only), verification result, and the
+failure reason.
 
 ---
 
