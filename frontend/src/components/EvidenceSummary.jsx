@@ -262,6 +262,8 @@ export default function EvidenceSummary({ artifact, valid }) {
     artifact.fea_payload,
     artifact
   );
+  const desc = artifact.event_descriptor;
+  const fmtLabel = (s) => titleCase(String(s).replace(/[-_]/g, " "));
 
   const ok = !!valid;
   const StatusIcon = ok ? CheckCircle2 : AlertTriangle;
@@ -280,7 +282,13 @@ export default function EvidenceSummary({ artifact, valid }) {
           className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase tracking-wide"
           data-testid="evidence-kind"
         >
-          {isFinancial ? "Financial" : "Event / Document"}
+          {desc?.provider
+            ? desc.provider_kind === "docusign"
+              ? `${desc.provider} · Document`
+              : desc.provider
+            : isFinancial
+            ? "Financial"
+            : "Event / Document"}
         </span>
         <span
           className={`ml-auto inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${
@@ -301,6 +309,41 @@ export default function EvidenceSummary({ artifact, valid }) {
         {!isFinancial &&
           " Document contents and party identities are committed via a privacy-preserving hash and are never stored in plaintext."}
       </p>
+
+      {/* Provider event context (recorded at ingestion; NOT signed, NO PII) */}
+      {desc && (desc.provider || desc.event_type || desc.status) && (
+        <>
+          <div className="px-4 pt-2 pb-1">
+            <div className="flex items-center gap-1.5 pt-1 pb-1 flex-wrap">
+              <FileSignature className="w-3.5 h-3.5 text-slate-500" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
+                Event Context
+              </span>
+              <span className="text-[10px] text-slate-400 normal-case font-normal">
+                recorded at ingestion · not part of the signature
+              </span>
+            </div>
+          </div>
+          <div className="divide-y divide-gray-100 border-y border-gray-100" data-testid="evidence-context">
+            {desc.provider && (
+              <EvidenceRow label="Provider" value={desc.provider} testId="evidence-provider" />
+            )}
+            {desc.event_type && (
+              <EvidenceRow label="Event Type" value={fmtLabel(desc.event_type)} testId="evidence-event-type" />
+            )}
+            {desc.status && (
+              <div className="flex items-start justify-between gap-4 px-4 py-2.5" data-testid="evidence-status">
+                <span className="text-xs uppercase tracking-wide text-gray-500 pt-0.5 shrink-0">
+                  Status
+                </span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-600/20">
+                  {fmtLabel(desc.status)}
+                </span>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Authenticated evidence */}
       <div className="px-4 pt-2 pb-1">

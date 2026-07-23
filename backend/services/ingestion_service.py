@@ -65,6 +65,59 @@ def _is_connectivity_test(payload) -> bool:
     return t in ("webhook", "test", "ping", "test_webhook", "connectivity_test")
 
 
+_PROVIDER_LABELS = {
+    "docusign": "DocuSign", "cashfree": "Cashfree", "stripe": "Stripe", "slack": "Slack",
+}
+
+
+def _build_event_descriptor(event: CommonEvent, integration: dict, payload) -> dict:
+    """Non-sensitive, privacy-preserving descriptor recorded ALONGSIDE the proof
+    (NOT part of the signed payload, NOT a cryptographic commitment). Enables a
+    provider-aware verification experience without storing any PII — document
+    names, subjects, senders/recipients and account ids remain hash-only inside
+    the signed ``metadata_hash``. Only workflow-level, non-personal fields are
+    persisted here (provider, event type, status, timestamp, external id)."""
+    scheme = ((integration.get("auth_config") or {}).get("signature_scheme") or "").lower()
+    provider = _PROVIDER_LABELS.get(scheme) or integration.get("name") or integration.get("slug")
+    status = None
+    event_type = None
+    if isinstance(payload, dict):
+        for k in ("status", "state", "event_status"):
+            v = payload.get(k)
+            if isinstance(v, (str, int)) and str(v).strip():
+                status = str(v)[:64]
+                break
+        # Prefer the provider's descriptive event field (e.g. DocuSign
+        # ``event``="envelope-completed") over the generic normalized type.
+        for k in ("event", "event_type", "eventType", "type", "action"):
+            v = payload.get(k)
+            if isinstance(v, str) and v.strip():
+                event_type = v[:128]
+                break
+    event_type = event_type or (str(event.event_type)[:128] if event.event_type else None)
+    return {
+        "provider": str(provider)[:64],
+        "provider_kind": scheme or "generic",
+        "event_type": event_type,
+        "status": status,
+        "occurred_at": event.occurred_at,
+        "external_id": event.external_id,
+        "source": event.source,
+    }
+
+
+async def _persist_event_descriptor(db, fea_id: str, event: CommonEvent, integration: dict, payload) -> None:
+    """Additively attach the non-sensitive descriptor to the stored proof. Best
+    effort — a failure here must never affect proof issuance."""
+    try:
+        await db.feas.update_one(
+            {"fea_id": fea_id},
+            {"$set": {"event_descriptor": _build_event_descriptor(event, integration, payload)}},
+        )
+    except Exception:
+        logger.warning("failed to persist event_descriptor for fea_id=%s", fea_id)
+
+
 async def ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db.integrations.create_index("integration_id", unique=True)
     await db.integrations.create_index("slug", unique=True)
@@ -367,6 +420,7 @@ async def process_inbound(db, slug: str, raw_body: bytes, headers: Dict[str, str
         detail = getattr(e, "detail", None) or str(e)
         await _record_event(db, doc["integration_id"], event, "rejected", None, f"proof: {detail}")
         raise
+    await _persist_event_descriptor(db, response.fea_id, event, doc, payload)
     await _record_event(db, doc["integration_id"], event, "accepted", response.fea_id, None)
     return {"status": "accepted", "integration": slug, "event_id": event.external_id, "fea_id": response.fea_id}
 
@@ -381,6 +435,7 @@ async def dry_run(db, integration_id: str, tenant_id: Optional[str], payload: di
     if issue:
         from routes.fea_routes import _generate_one
         response = await _generate_one(db, request, doc["tenant_id"])
+        await _persist_event_descriptor(db, response.fea_id, event, doc, payload)
         await _record_event(db, integration_id, event, "accepted", response.fea_id, None)
         result["fea_id"] = response.fea_id
     return result

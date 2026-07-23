@@ -332,6 +332,7 @@ async def public_verify_fea_by_id(request: Request, fea_id: str):
         "signature_version": doc.get("signature_version", "v2"),
         "public_key_id": doc["public_key_id"],
         "created_at": doc["created_at"],
+        "event_descriptor": doc.get("event_descriptor"),
     }
     return PublicFEAVerifyResponse(
         found=True, fea_id=fea_id, valid=valid, reason=reason,
