@@ -143,20 +143,27 @@ function buildRows(payload, artifact) {
   const ts = p.transaction_summary || {};
 
   const evidence = [];
+  // Financial vs non-financial (e.g. document-signing / workflow) proofs: a
+  // proof with no positive amount is NOT financial, so the misleading
+  // Amount/Currency rows are suppressed and the identifier is labelled neutrally.
+  const isFinancial =
+    ts.amount !== undefined && ts.amount !== null && Number(ts.amount) > 0;
   // Business evidence (from the signed transaction_summary), industry-neutral.
   if (ts.transaction_id !== undefined)
     evidence.push({
       key: "transaction_id",
-      label: LABELS.transaction_id,
+      label: isFinancial ? LABELS.transaction_id : "Reference / Envelope ID",
       value: ts.transaction_id,
       mono: true,
       copy: true,
     });
-  const amt = fmtAmount(ts.amount, ts.currency);
-  if (amt !== null)
-    evidence.push({ key: "amount", label: LABELS.amount, value: amt });
-  if (ts.currency !== undefined)
-    evidence.push({ key: "currency", label: LABELS.currency, value: ts.currency });
+  if (isFinancial) {
+    const amt = fmtAmount(ts.amount, ts.currency);
+    if (amt !== null)
+      evidence.push({ key: "amount", label: LABELS.amount, value: amt });
+    if (ts.currency !== undefined)
+      evidence.push({ key: "currency", label: LABELS.currency, value: ts.currency });
+  }
   if (ts.timestamp !== undefined)
     evidence.push({
       key: "timestamp",
@@ -242,7 +249,7 @@ function buildRows(payload, artifact) {
       value: p.metadata_hash,
     });
 
-  return { evidence, crypto, commitments };
+  return { evidence, crypto, commitments, isFinancial };
 }
 
 // A read-only, industry-neutral Evidence Summary rendered dynamically from a
@@ -251,7 +258,7 @@ function buildRows(payload, artifact) {
 export default function EvidenceSummary({ artifact, valid }) {
   const [showCommit, setShowCommit] = useState(false);
   if (!artifact || !artifact.fea_payload) return null;
-  const { evidence, crypto, commitments } = buildRows(
+  const { evidence, crypto, commitments, isFinancial } = buildRows(
     artifact.fea_payload,
     artifact
   );
@@ -270,6 +277,12 @@ export default function EvidenceSummary({ artifact, valid }) {
           Evidence Summary
         </h4>
         <span
+          className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase tracking-wide"
+          data-testid="evidence-kind"
+        >
+          {isFinancial ? "Financial" : "Event / Document"}
+        </span>
+        <span
           className={`ml-auto inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${
             ok
               ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20"
@@ -285,6 +298,8 @@ export default function EvidenceSummary({ artifact, valid }) {
       <p className="px-4 pt-3 text-xs text-gray-600 leading-relaxed">
         The fields below were cryptographically authenticated by the proof's
         signature. No sensitive or confidential content is stored or shown.
+        {!isFinancial &&
+          " Document contents and party identities are committed via a privacy-preserving hash and are never stored in plaintext."}
       </p>
 
       {/* Authenticated evidence */}

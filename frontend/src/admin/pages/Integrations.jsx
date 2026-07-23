@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, Activity, Pencil, ShieldCheck, Bug, CheckCircle2 } from "lucide-react";
+import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, Activity, Pencil, ShieldCheck, CheckCircle2, XCircle, ChevronDown, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
@@ -116,40 +116,55 @@ function DiagField({ k, v, tone }) {
   );
 }
 
-// "Debug last rejection" — surfaces the most recent REJECTED inbound event's
-// diagnostic so operators can self-diagnose provider auth failures (e.g.
-// DocuSign) without server-log access. Non-sensitive: header NAMES only, never
-// secrets or signature values.
-function DebugLastRejection({ events }) {
-  if (events === null) return null;
-  const rej = events.find((e) => e.status === "rejected");
-  if (!rej) {
-    return (
-      <div className="rounded-md border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 flex items-center gap-2" data-testid="debug-last-rejection-none">
-        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-        <span className="text-xs text-emerald-800">No recent rejections — the latest inbound events authenticated and normalized successfully.</span>
-      </div>
-    );
-  }
-  const diag = parseDiagnostic(rej.error);
+const titleCaseWord = (s) => String(s || "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+// Map a raw inbound diagnostic to a concise, human-readable summary for
+// auditors/compliance users. Full technical detail stays available on demand.
+const ERROR_KINDS = [
+  { re: /^auth:/i, title: "Authentication failed", desc: "The provider signature could not be verified." },
+  { re: /^normalize:/i, title: "Event not accepted", desc: "The payload could not be mapped to a business event." },
+  { re: /^timestamp:/i, title: "Timestamp rejected", desc: "The event timestamp was missing or outside the allowed window." },
+  { re: /^replay:/i, title: "Duplicate event", desc: "This event was already processed (replay protection)." },
+  { re: /^proof:/i, title: "Proof generation failed", desc: "The event authenticated but a proof could not be issued." },
+];
+
+function summarizeError(error) {
+  const diag = parseDiagnostic(error);
+  const kind = ERROR_KINDS.find((k) => k.re.test(error || ""));
+  const title = kind ? kind.title : (diag?.category ? titleCaseWord(diag.category) : "Rejected");
+  let desc = kind ? kind.desc : (diag?.message || error || "");
+  if (diag?.fields?.hint) desc = "Wrong signature scheme configured — " + diag.fields.hint;
+  return { title, desc, diag };
+}
+
+function StatusPill({ status }) {
+  const map = {
+    accepted: { c: "bg-emerald-50 text-emerald-700 ring-emerald-600/20", label: "Accepted", Icon: CheckCircle2 },
+    rejected: { c: "bg-red-50 text-red-700 ring-red-600/20", label: "Rejected", Icon: XCircle },
+    test: { c: "bg-amber-50 text-amber-700 ring-amber-600/20", label: "Test", Icon: FlaskConical },
+  };
+  const s = map[status] || { c: "bg-slate-100 text-slate-600 ring-slate-400/20", label: status || "—", Icon: Activity };
+  const I = s.Icon;
+  return (
+    <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ring-1 ${s.c}`} data-testid={`status-pill-${status}`}>
+      <I className="h-3 w-3" />{s.label}
+    </span>
+  );
+}
+
+// Expandable technical diagnostics (parsed fields + received headers + raw
+// string). Kept out of the default view so business users see plain summaries.
+function RejectionDetails({ error }) {
+  const diag = parseDiagnostic(error);
   const headerVal = diag?.fields?.header;
   const headerMissing = headerVal === "missing";
-  const copy = () =>
-    navigator.clipboard.writeText(rej.error || "").then(() => toast.success("Diagnostic copied")).catch(() => toast.error("Copy failed"));
+  const copy = () => navigator.clipboard.writeText(error || "").then(() => toast.success("Diagnostic copied")).catch(() => toast.error("Copy failed"));
   return (
-    <div className="rounded-md border border-red-200 bg-red-50/50 p-3 space-y-2.5" data-testid="debug-last-rejection">
+    <div className="space-y-2.5 rounded-md bg-slate-50 border border-slate-200 p-3" data-testid="rejection-details">
       <div className="flex items-center gap-2">
-        <Bug className="h-4 w-4 text-red-600 shrink-0" />
-        <span className="text-xs font-semibold uppercase tracking-wide text-red-700">Debug last rejection</span>
-        {diag?.category && (
-          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 uppercase">{diag.category}</span>
-        )}
-        <span className="ml-auto text-[11px] text-slate-500">{rej.received_at?.slice(0, 19)?.replace("T", " ")} UTC</span>
-        <button type="button" onClick={copy} className="text-slate-400 hover:text-slate-700" title="Copy raw diagnostic" data-testid="debug-copy-btn">
-          <Copy className="h-3.5 w-3.5" />
-        </button>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Technical diagnostic</span>
+        <button type="button" onClick={copy} className="ml-auto text-slate-400 hover:text-slate-700" title="Copy raw diagnostic" data-testid="debug-copy-btn"><Copy className="h-3.5 w-3.5" /></button>
       </div>
-      <div className="text-xs text-slate-800" data-testid="debug-message">{diag?.message || rej.error}</div>
       {diag && Object.keys(diag.fields).length > 0 && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]" data-testid="debug-fields">
           {diag.fields.scheme && <DiagField k="scheme" v={diag.fields.scheme} />}
@@ -168,19 +183,135 @@ function DebugLastRejection({ events }) {
         <div className="text-[11px]" data-testid="debug-headers-seen">
           <div className="text-slate-500 mb-1">Headers received{headerMissing ? " (no signature header matched)" : ""}:</div>
           <div className="flex flex-wrap gap-1">
-            {diag.headersSeen.length === 0 ? (
-              <span className="text-slate-400">none</span>
-            ) : (
-              diag.headersSeen.map((h, i) => (
-                <code key={i} className={`px-1.5 py-0.5 rounded font-mono ${/sign/i.test(h) ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{h}</code>
-              ))
-            )}
+            {diag.headersSeen.length === 0 ? <span className="text-slate-400">none</span> : diag.headersSeen.map((h, i) => (
+              <code key={i} className={`px-1.5 py-0.5 rounded font-mono ${/sign/i.test(h) ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{h}</code>
+            ))}
           </div>
         </div>
       )}
-      {headerMissing && (
-        <div className="text-[11px] text-slate-600 border-t border-red-200/60 pt-2">
-          The provider did not send the configured signature header. Compare the received headers above with your provider's spec and adjust the integration's <span className="font-medium">signature scheme / header</span>. If no signature-like header appears at all, an upstream proxy/gateway may be stripping it.
+      <div className="text-[11px] font-mono text-slate-500 break-all border-t border-slate-200 pt-2" data-testid="rejection-raw">{error}</div>
+    </div>
+  );
+}
+
+// Latest-event health — reflects the MOST RECENT event (never a stale historical
+// rejection). Only the badge carries color; the panel stays neutral.
+function EventHealthSummary({ events }) {
+  const [open, setOpen] = useState(false);
+  if (events === null) return null;
+  const latest = events[0];
+  if (!latest) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex items-center gap-2" data-testid="event-health-empty">
+        <Activity className="h-4 w-4 text-slate-400" />
+        <span className="text-xs text-slate-500">No events received yet.</span>
+      </div>
+    );
+  }
+  const when = latest.received_at?.slice(0, 19)?.replace("T", " ");
+  const rejected = latest.status === "rejected";
+  const sum = rejected ? summarizeError(latest.error) : null;
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-2" data-testid="event-health">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Latest event</span>
+        <StatusPill status={latest.status} />
+        <span className="text-sm text-slate-800">
+          {latest.status === "accepted" && "Authenticated — proof issued."}
+          {latest.status === "test" && "Connectivity test acknowledged."}
+          {rejected && (sum?.title || "Rejected")}
+        </span>
+        <span className="ml-auto text-[11px] text-slate-400">{when} UTC</span>
+      </div>
+      {rejected && (
+        <>
+          <div className="text-xs text-slate-600" data-testid="event-health-desc">{sum.desc}</div>
+          <button type="button" onClick={() => setOpen((s) => !s)} className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800" data-testid="event-health-details-toggle">
+            {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />} {open ? "Hide" : "View"} technical details
+          </button>
+          {open && <RejectionDetails error={latest.error} />}
+        </>
+      )}
+      {!rejected && events.some((e) => e.status === "rejected") && (
+        <div className="text-[11px] text-slate-400" data-testid="event-health-note">Older rejections exist — use the Rejected filter below to review them.</div>
+      )}
+    </div>
+  );
+}
+
+function EventRow({ event }) {
+  const [open, setOpen] = useState(false);
+  const rejected = event.status === "rejected";
+  const sum = rejected ? summarizeError(event.error) : null;
+  return (
+    <>
+      <tr className="hover:bg-slate-50/70" data-testid={`event-row-${event.event_log_id}`}>
+        <td className="px-3 py-2 whitespace-nowrap text-slate-500">{event.received_at?.slice(0, 19)?.replace("T", " ")}</td>
+        <td className="px-3 py-2"><StatusPill status={event.status} /></td>
+        <td className="px-3 py-2 text-slate-700">{event.event_type || "—"}</td>
+        <td className="px-3 py-2 font-mono text-[11px] text-slate-600 max-w-[140px] truncate" title={event.external_id || ""}>{event.external_id || "—"}</td>
+        <td className="px-3 py-2">
+          {rejected ? (
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-slate-700 truncate max-w-[260px]" title={sum.desc}>{sum.title}</span>
+              <button type="button" onClick={() => setOpen((s) => !s)} className="shrink-0 inline-flex items-center gap-0.5 text-[11px] font-medium text-blue-600 hover:text-blue-800" data-testid={`event-details-${event.event_log_id}`}>
+                {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />} Details
+              </button>
+            </div>
+          ) : (
+            <ProofCell event={event} />
+          )}
+        </td>
+      </tr>
+      {open && rejected && (
+        <tr className="bg-slate-50/40"><td colSpan={5} className="px-3 pb-3 pt-1"><RejectionDetails error={event.error} /></td></tr>
+      )}
+    </>
+  );
+}
+
+// Enterprise recent-events table: bordered, filterable (All | Accepted |
+// Rejected), badge-based status, human-readable summaries, and per-row
+// expandable technical detail. Successes and rejections separate via the filter.
+function RecentEventsTable({ events }) {
+  const [filter, setFilter] = useState("all");
+  if (events === null) return <Empty>Loading…</Empty>;
+  const counts = {
+    all: events.length,
+    accepted: events.filter((e) => e.status === "accepted").length,
+    rejected: events.filter((e) => e.status === "rejected").length,
+  };
+  const filtered = filter === "all" ? events : events.filter((e) => e.status === filter);
+  const FilterBtn = ({ id, label }) => (
+    <button type="button" onClick={() => setFilter(id)} data-testid={`events-filter-${id}`}
+      className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${filter === id ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}>
+      {label} <span className={filter === id ? "text-slate-300" : "text-slate-400"}>({counts[id]})</span>
+    </button>
+  );
+  return (
+    <div data-testid="recent-events">
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mr-1">Recent events</span>
+        <FilterBtn id="all" label="All" />
+        <FilterBtn id="accepted" label="Accepted" />
+        <FilterBtn id="rejected" label="Rejected" />
+      </div>
+      {filtered.length === 0 ? <Empty>No {filter === "all" ? "" : filter} events</Empty> : (
+        <div className="rounded-lg border border-slate-200 overflow-hidden">
+          <table className="w-full text-xs" data-testid="integration-events-table">
+            <thead>
+              <tr className="text-left text-slate-500 bg-slate-50 border-b border-slate-200">
+                <th className="px-3 py-2 font-medium">When (UTC)</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+                <th className="px-3 py-2 font-medium">Type</th>
+                <th className="px-3 py-2 font-medium">External ID</th>
+                <th className="px-3 py-2 font-medium">Result</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filtered.map((e) => <EventRow key={e.event_log_id} event={e} />)}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -559,7 +690,7 @@ export default function Integrations() {
               </div>
             )}
 
-            <DebugLastRejection events={events} />
+            <EventHealthSummary events={events} />
 
             {writable && (
               <div>
@@ -581,27 +712,7 @@ export default function Integrations() {
               <pre className="text-xs bg-slate-50 p-3 overflow-auto max-h-64" data-testid="integration-test-result">{JSON.stringify(testResult, null, 2)}</pre>
             )}
 
-            <div>
-              <div className="text-xs text-slate-500 mb-1">Recent events</div>
-              {events === null ? <Empty>Loading…</Empty> : events.length === 0 ? <Empty>No events yet</Empty> : (
-                <table className="w-full text-xs" data-testid="integration-events-table">
-                  <thead><tr className="text-left text-slate-400 border-b border-slate-200">
-                    <th className="py-1.5">When</th><th>Type</th><th>External ID</th><th>Status</th><th>Proof (FEA ID)</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {events.map((e) => (
-                      <tr key={e.event_log_id}>
-                        <td className="py-1.5">{e.received_at?.slice(0, 19)}</td>
-                        <td>{e.event_type || "—"}</td>
-                        <td>{e.external_id || "—"}</td>
-                        <td>{e.status}</td>
-                        <td className="py-1.5"><ProofCell event={e} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+            <RecentEventsTable events={events} />
           </div>
         </Panel>
       )}
