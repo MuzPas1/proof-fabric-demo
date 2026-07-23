@@ -21,6 +21,7 @@ const SIGNATURE_SCHEMES = [
   { v: "cashfree", label: "Cashfree (x-webhook-signature · base64)" },
   { v: "stripe", label: "Stripe (stripe-signature)" },
   { v: "slack", label: "Slack (x-slack-signature)" },
+  { v: "docusign", label: "DocuSign Connect (x-docusign-signature-1 · base64)" },
 ];
 
 // Renders the issued Proof Artifact for an inbound event: full FEA ID (canonical

@@ -165,6 +165,27 @@ _PRESETS: List[ProviderPreset] = [
         docs_url="https://api.slack.com/authentication/verifying-requests-from-slack",
     ),
     ProviderPreset(
+        id="docusign",
+        label="DocuSign Connect",
+        category="agreements",
+        description="Base64(HMAC-SHA256(secret, rawBody)) sent in X-DocuSign-Signature-1 "
+                    "(one signature per active HMAC key; a match against any key trusts the message).",
+        auth_provider="hmac_sha256",
+        auth_config={
+            "signature_scheme": "docusign",
+            "signature_header": "x-docusign-signature-1",
+            "signature_encoding": "base64",
+        },
+        requires_secret=True,
+        secret_label="DocuSign Connect HMAC secret key",
+        secret_hint="Settings → Connect → HMAC Security (secret key)",
+        require_timestamp=False,
+        replay_protection=False,
+        notes="Verified over the EXACT raw body bytes. DocuSign may redeliver; keep replay "
+              "protection off unless deduping. Supports multiple keys (X-DocuSign-Signature-1..N).",
+        docs_url="https://developers.docusign.com/platform/webhooks/connect/hmac/",
+    ),
+    ProviderPreset(
         id="shopify",
         label="Shopify",
         category="e-commerce",

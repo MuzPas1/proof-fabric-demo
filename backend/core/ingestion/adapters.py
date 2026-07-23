@@ -125,6 +125,8 @@ class GenericEventAdapter(EventAdapter):
             # nested webhook identifiers (Cashfree PG order/payment ids, etc.)
             "data.order.order_id", "data.payment.cf_payment_id", "data.payment.payment_id",
             "order_id", "cf_payment_id", "payment_id", "orderId", "transaction_id",
+            # DocuSign Connect envelope identifiers
+            "envelopeId", "data.envelopeId", "envelope_id", "data.envelope_id",
         ),
         "occurred_at": (
             "occurred_at", "timestamp", "time", "created_at", "createdAt", "date",

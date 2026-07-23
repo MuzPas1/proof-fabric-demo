@@ -191,6 +191,68 @@ class HmacProvider(InboundAuthProvider):
     def _digestmod(self):
         return hashlib.sha1 if self.algorithm == "sha1" else hashlib.sha256
 
+    def _verify_docusign(self, integration, headers, raw_body, secret, secret_src, cfg) -> AuthResult:
+        """DocuSign Connect HMAC verification (adapter-specific).
+
+        DocuSign Connect signs the EXACT raw request body:
+            signature = Base64(HMAC-SHA256(secret, raw_body_bytes))
+        and sends one signature per active HMAC key in headers
+        ``X-DocuSign-Signature-1 .. -N`` (case-insensitive). A match against ANY
+        configured key is sufficient to trust the message. Verification runs over
+        the raw bytes (line endings preserved) and compares in constant time.
+
+        This branch is intentionally separate from the Stripe/Razorpay/Cashfree/
+        Slack schemes so those remain byte-for-byte unchanged.
+        """
+        slug = integration.get("slug")
+        # Collect candidate signatures. Headers are already lowercased by the
+        # caller (case-insensitive read). The configured header is tried first,
+        # then every ``x-docusign-signature-N`` present (supports key rotation).
+        configured = (cfg.get("signature_header") or "").lower()
+        provided_list: list[str] = []
+        detected_headers: list[str] = []
+        if configured and headers.get(configured):
+            provided_list.append(headers[configured])
+            detected_headers.append(configured)
+        for hn in sorted(headers.keys()):
+            if hn.startswith("x-docusign-signature-") and headers.get(hn) and headers[hn] not in provided_list:
+                provided_list.append(headers[hn])
+                detected_headers.append(hn)
+
+        present = bool(provided_list)
+        # Expected signature over the RAW body bytes (NOT a decoded/re-encoded
+        # string) so DocuSign's exact-bytes requirement is honoured.
+        expected = base64.b64encode(
+            hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()
+        ).decode("ascii")
+
+        matched_header: Optional[str] = None
+        for hn, sig in zip(detected_headers, provided_list):
+            if _ct_eq((sig or "").strip(), expected):
+                matched_header = hn
+                break
+        matched = matched_header is not None
+
+        # Detailed debug logs — signatures truncated to 8 chars (non-forgeable);
+        # never logs the secret or full signature.
+        recv_preview = (provided_list[0][:8] if present else "")
+        fail_reason = "" if matched else ("no docusign signature header" if not present else "signature mismatch")
+        logger.info(
+            "docusign hmac verify: integration=%r header_detected=%s signature_present=%s "
+            "payload_len=%d expected8=%s received8=%s result=%s%s",
+            slug, (detected_headers or "[]"), present, len(raw_body),
+            expected[:8], recv_preview, ("PASS" if matched else "FAIL"),
+            (f" reason={fail_reason}" if not matched else ""),
+        )
+
+        if matched:
+            return AuthResult(True, replay_key=expected)
+        diag = (f"scheme=docusign, enc=base64, header={'present' if present else 'missing'}, "
+                f"secret={secret_src}, payload_len={len(raw_body)}")
+        if not present:
+            diag += f", headers_seen={sorted(headers.keys())}"
+        return AuthResult(False, f"invalid {self.name} signature [{diag}]")
+
     def verify(self, integration, headers, raw_body) -> AuthResult:
         # Prefer an externally-provided signing secret (e.g. a Cashfree/Stripe
         # merchant key defined in the provider's own dashboard) over a
@@ -242,6 +304,10 @@ class HmacProvider(InboundAuthProvider):
             ts = _to_epoch(t)
             if ts is not None and ts > 1e12:  # Cashfree sends epoch milliseconds
                 ts /= 1000.0
+        elif scheme == "docusign":
+            # DocuSign Connect (adapter-specific): verified over the EXACT raw
+            # body bytes; do NOT reuse the generic string-normalizing path.
+            return self._verify_docusign(integration, headers, raw_body, secret, secret_src, cfg)
         else:
             header_name = (cfg.get("signature_header") or integration.get("signature_header") or default_header).lower()
             provided = headers.get(header_name, "")
