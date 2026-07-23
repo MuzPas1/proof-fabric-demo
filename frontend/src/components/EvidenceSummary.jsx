@@ -9,11 +9,39 @@ import {
   FileSignature,
   Fingerprint,
   ChevronDown,
+  CreditCard,
+  Globe,
+  GitBranch,
+  MessageSquare,
+  KanbanSquare,
+  Activity,
+  Bot,
+  Lock,
 } from "lucide-react";
 
-// Human-friendly labels for well-known authenticated fields. Anything not in
-// this map is rendered with a derived Title Case label so the summary stays
-// industry-neutral (no hardcoded payment fields).
+// ---------------------------------------------------------------------------
+// Provider Summary framework — the crypto engine stays generic; only the
+// PRESENTATION maps a provider "kind" to a human, domain-appropriate summary.
+// Add a provider by adding one line here (no engine change).
+// ---------------------------------------------------------------------------
+const PROVIDER_DOMAINS = {
+  docusign: { label: "Document Signing", Icon: FileSignature },
+  stripe: { label: "Payment", Icon: CreditCard },
+  razorpay: { label: "Payment", Icon: CreditCard },
+  cashfree: { label: "Payment", Icon: CreditCard },
+  tazapay: { label: "Cross-border Payment", Icon: Globe },
+  github: { label: "Code Repository", Icon: GitBranch },
+  slack: { label: "Messaging", Icon: MessageSquare },
+  jira: { label: "Issue Tracking", Icon: KanbanSquare },
+};
+
+function providerDomain(desc, isFinancial) {
+  const kind = (desc?.provider_kind || "").toLowerCase();
+  if (PROVIDER_DOMAINS[kind]) return PROVIDER_DOMAINS[kind];
+  if (isFinancial) return { label: "Payment", Icon: CreditCard };
+  return { label: "Event", Icon: Activity };
+}
+
 const LABELS = {
   transaction_id: "External Transaction ID",
   timestamp: "Event Timestamp",
@@ -34,23 +62,15 @@ const LABELS = {
   metadata_hash: "Metadata Commitment",
 };
 
-// Keys handled explicitly elsewhere (or intentionally not shown as raw values).
-const RESERVED = new Set([
-  "transaction_summary",
-  "parties",
-  "signature_version",
-]);
+const RESERVED = new Set(["transaction_summary", "parties", "signature_version"]);
 
 const titleCase = (k) =>
-  String(k)
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  String(k).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+const fmtLabel = (s) => titleCase(String(s).replace(/[-_]/g, " "));
 
 const isIsoLike = (v) =>
   typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v);
-
-const isHashLike = (k) =>
-  /_hash$/.test(k) || k === "payer_hash" || k === "payee_hash";
+const isHashLike = (k) => /_hash$/.test(k) || k === "payer_hash" || k === "payee_hash";
 
 const fmtTs = (iso) => {
   if (!iso) return "";
@@ -58,12 +78,8 @@ const fmtTs = (iso) => {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return String(iso);
     return d.toLocaleString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
+      year: "numeric", month: "short", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit",
     });
   } catch {
     return String(iso);
@@ -72,17 +88,15 @@ const fmtTs = (iso) => {
 
 const fmtAmount = (amount, currency) => {
   if (amount === undefined || amount === null || amount === "") return null;
-  // Proof Artifact amounts are stored in the smallest unit (cents) per the FEA
-  // contract — divide by 100 to present the human-readable major-unit value.
   const n = Number(amount) / 100;
   if (Number.isNaN(n)) return String(amount);
-  const s = n.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const s = n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return currency ? `${s} ${currency}` : s;
 };
 
+// ---------------------------------------------------------------------------
+// Design-system primitives (shared card / row / badge styling)
+// ---------------------------------------------------------------------------
 function CopyBtn({ value }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -98,110 +112,104 @@ function CopyBtn({ value }) {
           toast.error("Copy failed");
         }
       }}
-      className="shrink-0 text-gray-400 hover:text-gray-700 transition-colors"
+      className="shrink-0 text-slate-400 hover:text-slate-700 transition-colors"
       title="Copy"
       data-testid="evidence-copy-btn"
     >
-      {copied ? (
-        <Check className="w-3.5 h-3.5 text-emerald-600" />
-      ) : (
-        <Copy className="w-3.5 h-3.5" />
-      )}
+      {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
   );
 }
 
-function EvidenceRow({ label, value, mono = false, copy = false, testId }) {
-  if (value === undefined || value === null || value === "") return null;
+// Fixed-width label + left-aligned value + far-right copy, divided rows.
+function DataRow({ label, value, mono = false, copy = false, node = null, testId }) {
+  if (node == null && (value === undefined || value === null || value === "")) return null;
   return (
     <div
-      className="flex items-start justify-between gap-4 px-4 py-2.5"
+      className="grid grid-cols-[150px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2 border-b border-slate-100 last:border-b-0"
       data-testid={testId}
     >
-      <span className="text-xs uppercase tracking-wide text-gray-500 pt-0.5 shrink-0">
-        {label}
-      </span>
-      <div className="flex items-center gap-2 min-w-0 justify-end">
-        <span
-          className={`text-sm text-gray-900 text-right break-all ${
-            mono ? "font-mono text-xs" : ""
-          }`}
-          title={String(value)}
-        >
-          {String(value)}
-        </span>
-        {copy && <CopyBtn value={value} />}
+      <span className="text-[11px] uppercase tracking-wide text-slate-500">{label}</span>
+      <div className="min-w-0">
+        {node != null ? (
+          node
+        ) : (
+          <span
+            className={`text-sm text-slate-900 break-all ${mono ? "font-mono text-xs text-slate-700" : ""}`}
+            title={typeof value === "string" ? value : undefined}
+          >
+            {String(value)}
+          </span>
+        )}
       </div>
+      {copy ? <CopyBtn value={value} /> : <span className="w-3.5" />}
     </div>
   );
 }
 
-// Builds the ordered list of authenticated evidence rows dynamically from the
-// signed FEA payload — never hardcodes any single industry's fields.
+function Card({ icon: Icon, title, right, children, testId }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white overflow-hidden" data-testid={testId}>
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50/70">
+        {Icon && <Icon className="w-4 h-4 text-slate-500" />}
+        <h4 className="text-[13px] font-semibold text-slate-900 font-['Space_Grotesk'] tracking-tight">{title}</h4>
+        {right && <div className="ml-auto flex items-center">{right}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function DomainBadge({ text }) {
+  return (
+    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase tracking-wide">
+      {text}
+    </span>
+  );
+}
+
+function StatusChip({ text }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-600/20">
+      {text}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Row builders (authenticated evidence, verification metadata, commitments)
+// ---------------------------------------------------------------------------
 function buildRows(payload, artifact) {
   const p = payload || {};
   const ts = p.transaction_summary || {};
+  const isFinancial = ts.amount !== undefined && ts.amount !== null && Number(ts.amount) > 0;
 
   const evidence = [];
-  // Financial vs non-financial (e.g. document-signing / workflow) proofs: a
-  // proof with no positive amount is NOT financial, so the misleading
-  // Amount/Currency rows are suppressed and the identifier is labelled neutrally.
-  const isFinancial =
-    ts.amount !== undefined && ts.amount !== null && Number(ts.amount) > 0;
-  // Business evidence (from the signed transaction_summary), industry-neutral.
   if (ts.transaction_id !== undefined)
     evidence.push({
       key: "transaction_id",
       label: isFinancial ? LABELS.transaction_id : "Reference / Envelope ID",
-      value: ts.transaction_id,
-      mono: true,
-      copy: true,
+      value: ts.transaction_id, mono: true, copy: true,
     });
   if (isFinancial) {
     const amt = fmtAmount(ts.amount, ts.currency);
-    if (amt !== null)
-      evidence.push({ key: "amount", label: LABELS.amount, value: amt });
-    if (ts.currency !== undefined)
-      evidence.push({ key: "currency", label: LABELS.currency, value: ts.currency });
+    if (amt !== null) evidence.push({ key: "amount", label: LABELS.amount, value: amt });
+    if (ts.currency !== undefined) evidence.push({ key: "currency", label: LABELS.currency, value: ts.currency });
   }
   if (ts.timestamp !== undefined)
-    evidence.push({
-      key: "timestamp",
-      label: LABELS.timestamp,
-      value: fmtTs(ts.timestamp),
-    });
-  // Any additional authenticated scalar fields inside transaction_summary.
+    evidence.push({ key: "timestamp", label: LABELS.timestamp, value: fmtTs(ts.timestamp) });
   Object.entries(ts).forEach(([k, v]) => {
     if (["transaction_id", "amount", "currency", "timestamp"].includes(k)) return;
     if (v === null || typeof v === "object") return;
-    evidence.push({
-      key: k,
-      label: LABELS[k] || titleCase(k),
-      value: isIsoLike(v) ? fmtTs(v) : v,
-    });
+    evidence.push({ key: k, label: LABELS[k] || titleCase(k), value: isIsoLike(v) ? fmtTs(v) : v });
   });
-  // Any additional top-level authenticated scalar metadata (non-hash, non-crypto).
-  const cryptoKeys = new Set([
-    "algorithm",
-    "public_key_id",
-    "iat",
-    "jti",
-    "fea_version",
-    "issuer_id",
-    "fea_hash",
-    "tenant_id",
-  ]);
+  const cryptoKeys = new Set(["algorithm", "public_key_id", "iat", "jti", "fea_version", "issuer_id", "fea_hash", "tenant_id"]);
   Object.entries(p).forEach(([k, v]) => {
     if (RESERVED.has(k) || cryptoKeys.has(k) || isHashLike(k)) return;
     if (v === null || typeof v === "object") return;
-    evidence.push({
-      key: k,
-      label: LABELS[k] || titleCase(k),
-      value: isIsoLike(v) ? fmtTs(v) : v,
-    });
+    evidence.push({ key: k, label: LABELS[k] || titleCase(k), value: isIsoLike(v) ? fmtTs(v) : v });
   });
 
-  // Cryptographic / issuance details.
   const crypto = [];
   const pushCrypto = (key, value, opts = {}) => {
     if (value === undefined || value === null || value === "") return;
@@ -209,227 +217,167 @@ function buildRows(payload, artifact) {
   };
   pushCrypto("iat", fmtTs(p.iat || artifact?.created_at));
   pushCrypto("algorithm", p.algorithm);
-  pushCrypto("public_key_id", p.public_key_id || artifact?.public_key_id, {
-    mono: true,
-    copy: true,
-  });
+  pushCrypto("public_key_id", p.public_key_id || artifact?.public_key_id, { mono: true, copy: true });
   pushCrypto("signature_version", artifact?.signature_version || p.signature_version);
   pushCrypto("fea_hash", p.fea_hash, { mono: true, copy: true });
   pushCrypto("fea_version", p.fea_version);
   pushCrypto("issuer_id", p.issuer_id);
   if (artifact?.fea_id)
-    crypto.push({
-      key: "fea_id",
-      label: LABELS.fea_id,
-      value: artifact.fea_id,
-      mono: true,
-      copy: true,
-    });
+    crypto.push({ key: "fea_id", label: LABELS.fea_id, value: artifact.fea_id, mono: true, copy: true });
   pushCrypto("jti", p.jti, { mono: true });
 
-  // Privacy-preserving commitments (hashes only — no raw content ever).
   const commitments = [];
   const parties = p.parties || {};
-  if (parties.payer_hash)
-    commitments.push({
-      key: "payer_hash",
-      label: LABELS.payer_hash,
-      value: parties.payer_hash,
-    });
-  if (parties.payee_hash)
-    commitments.push({
-      key: "payee_hash",
-      label: LABELS.payee_hash,
-      value: parties.payee_hash,
-    });
-  if (p.metadata_hash)
-    commitments.push({
-      key: "metadata_hash",
-      label: LABELS.metadata_hash,
-      value: p.metadata_hash,
-    });
+  if (parties.payer_hash) commitments.push({ key: "payer_hash", label: LABELS.payer_hash, value: parties.payer_hash });
+  if (parties.payee_hash) commitments.push({ key: "payee_hash", label: LABELS.payee_hash, value: parties.payee_hash });
+  if (p.metadata_hash) commitments.push({ key: "metadata_hash", label: LABELS.metadata_hash, value: p.metadata_hash });
 
   return { evidence, crypto, commitments, isFinancial };
 }
 
-// A read-only, industry-neutral Evidence Summary rendered dynamically from a
-// cryptographically authenticated Proof Artifact (FEA). Consistent auditor
-// experience for both PFP-generated and externally ingested proofs.
-export default function EvidenceSummary({ artifact, valid }) {
-  const [showCommit, setShowCommit] = useState(false);
-  if (!artifact || !artifact.fea_payload) return null;
-  const { evidence, crypto, commitments, isFinancial } = buildRows(
-    artifact.fea_payload,
-    artifact
-  );
-  const desc = artifact.event_descriptor;
-  const fmtLabel = (s) => titleCase(String(s).replace(/[-_]/g, " "));
-
+// ---------------------------------------------------------------------------
+// Section cards
+// ---------------------------------------------------------------------------
+function VerificationStatusCard({ valid, reason }) {
   const ok = !!valid;
-  const StatusIcon = ok ? CheckCircle2 : AlertTriangle;
-
+  const Icon = ok ? CheckCircle2 : AlertTriangle;
   return (
-    <div
-      className="rounded-lg border border-slate-200 bg-white overflow-hidden text-gray-900"
-      data-testid="evidence-summary"
-    >
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50/70">
-        <ShieldCheck className="w-4 h-4 text-blue-600" />
-        <h4 className="text-sm font-semibold text-slate-900 font-['Space_Grotesk']">
-          Evidence Summary
-        </h4>
+    <Card
+      icon={ShieldCheck}
+      title="Verification Status"
+      testId="card-verification-status"
+      right={
         <span
-          className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase tracking-wide"
-          data-testid="evidence-kind"
-        >
-          {desc?.provider
-            ? desc.provider_kind === "docusign"
-              ? `${desc.provider} · Document`
-              : desc.provider
-            : isFinancial
-            ? "Financial"
-            : "Event / Document"}
-        </span>
-        <span
-          className={`ml-auto inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${
-            ok
-              ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20"
-              : "bg-red-50 text-red-700 ring-1 ring-red-600/20"
+          className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ring-1 ${
+            ok ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20" : "bg-red-50 text-red-700 ring-red-600/20"
           }`}
           data-testid="evidence-verification-status"
         >
-          <StatusIcon className="w-3 h-3" />
-          {ok ? "Cryptographically Authenticated" : "Verification Failed"}
+          <Icon className="w-3 h-3" />
+          {ok ? "Authenticated" : "Failed"}
         </span>
-      </div>
-
-      <p className="px-4 pt-3 text-xs text-gray-600 leading-relaxed">
-        The fields below were cryptographically authenticated by the proof's
-        signature. No sensitive or confidential content is stored or shown.
-        {!isFinancial &&
-          " Document contents and party identities are committed via a privacy-preserving hash and are never stored in plaintext."}
-      </p>
-
-      {/* Provider event context (recorded at ingestion; NOT signed, NO PII) */}
-      {desc && (desc.provider || desc.event_type || desc.status) && (
-        <>
-          <div className="px-4 pt-2 pb-1">
-            <div className="flex items-center gap-1.5 pt-1 pb-1 flex-wrap">
-              <FileSignature className="w-3.5 h-3.5 text-slate-500" />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
-                Event Context
-              </span>
-              <span className="text-[10px] text-slate-400 normal-case font-normal">
-                recorded at ingestion · not part of the signature
-              </span>
-            </div>
+      }
+    >
+      <div className="px-4 py-3 flex items-start gap-3">
+        <Icon className={`w-5 h-5 mt-0.5 shrink-0 ${ok ? "text-emerald-600" : "text-red-600"}`} />
+        <div>
+          <div className={`text-sm font-semibold ${ok ? "text-emerald-800" : "text-red-800"}`}>
+            {ok ? "Cryptographically Authenticated — Signature Verified" : "Verification Failed"}
           </div>
-          <div className="divide-y divide-gray-100 border-y border-gray-100" data-testid="evidence-context">
-            {desc.provider && (
-              <EvidenceRow label="Provider" value={desc.provider} testId="evidence-provider" />
-            )}
-            {desc.event_type && (
-              <EvidenceRow label="Event Type" value={fmtLabel(desc.event_type)} testId="evidence-event-type" />
-            )}
-            {desc.status && (
-              <div className="flex items-start justify-between gap-4 px-4 py-2.5" data-testid="evidence-status">
-                <span className="text-xs uppercase tracking-wide text-gray-500 pt-0.5 shrink-0">
-                  Status
-                </span>
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 ring-1 ring-blue-600/20">
-                  {fmtLabel(desc.status)}
-                </span>
-              </div>
-            )}
+          <div className="text-xs text-slate-500 mt-0.5">
+            {ok
+              ? "The signed fields below were verified against the key registry. No internal systems were queried."
+              : reason || "The proof signature could not be verified."}
           </div>
-        </>
-      )}
-
-      {/* Authenticated evidence */}
-      <div className="px-4 pt-2 pb-1">
-        <div className="flex items-center gap-1.5 pt-1 pb-1">
-          <FileSignature className="w-3.5 h-3.5 text-slate-500" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
-            Authenticated Evidence
-          </span>
         </div>
       </div>
-      {evidence.length > 0 ? (
-        <div className="divide-y divide-gray-100 border-y border-gray-100">
-          {evidence.map((r) => (
-            <EvidenceRow
-              key={`ev-${r.key}`}
-              label={r.label}
-              value={r.value}
-              mono={r.mono}
-              copy={r.copy}
-              testId={`evidence-${r.key.replace(/_/g, "-")}`}
-            />
-          ))}
-        </div>
+    </Card>
+  );
+}
+
+function ProviderSummaryCard({ desc, domain }) {
+  return (
+    <Card icon={domain.Icon} title="Provider Summary" testId="card-provider-summary" right={<DomainBadge text={domain.label} />}>
+      <DataRow label="Provider" value={desc.provider} testId="evidence-provider" />
+      <DataRow label="Category" value={domain.label} testId="evidence-category" />
+      {desc.event_type && <DataRow label="Event Type" value={fmtLabel(desc.event_type)} testId="evidence-event-type" />}
+      {desc.status && <DataRow label="Status" node={<StatusChip text={fmtLabel(desc.status)} />} testId="evidence-status" />}
+      <div className="px-4 py-2 text-[11px] text-slate-400 border-t border-slate-100">
+        Recorded at ingestion · not part of the signature. Document contents and party identities remain hash-only.
+      </div>
+    </Card>
+  );
+}
+
+function RowsCard({ icon, title, rows, testId, emptyText }) {
+  return (
+    <Card icon={icon} title={title} testId={testId}>
+      {rows.length > 0 ? (
+        rows.map((r) => (
+          <DataRow key={r.key} label={r.label} value={r.value} mono={r.mono} copy={r.copy} testId={`evidence-${r.key.replace(/_/g, "-")}`} />
+        ))
       ) : (
-        <div className="px-4 pb-2 text-xs text-gray-500" data-testid="evidence-none">
-          No additional authenticated business fields are present in this proof.
+        <div className="px-4 py-3 text-xs text-slate-500">{emptyText}</div>
+      )}
+    </Card>
+  );
+}
+
+function AIAccountabilityCard({ ai }) {
+  const hasAi = ai && typeof ai === "object" && Object.keys(ai).length > 0;
+  if (!hasAi) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 flex items-center gap-2" data-testid="card-ai-none">
+        <Bot className="w-4 h-4 text-slate-400 shrink-0" />
+        <span className="text-xs text-slate-500">No AI provenance is associated with this proof.</span>
+      </div>
+    );
+  }
+  const rows = Object.entries(ai)
+    .filter(([, v]) => v != null && typeof v !== "object")
+    .map(([k, v]) => ({ key: k, label: fmtLabel(k), value: String(v), mono: /hash|id$/i.test(k), copy: /hash/i.test(k) }));
+  return <RowsCard icon={Bot} title="AI Accountability" rows={rows} testId="card-ai" emptyText="No displayable AI fields." />;
+}
+
+function CommitmentsCard({ rows }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card
+      icon={Lock}
+      title="Privacy-Preserving Commitments"
+      testId="card-commitments"
+      right={
+        <button
+          type="button"
+          onClick={() => setOpen((s) => !s)}
+          aria-expanded={open}
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-800"
+          data-testid="evidence-commitments-toggle"
+        >
+          {open ? "Hide" : "Show"} hashes
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      }
+    >
+      {open ? (
+        rows.map((r) => (
+          <DataRow key={r.key} label={r.label} value={r.value} mono copy testId={`evidence-${r.key.replace(/_/g, "-")}`} />
+        ))
+      ) : (
+        <div className="px-4 py-2.5 text-[11px] text-slate-400">
+          Sensitive content is committed as one-way hashes only ({rows.length} commitment{rows.length === 1 ? "" : "s"}). Expand to view.
         </div>
       )}
+    </Card>
+  );
+}
 
-      {/* Cryptographic details */}
-      <div className="px-4 pt-3 pb-1">
-        <div className="flex items-center gap-1.5">
-          <Fingerprint className="w-3.5 h-3.5 text-slate-500" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
-            Verification Metadata
-          </span>
-        </div>
-      </div>
-      <div className="divide-y divide-gray-100 border-y border-gray-100">
-        {crypto.map((r) => (
-          <EvidenceRow
-            key={`cr-${r.key}`}
-            label={r.label}
-            value={r.value}
-            mono={r.mono}
-            copy={r.copy}
-            testId={`evidence-${r.key.replace(/_/g, "-")}`}
-          />
-        ))}
-      </div>
+// ---------------------------------------------------------------------------
+// Public component — enterprise, card-based, provider-aware evidence view.
+// ---------------------------------------------------------------------------
+export default function EvidenceSummary({ artifact, valid, reason, showStatus = true }) {
+  if (!artifact || !artifact.fea_payload) return null;
+  const { evidence, crypto, commitments, isFinancial } = buildRows(artifact.fea_payload, artifact);
+  const desc = artifact.event_descriptor;
+  const ai = artifact.ai_provenance;
+  const domain = providerDomain(desc, isFinancial);
 
-      {/* Privacy-preserving commitments (collapsible) */}
-      {commitments.length > 0 && (
-        <div className="border-t border-gray-100">
-          <button
-            type="button"
-            onClick={() => setShowCommit((s) => !s)}
-            aria-expanded={showCommit}
-            className="w-full flex items-center gap-1.5 px-4 py-2.5 text-left hover:bg-slate-50/60 transition-colors"
-            data-testid="evidence-commitments-toggle"
-          >
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Privacy-Preserving Commitments (hashes)
-            </span>
-            <ChevronDown
-              className={`w-3.5 h-3.5 text-slate-400 ml-auto transition-transform ${
-                showCommit ? "rotate-180" : ""
-              }`}
-            />
-          </button>
-          {showCommit && (
-            <div className="divide-y divide-gray-100 border-t border-gray-100">
-              {commitments.map((r) => (
-                <EvidenceRow
-                  key={`cm-${r.key}`}
-                  label={r.label}
-                  value={r.value}
-                  mono
-                  copy
-                  testId={`evidence-${r.key.replace(/_/g, "-")}`}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+  return (
+    <div className="space-y-3 text-slate-900" data-testid="evidence-summary">
+      {showStatus && <VerificationStatusCard valid={valid} reason={reason} />}
+      {desc && (desc.provider || desc.event_type || desc.status) && (
+        <ProviderSummaryCard desc={desc} domain={domain} />
       )}
+      <RowsCard
+        icon={FileSignature}
+        title="Authenticated Evidence"
+        rows={evidence}
+        testId="card-authenticated-evidence"
+        emptyText="No additional authenticated business fields are present in this proof."
+      />
+      <RowsCard icon={Fingerprint} title="Verification Metadata" rows={crypto} testId="card-verification-metadata" emptyText="—" />
+      <AIAccountabilityCard ai={ai} />
+      {commitments.length > 0 && <CommitmentsCard rows={commitments} />}
     </div>
   );
 }

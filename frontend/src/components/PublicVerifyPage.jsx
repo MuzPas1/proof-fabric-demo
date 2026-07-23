@@ -573,31 +573,22 @@ function Row({ label, value, valueClass = "text-gray-900", testId }) {
 
 function FeaVerifyResult({ result }) {
   const { found, valid, reason, artifact } = result;
-  const ok = found && valid;
-  const tone = ok
-    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-    : "bg-red-50 border-red-200 text-red-800";
-  const Icon = ok ? CheckCircle2 : AlertTriangle;
-  const headline = !found
-    ? "Proof not found"
-    : valid
-    ? "Valid Proof — Signature Verified"
-    : "Invalid Proof — Verification Failed";
-
-  return (
-    <div className="mt-1 space-y-3" data-testid="fea-verify-result">
-      <div className={`rounded-lg border ${tone} p-4`}>
-        <div className="flex items-center gap-2 text-sm font-semibold" data-testid="fea-verify-headline">
-          <Icon className="w-4 h-4" />
-          {headline}
+  if (!found) {
+    return (
+      <div className="mt-1" data-testid="fea-verify-result">
+        <div className="rounded-lg border border-red-200 bg-red-50 text-red-800 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold" data-testid="fea-verify-headline">
+            <AlertTriangle className="w-4 h-4" />
+            Proof not found
+          </div>
+          {reason && <div className="mt-1.5 text-xs" data-testid="fea-verify-reason">{reason}</div>}
         </div>
-        {!ok && reason && (
-          <div className="mt-1.5 text-xs" data-testid="fea-verify-reason">{reason}</div>
-        )}
       </div>
-      {found && artifact && (
-        <EvidenceSummary artifact={artifact} valid={valid} />
-      )}
+    );
+  }
+  return (
+    <div className="mt-1" data-testid="fea-verify-result">
+      {artifact && <EvidenceSummary artifact={artifact} valid={valid} reason={reason} />}
     </div>
   );
 }

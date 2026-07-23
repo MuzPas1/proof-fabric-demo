@@ -333,6 +333,8 @@ async def public_verify_fea_by_id(request: Request, fea_id: str):
         "public_key_id": doc["public_key_id"],
         "created_at": doc["created_at"],
         "event_descriptor": doc.get("event_descriptor"),
+        "ai_provenance": doc.get("ai_provenance"),
+        "time_anchor": doc.get("time_anchor"),
     }
     return PublicFEAVerifyResponse(
         found=True, fea_id=fea_id, valid=valid, reason=reason,

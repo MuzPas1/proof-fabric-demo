@@ -1561,6 +1561,7 @@ export default function TransactionFlow() {
                       created_at: auditorTrust.pub.created_at,
                     }}
                     valid={auditorTrust.pub.signature_valid}
+                    showStatus={false}
                   />
                 )}
               </div>
