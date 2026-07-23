@@ -634,6 +634,18 @@ def get_provider(name: str) -> InboundAuthProvider:
 def authenticate(integration: dict, headers: Dict[str, str], raw_body: bytes) -> AuthResult:
     """Framework entry point. ``headers`` keys MUST be lowercased by the caller."""
     provider = get_provider(integration.get("auth_provider") or "hmac")
+    cfg = _cfg(integration)
+    # Per-request visibility: log EXACTLY which auth provider + signature scheme
+    # the runtime selected for this integration, so operators can confirm (e.g.)
+    # that a DocuSign integration resolves to scheme=docusign and NOT scheme=plain
+    # from the logs alone. Non-sensitive: names only, never secrets/signatures.
+    scheme = (cfg.get("signature_scheme") or ("plain" if provider.name.startswith("hmac") else "n/a")).lower()
+    logger.info(
+        "auth provider selected: integration=%r auth_provider=%s signature_scheme=%s "
+        "signature_header=%s",
+        integration.get("slug"), provider.name, scheme,
+        (cfg.get("signature_header") or integration.get("signature_header") or "-"),
+    )
     try:
         return provider.verify(integration, headers, raw_body)
     except Exception as e:  # never leak internals; fail closed

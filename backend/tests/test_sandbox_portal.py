@@ -9,7 +9,7 @@ Covers the full public lifecycle exercised by the in-browser playground:
 import os
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://proof-fabric-api.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://proof-fabric-1.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
 
