@@ -330,6 +330,21 @@ class HmacProvider(InboundAuthProvider):
                         )
                         header_name = cand
                         break
+                # DIAGNOSTICS-ONLY: DocuSign Connect uses numbered signature
+                # headers (x-docusign-signature-1..N). Detect them in the generic
+                # fallback so a plain/generic integration that is actually
+                # receiving DocuSign traffic reports header=present with an
+                # explicit "wrong scheme" hint instead of a confusing
+                # header=missing. This NEVER auto-verifies DocuSign: the plain hex
+                # comparison below still fails, because DocuSign signs base64 over
+                # the EXACT raw bytes and is only accepted by the ``docusign``
+                # scheme. Verification OUTCOME is unchanged (still rejected).
+                if not provided:
+                    for hn in sorted(headers.keys()):
+                        if hn.startswith("x-docusign-signature-") and headers.get(hn):
+                            provided = headers[hn]
+                            header_name = hn
+                            break
             ts_header = cfg.get("timestamp_header")
             header_ts = headers.get(ts_header.lower()) if ts_header else None
             if header_ts is not None:
@@ -366,7 +381,14 @@ class HmacProvider(InboundAuthProvider):
         # list the incoming header NAMES (values are never included) so operators
         # can see exactly what the provider sent and map the correct header.
         present = bool(provided)
+        # DIAGNOSTICS-ONLY hint: if the request carries a DocuSign signature
+        # header but this integration is NOT on the docusign scheme, tell the
+        # operator exactly what to fix. Never changes the accept/reject outcome.
+        docusign_hdr = any(h.startswith("x-docusign-signature-") for h in headers)
         diag = f"scheme={scheme}, enc={encoding}, header={'present' if present else 'missing'}, secret={secret_src}"
+        if docusign_hdr and scheme != "docusign":
+            diag += (", hint=received a DocuSign X-DocuSign-Signature header but "
+                     "signature_scheme is not 'docusign'; set signature_scheme=docusign")
         if not present:
             diag += f", headers_seen={sorted(headers.keys())}"
         return AuthResult(False, f"invalid {self.name} signature [{diag}]")

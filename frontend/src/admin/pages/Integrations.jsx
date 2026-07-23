@@ -159,6 +159,11 @@ function DebugLastRejection({ events }) {
           {diag.fields.payload_len && <DiagField k="payload length" v={`${diag.fields.payload_len} bytes`} />}
         </div>
       )}
+      {diag?.fields?.hint && (
+        <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded px-2.5 py-2" data-testid="debug-scheme-hint">
+          <span className="font-semibold">Wrong signature scheme configured — </span>{diag.fields.hint}
+        </div>
+      )}
       {diag?.headersSeen && (
         <div className="text-[11px]" data-testid="debug-headers-seen">
           <div className="text-slate-500 mb-1">Headers received{headerMissing ? " (no signature header matched)" : ""}:</div>
