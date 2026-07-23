@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, Activity, Pencil, ShieldCheck } from "lucide-react";
+import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, Activity, Pencil, ShieldCheck, Bug, CheckCircle2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
@@ -68,6 +68,108 @@ function ProofCell({ event }) {
     </div>
   );
 }
+
+// Parse a stored inbound-event diagnostic (e.g.
+// "auth: invalid hmac_sha256 signature [scheme=docusign, header=missing, headers_seen=['content-type']]")
+// into readable parts. Auth diagnostics carry a bracketed [scheme=...] block;
+// normalize/timestamp/replay/proof errors are shown as a plain message.
+function parseDiagnostic(error) {
+  if (!error) return null;
+  const catMatch = error.match(/^([a-z_]+):/i);
+  const out = { category: catMatch ? catMatch[1] : null, raw: error, message: error.trim(), fields: {}, headersSeen: null };
+  const schemeIdx = error.indexOf("[scheme=");
+  if (schemeIdx >= 0) {
+    out.message = error.slice(0, schemeIdx).trim();
+    let inside = error.slice(schemeIdx + 1, error.lastIndexOf("]"));
+    const hs = inside.match(/headers_seen=\[([^\]]*)\]/);
+    if (hs) {
+      out.headersSeen = hs[1].split(",").map((s) => s.trim().replace(/^['"]|['"]$/g, "")).filter(Boolean);
+      inside = inside.replace(/headers_seen=\[[^\]]*\]/, "");
+    }
+    inside.split(",").forEach((pair) => {
+      const m = pair.match(/\s*([a-z_]+)=(.+)/i);
+      if (m) out.fields[m[1]] = m[2].trim().replace(/,\s*$/, "");
+    });
+  }
+  return out;
+}
+
+function DiagField({ k, v, tone }) {
+  const c = tone === "bad" ? "text-red-700" : tone === "good" ? "text-emerald-700" : "text-slate-800";
+  return (
+    <span>
+      <span className="text-slate-500">{k}: </span>
+      <span className={`font-medium ${c}`}>{v}</span>
+    </span>
+  );
+}
+
+// "Debug last rejection" — surfaces the most recent REJECTED inbound event's
+// diagnostic so operators can self-diagnose provider auth failures (e.g.
+// DocuSign) without server-log access. Non-sensitive: header NAMES only, never
+// secrets or signature values.
+function DebugLastRejection({ events }) {
+  if (events === null) return null;
+  const rej = events.find((e) => e.status === "rejected");
+  if (!rej) {
+    return (
+      <div className="rounded-md border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 flex items-center gap-2" data-testid="debug-last-rejection-none">
+        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+        <span className="text-xs text-emerald-800">No recent rejections — the latest inbound events authenticated and normalized successfully.</span>
+      </div>
+    );
+  }
+  const diag = parseDiagnostic(rej.error);
+  const headerVal = diag?.fields?.header;
+  const headerMissing = headerVal === "missing";
+  const copy = () =>
+    navigator.clipboard.writeText(rej.error || "").then(() => toast.success("Diagnostic copied")).catch(() => toast.error("Copy failed"));
+  return (
+    <div className="rounded-md border border-red-200 bg-red-50/50 p-3 space-y-2.5" data-testid="debug-last-rejection">
+      <div className="flex items-center gap-2">
+        <Bug className="h-4 w-4 text-red-600 shrink-0" />
+        <span className="text-xs font-semibold uppercase tracking-wide text-red-700">Debug last rejection</span>
+        {diag?.category && (
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700 uppercase">{diag.category}</span>
+        )}
+        <span className="ml-auto text-[11px] text-slate-500">{rej.received_at?.slice(0, 19)?.replace("T", " ")} UTC</span>
+        <button type="button" onClick={copy} className="text-slate-400 hover:text-slate-700" title="Copy raw diagnostic" data-testid="debug-copy-btn">
+          <Copy className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="text-xs text-slate-800" data-testid="debug-message">{diag?.message || rej.error}</div>
+      {diag && Object.keys(diag.fields).length > 0 && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]" data-testid="debug-fields">
+          {diag.fields.scheme && <DiagField k="scheme" v={diag.fields.scheme} />}
+          {diag.fields.enc && <DiagField k="encoding" v={diag.fields.enc} />}
+          {headerVal && <DiagField k="signature header" v={headerMissing ? "missing" : "present"} tone={headerMissing ? "bad" : "good"} />}
+          {diag.fields.secret && <DiagField k="secret source" v={diag.fields.secret} />}
+          {diag.fields.payload_len && <DiagField k="payload length" v={`${diag.fields.payload_len} bytes`} />}
+        </div>
+      )}
+      {diag?.headersSeen && (
+        <div className="text-[11px]" data-testid="debug-headers-seen">
+          <div className="text-slate-500 mb-1">Headers received{headerMissing ? " (no signature header matched)" : ""}:</div>
+          <div className="flex flex-wrap gap-1">
+            {diag.headersSeen.length === 0 ? (
+              <span className="text-slate-400">none</span>
+            ) : (
+              diag.headersSeen.map((h, i) => (
+                <code key={i} className={`px-1.5 py-0.5 rounded font-mono ${/sign/i.test(h) ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{h}</code>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+      {headerMissing && (
+        <div className="text-[11px] text-slate-600 border-t border-red-200/60 pt-2">
+          The provider did not send the configured signature header. Compare the received headers above with your provider's spec and adjust the integration's <span className="font-medium">signature scheme / header</span>. If no signature-like header appears at all, an upstream proxy/gateway may be stripping it.
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 export default function Integrations() {
   const { user } = useAuth();
@@ -430,6 +532,8 @@ export default function Integrations() {
                 <div><div className="text-xs text-slate-500">Rejected</div><div className="font-semibold text-red-700">{stats.total_rejected}</div></div>
               </div>
             )}
+
+            <DebugLastRejection events={events} />
 
             {writable && (
               <div>
