@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 import pytest
 import requests
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://proof-fabric-1.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://proof-fabric-api-1.preview.emergentagent.com').rstrip('/')
 
 ADMIN_EMAIL = os.environ.get("PFP_ADMIN_EMAIL", "admin@pfprotocol.com")
 ADMIN_PASSWORD = os.environ.get("PFP_ADMIN_PASSWORD", "PfpAdmin!6WJb8Y0_8IV3ci2jIPG23DsT")
