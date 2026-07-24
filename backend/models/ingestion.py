@@ -57,6 +57,13 @@ class CommonEvent(BaseModel):
     currency: str = Field("USD", min_length=3, max_length=3)
     attributes: Dict[str, Any] = Field(default_factory=dict)
     idempotency_key: Optional[str] = Field(None, max_length=256)
+    # --- generic provider taxonomy (optional; set by identity/adapter paths) ---
+    provider: Optional[str] = Field(None, max_length=64)
+    provider_category: Optional[str] = Field(None, max_length=64)
+    event_source: Optional[str] = Field(None, max_length=32, description="Webhook | OAuth | API | Manual | Scheduled")
+    status: Optional[str] = Field(None, max_length=64)
+    # Display-safe, non-sensitive attributes for the verification UI (never signed).
+    display_attributes: Dict[str, str] = Field(default_factory=dict)
 
     @field_validator("currency")
     @classmethod

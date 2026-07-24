@@ -103,6 +103,7 @@ class PublicVerifyResponse(BaseModel):
     created_at: str
     time_attestation: Optional[Dict[str, Any]] = None  # present only when a time anchor exists
     ai_provenance: Optional[Dict[str, Any]] = None  # present only when an AI provenance envelope exists (Trust Layer 2)
+    event_descriptor: Optional[Dict[str, Any]] = None  # non-sensitive provider-aware descriptor (generic ingestion / identity)
 
 
 class FEADocument(BaseModel):

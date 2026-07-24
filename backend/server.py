@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -74,6 +75,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# HTTP-only session cookie (Auth0 identity sessions + OAuth state). Signed with a
+# dedicated secret; never exposes tokens/claims to the browser.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=(settings.AUTH0_SECRET or settings.JWT_SECRET or "pfp-session-key"),
+    session_cookie="pfp_session",
+    https_only=True,
+    same_site="lax",
+    max_age=60 * 60 * 8,
+)
+
 from routes.fea_routes import router as fea_router
 from routes.public_routes import router as public_router
 from routes.demo_routes import router as demo_router
@@ -84,10 +96,11 @@ from routes.resources_routes import router as resources_router
 from routes.evaluation_routes import router as evaluation_router
 from routes.ingestion_routes import router as ingestion_router
 from routes.ingestion_admin_routes import router as ingestion_admin_router
+from routes.auth0_routes import router as auth0_router
 
 for r in (fea_router, public_router, demo_router, auth_router, admin_router,
           webhook_router, resources_router, evaluation_router,
-          ingestion_router, ingestion_admin_router):
+          ingestion_router, ingestion_admin_router, auth0_router):
     app.include_router(r, prefix="/api")
 
 # Developer assets (docs, OpenAPI, Postman, SDKs) are served through the

@@ -17,6 +17,8 @@ import {
   Activity,
   Bot,
   Lock,
+  UserCheck,
+  ShoppingCart,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -33,9 +35,25 @@ const PROVIDER_DOMAINS = {
   github: { label: "Code Repository", Icon: GitBranch },
   slack: { label: "Messaging", Icon: MessageSquare },
   jira: { label: "Issue Tracking", Icon: KanbanSquare },
+  auth0: { label: "Identity", Icon: UserCheck },
+};
+
+// Category -> icon (used when the descriptor carries a generic provider_category,
+// so any future provider renders correctly with zero UI changes).
+const CATEGORY_ICONS = {
+  Payment: CreditCard,
+  "Cross-border Payment": Globe,
+  Document: FileSignature,
+  Identity: UserCheck,
+  "Source Control": GitBranch,
+  Messaging: MessageSquare,
+  "E-commerce": ShoppingCart,
+  Event: Activity,
 };
 
 function providerDomain(desc, isFinancial) {
+  const cat = desc?.provider_category;
+  if (cat) return { label: cat, Icon: CATEGORY_ICONS[cat] || Activity };
   const kind = (desc?.provider_kind || "").toLowerCase();
   if (PROVIDER_DOMAINS[kind]) return PROVIDER_DOMAINS[kind];
   if (isFinancial) return { label: "Payment", Icon: CreditCard };
@@ -276,14 +294,29 @@ function VerificationStatusCard({ valid, reason }) {
 }
 
 function ProviderSummaryCard({ desc, domain }) {
+  const attrs =
+    desc.attributes && typeof desc.attributes === "object"
+      ? Object.entries(desc.attributes).filter(([, v]) => v != null && v !== "")
+      : [];
   return (
     <Card icon={domain.Icon} title="Provider Summary" testId="card-provider-summary" right={<DomainBadge text={domain.label} />}>
       <DataRow label="Provider" value={desc.provider} testId="evidence-provider" />
       <DataRow label="Category" value={domain.label} testId="evidence-category" />
       {desc.event_type && <DataRow label="Event Type" value={fmtLabel(desc.event_type)} testId="evidence-event-type" />}
+      {desc.event_source && <DataRow label="Event Source" value={desc.event_source} testId="evidence-event-source" />}
       {desc.status && <DataRow label="Status" node={<StatusChip text={fmtLabel(desc.status)} />} testId="evidence-status" />}
+      {attrs.map(([k, v]) => (
+        <DataRow
+          key={k}
+          label={k}
+          value={String(v)}
+          mono={/hash$|id$/i.test(k)}
+          copy={/hash$|id$/i.test(k)}
+          testId={`evidence-attr-${k.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+        />
+      ))}
       <div className="px-4 py-2 text-[11px] text-slate-400 border-t border-slate-100">
-        Recorded at ingestion · not part of the signature. Document contents and party identities remain hash-only.
+        Recorded at ingestion · not part of the signature. Sensitive identifiers remain hash-only.
       </div>
     </Card>
   );
@@ -365,7 +398,7 @@ export default function EvidenceSummary({ artifact, valid, reason, showStatus = 
   return (
     <div className="space-y-3 text-slate-900" data-testid="evidence-summary">
       {showStatus && <VerificationStatusCard valid={valid} reason={reason} />}
-      {desc && (desc.provider || desc.event_type || desc.status) && (
+      {desc && (desc.provider || desc.event_type || desc.status || desc.provider_category) && (
         <ProviderSummaryCard desc={desc} domain={domain} />
       )}
       <RowsCard

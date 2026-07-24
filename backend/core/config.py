@@ -55,6 +55,14 @@ class Settings:
     # --- Inbound Event Ingestion framework (default OFF; additive module) ---
     ENABLE_EVENT_INGESTION: bool = os.environ.get("ENABLE_EVENT_INGESTION", "false").lower() == "true"
 
+    # --- Auth0 Identity provider (OAuth 2.0 / OIDC) ---
+    AUTH0_DOMAIN: str = os.environ.get("AUTH0_DOMAIN", "")
+    AUTH0_CLIENT_ID: str = os.environ.get("AUTH0_CLIENT_ID", "")
+    AUTH0_CLIENT_SECRET: str = os.environ.get("AUTH0_CLIENT_SECRET", "")
+    AUTH0_SECRET: str = os.environ.get("AUTH0_SECRET", "")
+    APP_BASE_URL: str = os.environ.get("APP_BASE_URL", "")
+    AUTH0_APP_NAME: str = os.environ.get("AUTH0_APP_NAME", "Proof Fabric Protocol")
+
     # --- Crypto policy ---
     ACCEPT_LEGACY_V1: bool = os.environ.get("ACCEPT_LEGACY_V1", "false").lower() == "true"
     ENFORCE_VERIFY_TIMESTAMP: bool = (
@@ -70,6 +78,10 @@ class Settings:
     EVAL_EMAIL: str = os.environ.get("EVAL_EMAIL", "")
     EVAL_PASSWORD: str = os.environ.get("EVAL_PASSWORD", "")
     EVAL_READONLY_API_KEY: str = os.environ.get("EVAL_READONLY_API_KEY", "")
+
+    @property
+    def ENABLE_AUTH0(self) -> bool:
+        return bool(self.AUTH0_DOMAIN and self.AUTH0_CLIENT_ID and self.AUTH0_CLIENT_SECRET)
 
     @property
     def is_production(self) -> bool:

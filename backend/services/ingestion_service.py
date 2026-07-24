@@ -65,20 +65,28 @@ def _is_connectivity_test(payload) -> bool:
     return t in ("webhook", "test", "ping", "test_webhook", "connectivity_test")
 
 
-_PROVIDER_LABELS = {
-    "docusign": "DocuSign", "cashfree": "Cashfree", "stripe": "Stripe", "slack": "Slack",
-}
-
-
 def _build_event_descriptor(event: CommonEvent, integration: dict, payload) -> dict:
     """Non-sensitive, privacy-preserving descriptor recorded ALONGSIDE the proof
     (NOT part of the signed payload, NOT a cryptographic commitment). Enables a
     provider-aware verification experience without storing any PII — document
     names, subjects, senders/recipients and account ids remain hash-only inside
     the signed ``metadata_hash``. Only workflow-level, non-personal fields are
-    persisted here (provider, event type, status, timestamp, external id)."""
+    persisted here (provider, category, event type, event source, status,
+    timestamp, external id) plus any explicitly display-safe attributes.
+
+    Provider taxonomy (category + event source) is resolved from the generic
+    ``core.ingestion.registry`` so it lives in exactly one place.
+    """
+    from core.ingestion import registry
+
     scheme = ((integration.get("auth_config") or {}).get("signature_scheme") or "").lower()
-    provider = _PROVIDER_LABELS.get(scheme) or integration.get("name") or integration.get("slug")
+    name = integration.get("name") or integration.get("slug")
+    prov = registry.resolve(scheme or (event.provider or ""), name)
+
+    provider = event.provider or prov.label
+    provider_category = event.provider_category or prov.category
+    event_source = event.event_source or prov.default_event_source
+
     status = None
     event_type = None
     if isinstance(payload, dict):
@@ -94,15 +102,25 @@ def _build_event_descriptor(event: CommonEvent, integration: dict, payload) -> d
             if isinstance(v, str) and v.strip():
                 event_type = v[:128]
                 break
+    status = status or (str(event.status)[:64] if event.status else None)
     event_type = event_type or (str(event.event_type)[:128] if event.event_type else None)
+
+    attributes = {
+        str(k)[:64]: str(v)[:256]
+        for k, v in (event.display_attributes or {}).items()
+        if v not in (None, "")
+    }
     return {
         "provider": str(provider)[:64],
-        "provider_kind": scheme or "generic",
+        "provider_kind": scheme or prov.id,
+        "provider_category": provider_category,
         "event_type": event_type,
+        "event_source": event_source,
         "status": status,
         "occurred_at": event.occurred_at,
         "external_id": event.external_id,
         "source": event.source,
+        "attributes": attributes,
     }
 
 

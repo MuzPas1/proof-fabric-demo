@@ -1,4 +1,4 @@
-import { useState, Fragment } from "react";
+import { useState, useEffect, Fragment } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
@@ -752,6 +752,32 @@ export default function TransactionFlow() {
       setVerifying(false);
     }
   };
+
+  // Auth0 identity flow: after a successful login the backend redirects the
+  // freshly generated "Identity Authenticated" proof to /verify?fea_id=...
+  // (the dedicated independent verification page). On the demo portal we only
+  // handle the residual success/error signal (and forward if a proof id lands
+  // here) — verification itself runs on the dedicated page.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("auth0") === "success") {
+      const fea = params.get("identity_fea");
+      const url = new URL(window.location.href);
+      ["auth0", "identity_fea", "auth0_error"].forEach((k) => url.searchParams.delete(k));
+      window.history.replaceState({}, "", url.toString());
+      if (fea) {
+        window.location.assign(`/verify?fea_id=${encodeURIComponent(fea)}`);
+        return;
+      }
+      toast.success("Signed in with Auth0");
+    } else if (params.get("auth0_error")) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("auth0_error");
+      window.history.replaceState({}, "", url.toString());
+      toast.error("Auth0 login failed. Please try again.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const resetAll = () => {
     setForm(DEFAULTS);
@@ -1559,6 +1585,7 @@ export default function TransactionFlow() {
                       signature_version: auditorTrust.pub.signature_version,
                       public_key_id: auditorTrust.pub.fea_payload?.public_key_id,
                       created_at: auditorTrust.pub.created_at,
+                      event_descriptor: auditorTrust.pub.event_descriptor,
                     }}
                     valid={auditorTrust.pub.signature_valid}
                     showStatus={false}

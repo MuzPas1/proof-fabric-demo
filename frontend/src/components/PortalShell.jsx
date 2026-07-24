@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { UserMenu } from "@/components/UserMenu";
 import {
   Home,
   BookOpen,
@@ -273,6 +274,8 @@ export function PortalTopBar({ active, onNavigate, onNewTransaction }) {
             <Plus className="w-4 h-4 mr-1.5" />
             New Transaction
           </Button>
+          <div className="w-px h-6 bg-slate-200 mx-1" />
+          <UserMenu />
         </div>
       </div>
 

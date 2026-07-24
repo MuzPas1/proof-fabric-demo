@@ -325,6 +325,8 @@ async def public_verify_fea_by_id(request: Request, fea_id: str):
         doc["fea_payload"], doc["signature"], doc.get("signature_version")
     )
     txid = (doc.get("fea_payload", {}) or {}).get("transaction_summary", {}).get("transaction_id")
+    from core.ingestion import registry
+    _desc = doc.get("event_descriptor")
     artifact = {
         "fea_id": doc["fea_id"],
         "fea_payload": doc["fea_payload"],
@@ -332,7 +334,7 @@ async def public_verify_fea_by_id(request: Request, fea_id: str):
         "signature_version": doc.get("signature_version", "v2"),
         "public_key_id": doc["public_key_id"],
         "created_at": doc["created_at"],
-        "event_descriptor": doc.get("event_descriptor"),
+        "event_descriptor": registry.enrich_descriptor(_desc) if _desc else None,
         "ai_provenance": doc.get("ai_provenance"),
         "time_anchor": doc.get("time_anchor"),
     }

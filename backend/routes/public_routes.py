@@ -54,6 +54,11 @@ async def public_verify_fea(fea_id: str):
         except Exception:
             ai_provenance = None
 
+    event_descriptor = fea_doc.get("event_descriptor")
+    if event_descriptor:
+        from core.ingestion import registry
+        event_descriptor = registry.enrich_descriptor(event_descriptor)
+
     return PublicVerifyResponse(
         fea_id=fea_id,
         fea_payload=fea_payload,
@@ -64,6 +69,7 @@ async def public_verify_fea(fea_id: str):
         created_at=fea_doc["created_at"],
         time_attestation=time_attestation,
         ai_provenance=ai_provenance,
+        event_descriptor=event_descriptor,
     )
 
 
