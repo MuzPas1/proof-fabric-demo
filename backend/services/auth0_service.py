@@ -38,6 +38,22 @@ def _identity_provider(sub: str) -> str:
     return "auth0"
 
 
+def _mask_subject(sub: str) -> str:
+    """Privacy-preserving display of the authenticated principal: keep the
+    identity-provider connection intact but mask the raw account id so the
+    externally-readable descriptor never exposes the provider's raw subject."""
+    if not sub:
+        return "unknown"
+    conn, _, ident = sub.partition("|")
+    if not ident:
+        conn, ident = "", sub
+    if len(ident) <= 4:
+        masked = "•" * len(ident)
+    else:
+        masked = ident[:2] + "•" * (len(ident) - 4) + ident[-2:]
+    return f"{conn}|{masked}" if conn else masked
+
+
 async def generate_identity_proof(db, userinfo: dict, token: dict | None = None) -> str:
     """Normalize the Auth0 identity event and issue a Proof Artifact via the
     shared pipeline. Returns the fea_id."""
@@ -56,7 +72,7 @@ async def generate_identity_proof(db, userinfo: dict, token: dict | None = None)
 
     # Display-safe metadata for the verification UI (unsigned descriptor).
     display_attributes = {
-        "Authenticated User": str(sub),
+        "Authenticated User": _mask_subject(str(sub)),
         "Identity Provider": idp,
         "Application": settings.AUTH0_APP_NAME,
         "Issuer": issuer,
