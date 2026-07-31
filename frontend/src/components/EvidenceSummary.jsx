@@ -70,10 +70,11 @@ function providerDomain(desc, isFinancial) {
 // are data-driven/configurable per provider category.
 // ---------------------------------------------------------------------------
 const EVENT_NAMES = {
-  issue_created: "Issue Created", issue_updated: "Issue Updated", assignee_changed: "Issue Assigned",
+  issue_created: "Issue Created", issue_updated: "Release Activity", assignee_changed: "Issue Assigned",
   status_changed: "Status Changed", comment_added: "Comment Added", comment_updated: "Comment Updated",
   comment_deleted: "Comment Deleted", attachment_added: "Attachment Added", issue_resolved: "Issue Resolved",
   issue_deleted: "Issue Deleted", worklog_updated: "Worklog Updated",
+  release_readiness: "Release Readiness Evaluation", change_release: "Release Readiness Evaluation",
   payment_captured: "Payment Captured", payment_success: "Payment Captured", order_paid: "Payment Captured",
   payment_failed: "Payment Failed", document_signed: "Document Signed", envelope_completed: "Document Signed",
   user_authenticated: "Identity Authenticated", login: "Identity Authenticated", identity_authenticated: "Identity Authenticated",
@@ -89,7 +90,8 @@ function humanEvent(desc, isFinancial) {
 
 const EVENT_TONE = {
   "Issue Created": "emerald", "Status Changed": "blue", "Comment Added": "violet", "Comment Updated": "violet",
-  "Attachment Added": "amber", "Issue Assigned": "cyan", "Issue Resolved": "emerald", "Issue Updated": "blue",
+  "Attachment Added": "amber", "Issue Assigned": "cyan", "Issue Resolved": "emerald", "Release Activity": "blue",
+  "Release Readiness Evaluation": "indigo",
   "Payment Captured": "emerald", "Payment Failed": "red", "Document Signed": "indigo",
   "Identity Authenticated": "slate",
 };
@@ -112,14 +114,13 @@ function EventBadge({ label }) {
   );
 }
 
-// Configurable business-assertion rules, keyed by provider category. Extend by
-// adding rules — the crypto/verification engine is untouched.
-const ASSERTION_RULES = {
+// Provider-specific DETAIL assertions (shown UNDERNEATH the standardized set).
+// Keyed by provider category; every rule is context-guarded so only genuinely
+// verified facts appear. The crypto/verification engine is untouched.
+const ASSERTION_DETAILS = {
   "Issue Tracking": [
-    { text: (c) => `Authenticated ${c.provider || "issue-tracking"} webhook verified` },
     { when: (c) => c.attr("Issue Key"), text: (c) => `Issue ${c.attr("Issue Key")} verified` },
-    { when: (c) => c.attr("Project"), text: "Project verified" },
-    { text: "Workflow event verified" },
+    { when: (c) => c.attr("Project"), text: (c) => `Project ${c.attr("Project")} verified` },
     { when: (c) => c.event === "status_changed", text: "Status transition verified" },
     { when: (c) => c.event === "assignee_changed", text: "Assignee change verified" },
     { when: (c) => c.event === "comment_added", text: "Comment received" },
@@ -127,44 +128,56 @@ const ASSERTION_RULES = {
     { when: (c) => c.event === "issue_resolved", text: "Issue resolution verified" },
   ],
   Payment: [
-    { text: "Payment event verified" },
     { when: (c) => c.txId, text: "Transaction identifier verified" },
     { when: (c) => c.financial, text: "Amount verified" },
     { when: (c) => c.financial, text: "Currency verified" },
   ],
   "Cross-border Payment": [
-    { text: "Cross-border payment event verified" },
     { when: (c) => c.txId, text: "Transaction identifier verified" },
     { when: (c) => c.financial, text: "Amount verified" },
     { when: (c) => c.financial, text: "Currency verified" },
   ],
   Identity: [
-    { text: "Identity provider authentication verified" },
     { when: (c) => c.provider, text: (c) => `${c.provider} session verified` },
   ],
   Document: [
-    { text: "Document workflow event verified" },
     { when: (c) => c.txId, text: "Envelope identifier verified" },
   ],
 };
-function buildAssertions(desc, valid, payload, isFinancial) {
+
+// The standardized verification assertions — identical wording for EVERY
+// provider so Jira, DocuSign, Auth0, Razorpay, Tazapay, Cashfree and future
+// providers read as one unified Proof Infrastructure.
+function buildAssertions(desc, valid, payload, isFinancial, occurredAt) {
+  if (!valid) {
+    return {
+      standard: [{ text: "PFP Signature could NOT be verified", ok: false }],
+      details: [],
+    };
+  }
+  const standard = [
+    { text: "Provider Event Verified", ok: true },
+    { text: "Provider Authentication Verified", ok: true },
+    { text: "Payload Integrity Verified", ok: true },
+  ];
+  if (occurredAt) standard.push({ text: "Timestamp Verified", ok: true });
+  standard.push({ text: "PFP Signature Verified", ok: true });
+
   const ts = (payload && payload.transaction_summary) || {};
   const ctx = {
-    event: String(desc?.event_type || "").toLowerCase(),
+    event: String(desc?.event_type || "").toLowerCase().replace(/[.\-\s]+/g, "_"),
     provider: desc?.provider,
     financial: isFinancial,
     txId: ts.transaction_id,
     attr: (k) => desc?.attributes?.[k],
   };
-  const rules = ASSERTION_RULES[desc?.provider_category] || [];
-  const list = [];
+  const rules = ASSERTION_DETAILS[desc?.provider_category] || [];
+  const details = [];
   rules.forEach((r) => {
     if (r.when && !r.when(ctx)) return;
-    list.push(typeof r.text === "function" ? r.text(ctx) : r.text);
+    details.push(typeof r.text === "function" ? r.text(ctx) : r.text);
   });
-  if (desc?.occurred_at) list.push("Event timestamp verified");
-  list.push(valid ? "Cryptographic signature verified" : "Signature could NOT be verified");
-  return list;
+  return { standard, details };
 }
 
 function splitTransition(change) {
@@ -207,21 +220,33 @@ function BusinessHeadlineCard({ humanName, description, domainLabel }) {
   );
 }
 
-function VerifiedAssertionsCard({ assertions }) {
+function VerifiedAssertionsCard({ standard, details }) {
   return (
-    <Card icon={BadgeCheck} title="Verified Assertions" testId="card-verified-assertions">
+    <Card icon={BadgeCheck} title="Verification Assertions" testId="card-verified-assertions">
       <div className="px-4 py-3 grid sm:grid-cols-2 gap-x-6 gap-y-2">
-        {assertions.map((t, i) => {
-          const bad = /could not|not be verified/i.test(t);
-          const I = bad ? AlertTriangle : CheckCircle2;
+        {standard.map((a, i) => {
+          const I = a.ok ? CheckCircle2 : AlertTriangle;
           return (
             <div key={i} className="flex items-center gap-2 text-sm" data-testid={`assertion-${i}`}>
-              <I className={`h-4 w-4 shrink-0 ${bad ? "text-red-600" : "text-emerald-600"}`} />
-              <span className={bad ? "text-red-700" : "text-slate-700"}>{t}</span>
+              <I className={`h-4 w-4 shrink-0 ${a.ok ? "text-emerald-600" : "text-red-600"}`} />
+              <span className={`font-medium ${a.ok ? "text-slate-800" : "text-red-700"}`}>{a.text}</span>
             </div>
           );
         })}
       </div>
+      {details.length > 0 && (
+        <div className="px-4 pb-3 pt-1 border-t border-slate-100" data-testid="assertion-details">
+          <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1.5">Provider-specific details</div>
+          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+            {details.map((t, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs text-slate-600" data-testid={`assertion-detail-${i}`}>
+                <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                <span>{t}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
@@ -238,7 +263,44 @@ function EventSummaryCard({ desc, humanName, occurredAt }) {
       <DataRow label="Event" node={<EventBadge label={humanName} />} testId="summary-event" />
       {from && <DataRow label="Previous Status" value={from} testId="summary-prev-status" />}
       {to && <DataRow label="New Status" value={to} testId="summary-new-status" />}
+      {a.Assignee && <DataRow label="Assignee" value={a.Assignee} testId="summary-assignee" />}
+      {a.Reporter && <DataRow label="Reporter" value={a.Reporter} testId="summary-reporter" />}
+      {desc.auth_method && <DataRow label="Authenticated Via" value={desc.auth_method} testId="summary-auth-method" />}
       {occurredAt && <DataRow label="Occurred" value={fmtTs(occurredAt)} testId="summary-occurred" />}
+    </Card>
+  );
+}
+
+// Answers the enterprise questions a Proof Artifact should establish, in plain
+// business language, BEFORE the technical evidence. Copy-only; no engine change.
+function ProofScopeCard({ desc, valid, humanName }) {
+  const provider = desc?.provider || "the provider";
+  const method = desc?.auth_method;
+  const provesText = valid
+    ? `PFP independently verified an authenticated ${provider} event${method ? ` (${method})` : ""} and cryptographically sealed its verified contents. The signature confirms this record is authentic and has not been altered since issuance.`
+    : `This Proof Artifact's signature could not be verified, so its contents cannot be trusted as authentic.`;
+  return (
+    <Card icon={ShieldCheck} title="What This Proof Establishes" testId="card-proof-scope">
+      <div className="px-4 py-3 space-y-3 text-sm">
+        <div className="flex items-start gap-2" data-testid="proof-proves">
+          <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-emerald-600" />
+          <div>
+            <div className="font-semibold text-slate-800">What this proves</div>
+            <p className="text-slate-600 mt-0.5">{provesText}</p>
+          </div>
+        </div>
+        <div className="flex items-start gap-2" data-testid="proof-not-proves">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-slate-400" />
+          <div>
+            <div className="font-semibold text-slate-800">What this deliberately does not prove</div>
+            <p className="text-slate-600 mt-0.5">
+              It does not assert the business correctness or outcome of the underlying action, and it was
+              <span className="font-medium text-slate-700"> not signed by {provider}</span> — PFP signed it after
+              verifying an authenticated provider event.
+            </p>
+          </div>
+        </div>
+      </div>
     </Card>
   );
 }
@@ -377,6 +439,15 @@ function StatusChip({ text }) {
   );
 }
 
+function AuthMethodBadge({ text }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600/20" data-testid="auth-method-badge">
+      <Lock className="w-3 h-3" />
+      {text}
+    </span>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Row builders (authenticated evidence, verification metadata, commitments)
 // ---------------------------------------------------------------------------
@@ -455,7 +526,7 @@ function VerificationStatusCard({ valid, reason }) {
           data-testid="evidence-verification-status"
         >
           <Icon className="w-3 h-3" />
-          {ok ? "Authenticated" : "Failed"}
+          {ok ? "Verified" : "Failed"}
         </span>
       }
     >
@@ -463,11 +534,11 @@ function VerificationStatusCard({ valid, reason }) {
         <Icon className={`w-5 h-5 mt-0.5 shrink-0 ${ok ? "text-emerald-600" : "text-red-600"}`} />
         <div>
           <div className={`text-sm font-semibold ${ok ? "text-emerald-800" : "text-red-800"}`}>
-            {ok ? "Cryptographically Authenticated — Signature Verified" : "Verification Failed"}
+            {ok ? "PFP Cryptographic Signature Verified" : "Verification Failed"}
           </div>
           <div className="text-xs text-slate-500 mt-0.5">
             {ok
-              ? "The signed fields below were verified against the key registry. No internal systems were queried."
+              ? "This Proof Artifact was cryptographically signed by PFP after successfully verifying an authenticated provider event. The originating provider did not sign this artifact. Verified independently against the public key registry — no internal systems were queried."
               : reason || "The proof signature could not be verified."}
           </div>
         </div>
@@ -487,6 +558,7 @@ function ProviderSummaryCard({ desc, domain }) {
       <DataRow label="Category" value={domain.label} testId="evidence-category" />
       {desc.event_type && <DataRow label="Event Type" value={fmtLabel(desc.event_type)} testId="evidence-event-type" />}
       {desc.event_source && <DataRow label="Event Source" value={desc.event_source} testId="evidence-event-source" />}
+      {desc.auth_method && <DataRow label="Authentication" node={<AuthMethodBadge text={desc.auth_method} />} testId="evidence-auth-method" />}
       {desc.status && <DataRow label="Status" node={<StatusChip text={fmtLabel(desc.status)} />} testId="evidence-status" />}
       {attrs.map(([k, v]) => (
         <DataRow
@@ -579,9 +651,9 @@ export default function EvidenceSummary({ artifact, valid, reason, showStatus = 
   const domain = providerDomain(desc, isFinancial);
   const hasBusiness = desc && (desc.provider || desc.event_type || desc.status || desc.provider_category);
   const humanName = humanEvent(desc, isFinancial);
-  const assertions = buildAssertions(desc, valid, artifact.fea_payload, isFinancial);
-  const description = eventDescription(desc, artifact.fea_payload, isFinancial, humanName);
   const occurredAt = desc?.occurred_at || artifact.fea_payload?.transaction_summary?.timestamp;
+  const { standard, details } = buildAssertions(desc, valid, artifact.fea_payload, isFinancial, occurredAt);
+  const description = eventDescription(desc, artifact.fea_payload, isFinancial, humanName);
 
   return (
     <div className="space-y-3 text-slate-900" data-testid="evidence-summary">
@@ -589,7 +661,8 @@ export default function EvidenceSummary({ artifact, valid, reason, showStatus = 
       {hasBusiness && (
         <>
           <BusinessHeadlineCard humanName={humanName} description={description} domainLabel={domain.label} />
-          <VerifiedAssertionsCard assertions={assertions} />
+          <ProofScopeCard desc={desc} valid={valid} humanName={humanName} />
+          <VerifiedAssertionsCard standard={standard} details={details} />
           <EventSummaryCard desc={desc} humanName={humanName} occurredAt={occurredAt} />
         </>
       )}

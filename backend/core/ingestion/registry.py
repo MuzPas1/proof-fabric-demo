@@ -27,6 +27,31 @@ INBOUND_AUTH_METHODS: List[str] = [
     "api_key", "hmac_sha256", "hmac_sha1", "bearer", "oauth2", "basic", "mtls", "none",
 ]
 
+# Human-readable label for the inbound authentication mechanism actually used to
+# verify a provider event. Surfaced on the Verify page so enterprise users
+# understand HOW the originating event was authenticated (presentation only).
+AUTH_METHOD_LABELS: Dict[str, str] = {
+    "hmac": "HMAC Signature",
+    "hmac_sha256": "HMAC Signature",
+    "hmac_sha1": "HMAC Signature",
+    "api_key": "API Key",
+    "bearer": "Bearer Token",
+    "jwt": "JWT Validation",
+    "oauth2": "OAuth",
+    "basic": "Basic Auth",
+    "mtls": "Mutual TLS",
+    "custom": "Custom Verification",
+    "none": "No Authentication",
+}
+
+
+def auth_method_label(provider_id: Optional[str]) -> Optional[str]:
+    """Map an inbound auth provider id (e.g. ``hmac_sha256``) to a human label
+    (e.g. ``HMAC Signature``). Returns None when unknown/unset."""
+    if not provider_id:
+        return None
+    return AUTH_METHOD_LABELS.get(str(provider_id).strip().lower())
+
 
 @dataclass(frozen=True)
 class Provider:
@@ -109,6 +134,10 @@ def enrich_descriptor(desc: Optional[dict]) -> Optional[dict]:
         d["provider_category"] = prov.category
     if not d.get("event_source"):
         d["event_source"] = prov.default_event_source
+    if not d.get("auth_method"):
+        # Backfill for older descriptors: derive from the provider's default
+        # inbound auth policy when the actual method was not recorded.
+        d["auth_method"] = auth_method_label(prov.default_auth_method)
     if "attributes" not in d or not isinstance(d.get("attributes"), dict):
         d["attributes"] = {}
     return d

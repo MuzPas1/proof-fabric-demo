@@ -88,6 +88,10 @@ def _build_event_descriptor(event: CommonEvent, integration: dict, payload) -> d
     provider = event.provider or prov.label
     provider_category = event.provider_category or prov.category
     event_source = event.event_source or prov.default_event_source
+    # Inbound authentication mechanism actually used to verify this event
+    # (falls back to the provider's default policy). Presentation only.
+    auth_provider = (integration.get("auth_provider") or prov.default_auth_method)
+    auth_method = registry.auth_method_label(auth_provider)
 
     status = None
     event_type = None
@@ -118,6 +122,7 @@ def _build_event_descriptor(event: CommonEvent, integration: dict, payload) -> d
         "provider_category": provider_category,
         "event_type": event_type,
         "event_source": event_source,
+        "auth_method": auth_method,
         "status": status,
         "occurred_at": event.occurred_at,
         "external_id": event.external_id,
