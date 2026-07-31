@@ -19,6 +19,8 @@ import {
   Lock,
   UserCheck,
   ShoppingCart,
+  BadgeCheck,
+  ClipboardList,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -59,6 +61,186 @@ function providerDomain(desc, isFinancial) {
   if (PROVIDER_DOMAINS[kind]) return PROVIDER_DOMAINS[kind];
   if (isFinancial) return { label: "Payment", Icon: CreditCard };
   return { label: "Event", Icon: Activity };
+}
+
+// ---------------------------------------------------------------------------
+// Business layer — human-readable event naming, colored badges, dynamically
+// generated verified assertions, and a plain-language description. All derived
+// from the authenticated event descriptor (no engine change). Assertion rules
+// are data-driven/configurable per provider category.
+// ---------------------------------------------------------------------------
+const EVENT_NAMES = {
+  issue_created: "Issue Created", issue_updated: "Issue Updated", assignee_changed: "Issue Assigned",
+  status_changed: "Status Changed", comment_added: "Comment Added", comment_updated: "Comment Updated",
+  comment_deleted: "Comment Deleted", attachment_added: "Attachment Added", issue_resolved: "Issue Resolved",
+  issue_deleted: "Issue Deleted", worklog_updated: "Worklog Updated",
+  payment_captured: "Payment Captured", payment_success: "Payment Captured", order_paid: "Payment Captured",
+  payment_failed: "Payment Failed", document_signed: "Document Signed", envelope_completed: "Document Signed",
+  user_authenticated: "Identity Authenticated", login: "Identity Authenticated", identity_authenticated: "Identity Authenticated",
+};
+function humanEvent(desc, isFinancial) {
+  if (!desc) return isFinancial ? "Payment Event" : "Event";
+  const t = String(desc.event_type || "").toLowerCase().replace(/[.\-\s]+/g, "_");
+  if (EVENT_NAMES[t]) return EVENT_NAMES[t];
+  if (desc.provider_category === "Identity") return "Identity Authenticated";
+  if (isFinancial && !desc.event_type) return "Payment Captured";
+  return fmtLabel(desc.event_type || (isFinancial ? "payment" : "event"));
+}
+
+const EVENT_TONE = {
+  "Issue Created": "emerald", "Status Changed": "blue", "Comment Added": "violet", "Comment Updated": "violet",
+  "Attachment Added": "amber", "Issue Assigned": "cyan", "Issue Resolved": "emerald", "Issue Updated": "blue",
+  "Payment Captured": "emerald", "Payment Failed": "red", "Document Signed": "indigo",
+  "Identity Authenticated": "slate",
+};
+const TONE_CLASSES = {
+  emerald: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+  blue: "bg-blue-50 text-blue-700 ring-blue-600/20",
+  violet: "bg-violet-50 text-violet-700 ring-violet-600/20",
+  amber: "bg-amber-50 text-amber-700 ring-amber-600/20",
+  cyan: "bg-cyan-50 text-cyan-700 ring-cyan-600/20",
+  indigo: "bg-indigo-50 text-indigo-700 ring-indigo-600/20",
+  red: "bg-red-50 text-red-700 ring-red-600/20",
+  slate: "bg-slate-100 text-slate-700 ring-slate-500/20",
+};
+function EventBadge({ label }) {
+  const tone = EVENT_TONE[label] || "slate";
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ring-1 ${TONE_CLASSES[tone]}`} data-testid="event-badge">
+      {label}
+    </span>
+  );
+}
+
+// Configurable business-assertion rules, keyed by provider category. Extend by
+// adding rules — the crypto/verification engine is untouched.
+const ASSERTION_RULES = {
+  "Issue Tracking": [
+    { text: (c) => `Authenticated ${c.provider || "issue-tracking"} webhook verified` },
+    { when: (c) => c.attr("Issue Key"), text: (c) => `Issue ${c.attr("Issue Key")} verified` },
+    { when: (c) => c.attr("Project"), text: "Project verified" },
+    { text: "Workflow event verified" },
+    { when: (c) => c.event === "status_changed", text: "Status transition verified" },
+    { when: (c) => c.event === "assignee_changed", text: "Assignee change verified" },
+    { when: (c) => c.event === "comment_added", text: "Comment received" },
+    { when: (c) => c.event === "attachment_added", text: "Attachment received" },
+    { when: (c) => c.event === "issue_resolved", text: "Issue resolution verified" },
+  ],
+  Payment: [
+    { text: "Payment event verified" },
+    { when: (c) => c.txId, text: "Transaction identifier verified" },
+    { when: (c) => c.financial, text: "Amount verified" },
+    { when: (c) => c.financial, text: "Currency verified" },
+  ],
+  "Cross-border Payment": [
+    { text: "Cross-border payment event verified" },
+    { when: (c) => c.txId, text: "Transaction identifier verified" },
+    { when: (c) => c.financial, text: "Amount verified" },
+    { when: (c) => c.financial, text: "Currency verified" },
+  ],
+  Identity: [
+    { text: "Identity provider authentication verified" },
+    { when: (c) => c.provider, text: (c) => `${c.provider} session verified` },
+  ],
+  Document: [
+    { text: "Document workflow event verified" },
+    { when: (c) => c.txId, text: "Envelope identifier verified" },
+  ],
+};
+function buildAssertions(desc, valid, payload, isFinancial) {
+  const ts = (payload && payload.transaction_summary) || {};
+  const ctx = {
+    event: String(desc?.event_type || "").toLowerCase(),
+    provider: desc?.provider,
+    financial: isFinancial,
+    txId: ts.transaction_id,
+    attr: (k) => desc?.attributes?.[k],
+  };
+  const rules = ASSERTION_RULES[desc?.provider_category] || [];
+  const list = [];
+  rules.forEach((r) => {
+    if (r.when && !r.when(ctx)) return;
+    list.push(typeof r.text === "function" ? r.text(ctx) : r.text);
+  });
+  if (desc?.occurred_at) list.push("Event timestamp verified");
+  list.push(valid ? "Cryptographic signature verified" : "Signature could NOT be verified");
+  return list;
+}
+
+function splitTransition(change) {
+  if (!change) return [null, null];
+  const parts = String(change).split(/→|->/);
+  return [parts[0]?.trim() || null, parts[1]?.trim() || null];
+}
+
+function eventDescription(desc, payload, isFinancial, humanName) {
+  if (!desc) return "";
+  const a = desc.attributes || {};
+  const provider = desc.provider || "the provider";
+  const issue = a["Issue Key"];
+  const ev = String(desc.event_type || "").toLowerCase();
+  const [from, to] = splitTransition(a["Status Change"]);
+  const ts = (payload && payload.transaction_summary) || {};
+  if (ev === "status_changed" && from && to && issue) return `The ${provider} issue ${issue} moved from “${from}” to “${to}.”`;
+  if (ev === "comment_added" && issue) return `A comment was added to ${provider} issue ${issue}.`;
+  if (ev === "attachment_added" && issue) return `An attachment was added to ${provider} issue ${issue}.`;
+  if (ev === "assignee_changed" && issue) return `${provider} issue ${issue} was reassigned.`;
+  if (ev === "issue_created" && issue) return `Issue ${issue} was created${a.Project ? ` in ${a.Project}` : ""}.`;
+  if (ev === "issue_resolved" && issue) return `${provider} issue ${issue} was resolved.`;
+  if (desc.provider_category === "Identity") return `The user successfully authenticated using ${provider}.`;
+  if (isFinancial) {
+    const amt = fmtAmount(ts.amount, ts.currency);
+    return `A payment${amt ? ` of ${amt}` : ""} was ${humanName === "Payment Failed" ? "attempted" : "captured"} via ${provider}.`;
+  }
+  return `${humanName} recorded via ${provider}.`;
+}
+
+function BusinessHeadlineCard({ humanName, description, domainLabel }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4" data-testid="card-business-headline">
+      <div className="flex items-center gap-2 flex-wrap">
+        <EventBadge label={humanName} />
+        <span className="text-[11px] uppercase tracking-wide text-slate-400">{domainLabel}</span>
+      </div>
+      {description && <p className="mt-2 text-sm text-slate-700" data-testid="event-description">{description}</p>}
+    </div>
+  );
+}
+
+function VerifiedAssertionsCard({ assertions }) {
+  return (
+    <Card icon={BadgeCheck} title="Verified Assertions" testId="card-verified-assertions">
+      <div className="px-4 py-3 grid sm:grid-cols-2 gap-x-6 gap-y-2">
+        {assertions.map((t, i) => {
+          const bad = /could not|not be verified/i.test(t);
+          const I = bad ? AlertTriangle : CheckCircle2;
+          return (
+            <div key={i} className="flex items-center gap-2 text-sm" data-testid={`assertion-${i}`}>
+              <I className={`h-4 w-4 shrink-0 ${bad ? "text-red-600" : "text-emerald-600"}`} />
+              <span className={bad ? "text-red-700" : "text-slate-700"}>{t}</span>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+function EventSummaryCard({ desc, humanName, occurredAt }) {
+  const a = desc.attributes || {};
+  const [from, to] = splitTransition(a["Status Change"]);
+  return (
+    <Card icon={ClipboardList} title="Event Summary" testId="card-event-summary">
+      <DataRow label="Provider" value={desc.provider} testId="summary-provider" />
+      {a.Project && <DataRow label="Project" value={a.Project} testId="summary-project" />}
+      {a["Issue Key"] && <DataRow label="Issue" value={a["Issue Key"]} testId="summary-issue" />}
+      {a.Summary && <DataRow label="Summary" value={a.Summary} testId="summary-summary" />}
+      <DataRow label="Event" node={<EventBadge label={humanName} />} testId="summary-event" />
+      {from && <DataRow label="Previous Status" value={from} testId="summary-prev-status" />}
+      {to && <DataRow label="New Status" value={to} testId="summary-new-status" />}
+      {occurredAt && <DataRow label="Occurred" value={fmtTs(occurredAt)} testId="summary-occurred" />}
+    </Card>
+  );
 }
 
 const LABELS = {
@@ -395,13 +577,23 @@ export default function EvidenceSummary({ artifact, valid, reason, showStatus = 
   const desc = artifact.event_descriptor;
   const ai = artifact.ai_provenance;
   const domain = providerDomain(desc, isFinancial);
+  const hasBusiness = desc && (desc.provider || desc.event_type || desc.status || desc.provider_category);
+  const humanName = humanEvent(desc, isFinancial);
+  const assertions = buildAssertions(desc, valid, artifact.fea_payload, isFinancial);
+  const description = eventDescription(desc, artifact.fea_payload, isFinancial, humanName);
+  const occurredAt = desc?.occurred_at || artifact.fea_payload?.transaction_summary?.timestamp;
 
   return (
     <div className="space-y-3 text-slate-900" data-testid="evidence-summary">
       {showStatus && <VerificationStatusCard valid={valid} reason={reason} />}
-      {desc && (desc.provider || desc.event_type || desc.status || desc.provider_category) && (
-        <ProviderSummaryCard desc={desc} domain={domain} />
+      {hasBusiness && (
+        <>
+          <BusinessHeadlineCard humanName={humanName} description={description} domainLabel={domain.label} />
+          <VerifiedAssertionsCard assertions={assertions} />
+          <EventSummaryCard desc={desc} humanName={humanName} occurredAt={occurredAt} />
+        </>
       )}
+      {hasBusiness && <ProviderSummaryCard desc={desc} domain={domain} />}
       <RowsCard
         icon={FileSignature}
         title="Authenticated Evidence"

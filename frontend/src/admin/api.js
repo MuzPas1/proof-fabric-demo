@@ -115,6 +115,7 @@ export const api = {
   integrationEvents: (id) => cp.get(`/admin/integrations/${id}/events`).then((r) => r.data),
   testIntegration: (id, payload, issue) =>
     cp.post(`/admin/integrations/${id}/test`, { payload, issue }).then((r) => r.data),
+  simulateIntegration: (id) => cp.post(`/admin/integrations/${id}/simulate`).then((r) => r.data),
 };
 
 // Parse Prometheus exposition text -> sum of a metric family

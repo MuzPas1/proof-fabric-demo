@@ -217,6 +217,27 @@ async def integration_events(
     return {"events": events, "count": len(events)}
 
 
+@router.post("/{integration_id}/simulate")
+async def simulate_integration(
+    integration_id: str,
+    user: User = Depends(require_permission(Permission.INTEGRATIONS_MANAGE)),
+    tenant_id: str = Query(None),
+):
+    """Generic connection self-test / Test Webhook Simulator. Builds and signs a
+    provider sample event, runs it through the real auth + adapter + proof +
+    verification path, and returns per-step results. Works for every provider."""
+    _guard()
+    try:
+        result = await ingestion_service.simulate_connection(_db(), integration_id, _scope_for_read(user, tenant_id))
+    except ingestion_service.IngestionError as e:
+        raise HTTPException(e.status_code, str(e))
+    await audit_service.record_audit(
+        _db(), "integration.simulated", actor=user.email, tenant_id="", target=result.get("fea_id"),
+        metadata={"integration_id": integration_id, "ok": result.get("ok")},
+    )
+    return result
+
+
 @router.post("/{integration_id}/test")
 async def test_integration(
     integration_id: str,

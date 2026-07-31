@@ -387,6 +387,41 @@ function RecentEventsTable({ events }) {
 }
 
 
+// Connection self-test / Test Webhook Simulator result — per-step outcome list.
+function SimSteps({ result }) {
+  const tone = { success: "text-emerald-600", failed: "text-red-600", skipped: "text-amber-500" };
+  const Icon = { success: CheckCircle2, failed: XCircle, skipped: Activity };
+  return (
+    <div className="mt-3 space-y-1.5" data-testid="simulator-result">
+      {result.steps.map((s) => {
+        const I = Icon[s.status] || Activity;
+        return (
+          <div key={s.key} className="flex items-start gap-2 text-sm" data-testid={`sim-step-${s.key}`}>
+            <I className={`h-4 w-4 mt-0.5 shrink-0 ${tone[s.status] || "text-slate-400"}`} />
+            <div className="min-w-0">
+              <span className="text-slate-800">{s.label}</span>
+              {s.status === "skipped" && <span className="ml-1 text-[11px] text-amber-600">(simulated)</span>}
+              {s.status === "success" && <span className="ml-1 text-[11px] text-emerald-600">passed</span>}
+              {s.detail && (
+                <div className="text-[11px] text-slate-500 break-all">
+                  {s.key === "proof" && s.status === "success" ? <>Proof <span className="font-mono">{s.detail}</span></> : s.detail}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+      {result.fea_id && (
+        <a href={`/verify?fea_id=${encodeURIComponent(result.fea_id)}`} target="_blank" rel="noreferrer"
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-800 mt-1" data-testid="sim-verify-link">
+          <ShieldCheck className="h-3.5 w-3.5" /> View the sample proof
+        </a>
+      )}
+    </div>
+  );
+}
+
+
 export default function Integrations() {
   const { user } = useAuth();
   const writable = canWrite(user?.role);
@@ -406,6 +441,10 @@ export default function Integrations() {
   const [editing, setEditing] = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [editBusy, setEditBusy] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [simResult, setSimResult] = useState(null);
+  const [simBusy, setSimBusy] = useState(false);
 
   const load = async () => {
     try { const d = await api.listIntegrations(); setItems(d.integrations || []); }
@@ -504,9 +543,32 @@ export default function Integrations() {
     } catch (e) { toast.error(e?.response?.data?.detail || "Rotate failed"); }
   };
 
-  const remove = async (it) => {
-    try { await api.deleteIntegration(it.integration_id); toast.success("Deleted"); if (selected?.integration_id === it.integration_id) setSelected(null); load(); }
-    catch (e) { toast.error(e?.response?.data?.detail || "Delete failed"); }
+  const remove = (it) => { setDeleteTarget(it); };
+  const doDelete = async () => {
+    const it = deleteTarget;
+    if (!it) return;
+    setDeleteBusy(true);
+    try {
+      await api.deleteIntegration(it.integration_id);
+      toast.success("Integration deleted — existing proofs & audit logs are preserved");
+      if (selected?.integration_id === it.integration_id) setSelected(null);
+      setDeleteTarget(null);
+      load();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Delete failed"); }
+    finally { setDeleteBusy(false); }
+  };
+
+  const runSimulate = async (it) => {
+    setSimBusy(true);
+    if (selected?.integration_id === it.integration_id) setSimResult(null);
+    try {
+      const r = await api.simulateIntegration(it.integration_id);
+      if (selected?.integration_id === it.integration_id) setSimResult(r);
+      if (r.ok) toast.success("Connection validated — sample proof generated");
+      else toast.error("Validation failed — open the integration to see which step failed");
+      if (selected?.integration_id === it.integration_id) loadStatsEvents(it);
+    } catch (e) { toast.error(e?.response?.data?.detail || "Validation failed"); }
+    finally { setSimBusy(false); }
   };
 
   const loadStatsEvents = async (it) => {
@@ -515,7 +577,7 @@ export default function Integrations() {
   };
 
   const openDetails = async (it) => {
-    setSelected(it); setStats(null); setEvents(null); setTestResult(null);
+    setSelected(it); setStats(null); setEvents(null); setTestResult(null); setSimResult(null);
     loadStatsEvents(it);
   };
 
@@ -822,6 +884,10 @@ export default function Integrations() {
                     <Button variant="outline" size="sm" className="h-7" onClick={() => openDetails(it)}
                       data-testid={`integration-details-${it.slug}`}><Activity className="h-3.5 w-3.5" /></Button>
                     {writable && (<>
+                      <Button variant="outline" size="sm" className="h-7" onClick={() => runSimulate(it)} disabled={simBusy}
+                        title="Validate connection (send a signed sample event)" data-testid={`integration-validate-${it.slug}`}>
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                      </Button>
                       <Button variant="outline" size="sm" className="h-7" onClick={() => toggle(it)}
                         data-testid={`integration-toggle-${it.slug}`}>
                         {it.enabled ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
@@ -854,6 +920,29 @@ export default function Integrations() {
             )}
 
             <EventHealthSummary events={events} />
+
+            {writable && (
+              <div className="rounded-lg border border-slate-200 p-3" data-testid="integration-simulator">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="text-sm font-medium text-slate-800">Test webhook simulator</div>
+                    <div className="text-xs text-slate-500">Generate a signed sample event and run the full pipeline — no external system needed.</div>
+                  </div>
+                  <Button size="sm" onClick={() => runSimulate(selected)} disabled={simBusy}
+                    className="bg-slate-900 hover:bg-slate-800" data-testid="integration-simulate-btn">
+                    {simBusy ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />} Validate connection
+                  </Button>
+                </div>
+                {simResult && (
+                  <>
+                    <div className={`mt-3 text-sm font-medium ${simResult.ok ? "text-emerald-700" : "text-red-700"}`} data-testid="simulator-headline">
+                      {simResult.ok ? "✅ Connection successful" : "❌ Validation failed"}
+                    </div>
+                    <SimSteps result={simResult} />
+                  </>
+                )}
+              </div>
+            )}
 
             {writable && (
               <div>
@@ -963,6 +1052,39 @@ export default function Integrations() {
               <Button variant="outline" onClick={() => { setEditing(null); setEditForm(null); }} data-testid="edit-cancel">Cancel</Button>
               <Button className="bg-slate-900 hover:bg-slate-800" onClick={saveEdit} disabled={editBusy || !editForm.name.trim()} data-testid="edit-save">
                 {editBusy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null} Save changes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {deleteTarget && (
+        <Dialog open onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
+          <DialogContent className="text-slate-900 bg-white max-w-md" data-testid="integration-delete-dialog">
+            <DialogHeader>
+              <DialogTitle>Delete integration</DialogTitle>
+              <DialogDescription>Are you sure you want to delete this integration?</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 text-sm">
+              <div className="rounded-md bg-slate-50 border border-slate-200 p-3 space-y-1">
+                <div><span className="text-slate-500">Integration: </span><span className="font-medium">{deleteTarget.name}</span></div>
+                <div><span className="text-slate-500">Endpoint: </span><Mono>/api/ingest/{deleteTarget.slug}</Mono></div>
+              </div>
+              <div className="text-slate-600">
+                <div className="mb-1">Deleting this integration will:</div>
+                <ul className="list-disc pl-5 space-y-0.5">
+                  <li>Stop accepting new inbound events</li>
+                  <li>Preserve existing Proof Artifacts</li>
+                  <li>Preserve audit logs</li>
+                  <li>Not invalidate previously verified proofs</li>
+                </ul>
+              </div>
+              <div className="text-xs text-red-600 font-medium">This action cannot be undone.</div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleteBusy} data-testid="delete-cancel">Cancel</Button>
+              <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={doDelete} disabled={deleteBusy} data-testid="delete-confirm">
+                {deleteBusy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1.5" />} Delete integration
               </Button>
             </DialogFooter>
           </DialogContent>

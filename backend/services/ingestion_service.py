@@ -9,13 +9,15 @@ idempotency, replay protection and signing paths are unchanged.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
+import hmac
 import json
 import logging
 import secrets
 import time as _time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -457,3 +459,158 @@ async def dry_run(db, integration_id: str, tenant_id: Optional[str], payload: di
         await _record_event(db, integration_id, event, "accepted", response.fea_id, None)
         result["fea_id"] = response.fea_id
     return result
+
+
+# ---------------------------------------------------------------------------
+# Connection self-test / Test Webhook Simulator (generic, all providers)
+# ---------------------------------------------------------------------------
+def _sample_iso(offset_min: int = 0) -> str:
+    return (datetime.now(timezone.utc) - timedelta(minutes=offset_min)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def _sample_payload(doc: dict) -> dict:
+    """Provider-specific sample event for a connection self-test.
+
+    Shaped to normalize cleanly through the integration's configured adapter.
+    Values are obviously synthetic and carry a random id so repeated tests never
+    collide on idempotency/replay.
+    """
+    adapter = doc.get("adapter", "generic")
+    uniq = secrets.token_hex(3)
+    if adapter == "jira":
+        return {
+            "timestamp": int(_time.time() * 1000),
+            "webhookEvent": "jira:issue_updated",
+            "issue_event_type_name": "issue_generic",
+            "user": {"accountId": f"sim-{uniq}", "displayName": "Sample User"},
+            "issue": {
+                "id": f"9000{uniq}",
+                "key": f"KAN-{int(uniq, 16) % 90 + 1}",
+                "fields": {
+                    "summary": "Sample release-readiness issue",
+                    "issuetype": {"name": "Task"},
+                    "project": {"key": "KAN", "name": "My Kanban Space"},
+                    "status": {"name": "In Progress"},
+                    "priority": {"name": "High"},
+                    "labels": ["sample", "connection-test"],
+                    "duedate": "2026-12-31",
+                    "created": _sample_iso(120),
+                    "updated": _sample_iso(1),
+                },
+            },
+            "changelog": {"id": uniq, "items": [{"field": "status", "fromString": "To Do", "toString": "In Progress"}]},
+        }
+    return {
+        "type": "sample.event",
+        "id": f"SIM-{uniq}",
+        "timestamp": _sample_iso(1),
+        "actor": "sim-system",
+        "subject": "sim-subject",
+        "amount": 25000,
+        "currency": "USD",
+    }
+
+
+def _sign_sample(doc: dict, raw_body: bytes):
+    """Produce request headers that satisfy the integration's configured inbound
+    auth for a self-test, mirroring how each provider signs. Returns
+    ``(headers, mode)`` where mode is ``signed`` (real auth will run), ``open``
+    (no auth configured) or ``skip`` (credential not reproducible server-side,
+    e.g. a hashed api_key/bearer/basic token). Never modifies the auth framework."""
+    provider = (doc.get("auth_provider") or "hmac").lower()
+    if provider == "none":
+        return {}, "open"
+    if not provider.startswith("hmac"):
+        return {}, "skip"
+    secret = doc.get("external_secret") or doc.get("hmac_secret")
+    if not secret:
+        return {}, "skip"
+    cfg = doc.get("auth_config") or {}
+    scheme = (cfg.get("signature_scheme") or "plain").lower()
+    algo = hashlib.sha1 if provider == "hmac_sha1" else hashlib.sha256
+    body = raw_body.decode("utf-8", "replace")
+    enc = (cfg.get("signature_encoding") or ("base64" if scheme == "cashfree" else "hex")).lower()
+    headers: Dict[str, str] = {}
+
+    def _digest(signed_str: str, encoding: str = enc) -> str:
+        d = hmac.new(secret.encode("utf-8"), signed_str.encode("utf-8"), algo)
+        return base64.b64encode(d.digest()).decode("ascii") if encoding == "base64" else d.hexdigest()
+
+    if scheme == "stripe":
+        t = str(int(_time.time()))
+        headers[cfg.get("signature_header", "stripe-signature")] = f"t={t},v1={_digest(f'{t}.{body}', 'hex')}"
+    elif scheme == "slack":
+        t = str(int(_time.time()))
+        headers[cfg.get("timestamp_header", "x-slack-request-timestamp")] = t
+        headers[cfg.get("signature_header", "x-slack-signature")] = "v0=" + _digest(f"v0:{t}:{body}", "hex")
+    elif scheme == "cashfree":
+        t = str(int(_time.time() * 1000))
+        headers[cfg.get("timestamp_header", "x-webhook-timestamp")] = t
+        headers[cfg.get("signature_header", "x-webhook-signature")] = _digest(f"{t}{body}", "base64")
+    elif scheme == "docusign":
+        d = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).digest()
+        headers[cfg.get("signature_header", "x-docusign-signature-1")] = base64.b64encode(d).decode("ascii")
+    else:  # plain (Jira / GitHub / generic PFP-signed)
+        header = cfg.get("signature_header") or doc.get("signature_header") or "x-pfp-signature"
+        headers[header] = f"{cfg.get('signature_prefix', '')}{_digest(body)}"
+    return headers, "signed"
+
+
+async def simulate_connection(db, integration_id: str, tenant_id: Optional[str]) -> dict:
+    """Generic connection self-test: build + sign a provider sample event, run it
+    through the REAL auth + adapter + proof + verification path, and report each
+    step. Issues a genuine (sample) Proof Artifact; recorded as a ``test`` event
+    so accepted/rejected counters are unaffected."""
+    from services.verification_service import verify_fea_with_registry
+
+    doc = await _get_doc(db, integration_id, tenant_id)
+    payload = _sample_payload(doc)
+    raw_body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    headers, mode = _sign_sample(doc, raw_body)
+    lower_headers = {k.lower(): v for k, v in headers.items()}
+
+    steps = [{"key": "connection", "label": "Connection", "status": "success",
+              "detail": f"Reached inbound endpoint /api/ingest/{doc['slug']}"}]
+
+    if mode == "skip":
+        steps.append({"key": "authentication", "label": "Authentication", "status": "skipped",
+                      "detail": "This auth method stores a non-reversible credential, so the "
+                                "signature is simulated. Adapter, proof and verification are still validated."})
+    else:
+        result = await asyncio.to_thread(auth_providers.authenticate, doc, lower_headers, raw_body)
+        if not result.ok:
+            steps.append({"key": "authentication", "label": "Authentication", "status": "failed", "detail": result.reason})
+            return {"ok": False, "steps": steps, "fea_id": None, "sample_event_type": None}
+        steps.append({"key": "authentication", "label": "Authentication", "status": "success",
+                      "detail": "Webhook signature verified"})
+
+    try:
+        event = get_adapter(doc.get("adapter", "generic")).normalize(payload, doc)
+    except AdapterError as e:
+        steps.append({"key": "proof", "label": "Proof generation", "status": "failed", "detail": f"normalize: {e}"})
+        return {"ok": False, "steps": steps, "fea_id": None, "sample_event_type": None}
+
+    request = map_to_request(event, doc)
+    from routes.fea_routes import _generate_one
+    try:
+        response = await _generate_one(db, request, doc["tenant_id"])
+    except Exception as e:
+        detail = getattr(e, "detail", None) or str(e)
+        steps.append({"key": "proof", "label": "Proof generation", "status": "failed", "detail": detail})
+        return {"ok": False, "steps": steps, "fea_id": None, "sample_event_type": event.event_type}
+
+    await _persist_event_descriptor(db, response.fea_id, event, doc, payload)
+    await _record_event(db, integration_id, event, "test", response.fea_id, None)
+    steps.append({"key": "proof", "label": "Proof generation", "status": "success", "detail": response.fea_id})
+
+    fea_doc = await db.feas.find_one({"fea_id": response.fea_id}, {"_id": 0})
+    valid = False
+    if fea_doc:
+        valid, _, _ = await verify_fea_with_registry(
+            fea_doc["fea_payload"], fea_doc["signature"], fea_doc.get("signature_version", "v1"))
+    steps.append({"key": "verification", "label": "Independent verification",
+                  "status": "success" if valid else "failed",
+                  "detail": "Signature verified against the key registry" if valid else "Verification failed"})
+
+    return {"ok": all(s["status"] in ("success", "skipped") for s in steps),
+            "fea_id": response.fea_id, "steps": steps, "sample_event_type": event.event_type}
