@@ -380,7 +380,11 @@ class JiraEventAdapter(EventAdapter):
             or f"{issue_key}-{payload.get('timestamp') or occurred_at}"
 
         user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
-        actor_ref = user.get("accountId") or user.get("name") or user.get("displayName")
+        # Privacy: use only stable, non-PII identifiers for the actor. A raw
+        # display name (PII) is never assigned here; it is committed hash-only
+        # via ``actor_hash`` below in every code path.
+        actor_ref = user.get("accountId") or user.get("name")
+        actor_hash_ref = actor_ref or user.get("displayName") or user.get("emailAddress")
         assignee = fields.get("assignee") if isinstance(fields.get("assignee"), dict) else {}
         assignee_ref = assignee.get("accountId") or assignee.get("displayName")
 
@@ -409,8 +413,8 @@ class JiraEventAdapter(EventAdapter):
         }
         if transition:
             attributes["status_from"], attributes["status_to"] = transition
-        if actor_ref:
-            attributes["actor_hash"] = _hash(actor_ref)
+        if actor_hash_ref:
+            attributes["actor_hash"] = _hash(actor_hash_ref)
         if assignee_ref:
             attributes["assignee_hash"] = _hash(assignee_ref)
         if comment.get("body"):
