@@ -48,6 +48,7 @@ const CATEGORY_ICONS = {
   "Source Control": GitBranch,
   Messaging: MessageSquare,
   "E-commerce": ShoppingCart,
+  "Issue Tracking": KanbanSquare,
   Event: Activity,
 };
 

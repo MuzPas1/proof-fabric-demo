@@ -16,8 +16,16 @@ Event Source taxonomy (how an event entered PFP):
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
-from typing import Dict, List, Optional
+from dataclasses import asdict, dataclass, field
+from typing import Dict, List, Optional, Tuple
+
+
+# Inbound authentication taxonomy — how PFP verifies an event a provider SENDS
+# in. The Proof Engine stays authentication-agnostic: the ingestion layer picks
+# the verifier from the integration's configured policy (see ``auth_providers``).
+INBOUND_AUTH_METHODS: List[str] = [
+    "api_key", "hmac_sha256", "hmac_sha1", "bearer", "oauth2", "basic", "mtls", "none",
+]
 
 
 @dataclass(frozen=True)
@@ -26,27 +34,35 @@ class Provider:
     label: str
     category: str
     default_event_source: str
+    # Generic inbound-auth policy: each provider DECLARES the inbound
+    # authentication methods it supports and its recommended default. This keeps
+    # authentication provider-declared (not hard-coded per integration) while the
+    # Proof Engine remains completely authentication-agnostic.
+    supported_auth_methods: Tuple[str, ...] = ("api_key", "hmac_sha256", "bearer")
+    default_auth_method: str = "hmac_sha256"
 
 
 # Ordered category list (stable for UI / documentation).
 CATEGORIES: List[str] = [
     "Payment", "Cross-border Payment", "Document", "Identity",
-    "Source Control", "Messaging", "E-commerce", "Event",
+    "Source Control", "Messaging", "E-commerce", "Issue Tracking", "Event",
 ]
 
 EVENT_SOURCES: List[str] = ["Webhook", "OAuth", "API", "Manual", "Scheduled"]
 
 _PROVIDERS: List[Provider] = [
-    Provider("cashfree", "Cashfree", "Payment", "Webhook"),
-    Provider("razorpay", "Razorpay", "Payment", "Webhook"),
-    Provider("stripe", "Stripe", "Payment", "Webhook"),
-    Provider("tazapay", "Tazapay", "Cross-border Payment", "Webhook"),
-    Provider("docusign", "DocuSign", "Document", "Webhook"),
-    Provider("github", "GitHub", "Source Control", "Webhook"),
-    Provider("slack", "Slack", "Messaging", "Webhook"),
-    Provider("shopify", "Shopify", "E-commerce", "Webhook"),
-    Provider("auth0", "Auth0", "Identity", "OAuth"),
-    Provider("generic", "Generic", "Event", "API"),
+    Provider("cashfree", "Cashfree", "Payment", "Webhook", ("hmac_sha256",), "hmac_sha256"),
+    Provider("razorpay", "Razorpay", "Payment", "Webhook", ("hmac_sha256",), "hmac_sha256"),
+    Provider("stripe", "Stripe", "Payment", "Webhook", ("hmac_sha256",), "hmac_sha256"),
+    Provider("tazapay", "Tazapay", "Cross-border Payment", "Webhook", ("hmac_sha256",), "hmac_sha256"),
+    Provider("docusign", "DocuSign", "Document", "Webhook", ("hmac_sha256",), "hmac_sha256"),
+    Provider("github", "GitHub", "Source Control", "Webhook", ("hmac_sha256",), "hmac_sha256"),
+    Provider("slack", "Slack", "Messaging", "Webhook", ("hmac_sha256",), "hmac_sha256"),
+    Provider("shopify", "Shopify", "E-commerce", "Webhook", ("hmac_sha256",), "hmac_sha256"),
+    Provider("jira", "Jira", "Issue Tracking", "Webhook",
+             ("api_key", "hmac_sha256", "bearer", "oauth2"), "api_key"),
+    Provider("auth0", "Auth0", "Identity", "OAuth", ("oauth2", "bearer"), "oauth2"),
+    Provider("generic", "Generic", "Event", "API", ("hmac_sha256", "api_key", "bearer"), "hmac_sha256"),
 ]
 
 _BY_ID: Dict[str, Provider] = {p.id: p for p in _PROVIDERS}

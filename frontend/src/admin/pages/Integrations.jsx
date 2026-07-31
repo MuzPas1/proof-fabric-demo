@@ -12,7 +12,7 @@ import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
-const ADAPTERS = ["generic"];
+const ADAPTERS = ["generic", "jira"];
 const AUTH_PROVIDERS = ["hmac_sha256", "hmac_sha1", "api_key", "bearer", "basic", "jwt", "oauth2", "mtls", "custom", "none"];
 const EXTERNAL_PROVIDERS = ["jwt", "oauth2", "mtls", "custom"]; // externally configured (no PFP-minted credential)
 const HMAC_PROVIDERS = ["hmac_sha256", "hmac_sha1"];
@@ -353,6 +353,7 @@ export default function Integrations() {
     setForm((f) => ({
       ...f,
       provider: id,
+      adapter: p.adapter || "generic",
       auth_provider: p.auth_provider || "hmac_sha256",
       auth_config: cfg,
       requires_secret: !!p.requires_secret,

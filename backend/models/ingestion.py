@@ -38,8 +38,10 @@ ALLOWED_AUTH_CONFIG_KEYS = {
     "required_scopes", "basic_username", "mtls_verify_header", "mtls_success_value",
     "mtls_fingerprint_header", "allowed_fingerprints", "mtls_subject_header", "allowed_subjects",
     "custom_handler",
+    # Workflow / issue-tracking provider config (non-secret; e.g. Jira Cloud)
+    "site_url", "cloud_id", "project_filter", "event_filter", "team_field",
 }
-ADAPTERS = {"generic"}
+ADAPTERS = {"generic", "jira"}
 
 
 # ---------------------------------------------------------------------------

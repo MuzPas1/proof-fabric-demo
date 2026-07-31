@@ -9,8 +9,9 @@ new code at all — only an ``field_map`` on the integration configuration.
 """
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from models.ingestion import CommonEvent
 
@@ -224,8 +225,238 @@ class GenericEventAdapter(EventAdapter):
         )
 
 
+def _hash(value) -> str:
+    """One-way commitment for sensitive values (emails, names, comment/attachment content)."""
+    raw = value if value not in (None, "") else "n/a"
+    return hashlib.sha256(str(raw).encode("utf-8")).hexdigest()
+
+
+def _epoch_ms_to_iso(ms) -> Optional[str]:
+    try:
+        ts = float(ms)
+    except (TypeError, ValueError):
+        return None
+    if ts > 1e12:      # epoch milliseconds
+        ts /= 1000.0
+    try:
+        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+class JiraEventAdapter(EventAdapter):
+    """Normalize Jira Cloud webhook events into the vendor-neutral CommonEvent.
+
+    Reference adapter for enterprise workflow / issue-tracking platforms. Only
+    non-sensitive workflow metadata (project, issue key, type, summary, status,
+    priority, labels, team, due date, timestamps, workflow transition) is
+    surfaced for display and cryptographically committed. Personal / sensitive
+    data (user emails, display names, comment bodies, attachment contents) is
+    reduced to one-way hashes so it never enters the descriptor or signed
+    payload in the clear. The Proof Engine is untouched.
+    """
+    name = "jira"
+
+    @staticmethod
+    def _changelog_fields(changelog) -> set:
+        fields = set()
+        if isinstance(changelog, dict):
+            for item in changelog.get("items") or []:
+                if isinstance(item, dict):
+                    f = (item.get("field") or item.get("fieldId") or "").lower()
+                    if f:
+                        fields.add(f)
+        return fields
+
+    def _map_event_type(self, webhook_event, issue_event_type, changelog) -> str:
+        we = (webhook_event or "").lower()
+        iet = (issue_event_type or "").lower()
+        if "comment" in we or iet in ("issue_commented", "issue_comment_edited"):
+            if "delet" in we:
+                return "comment_deleted"
+            if "updat" in we or "edit" in iet:
+                return "comment_updated"
+            return "comment_added"
+        if "attachment" in we:
+            return "attachment_added"
+        if "worklog" in we:
+            return "worklog_updated"
+        if we == "jira:issue_created" or iet == "issue_created":
+            return "issue_created"
+        if we == "jira:issue_deleted":
+            return "issue_deleted"
+        fields = self._changelog_fields(changelog)
+        if iet == "issue_assigned" or "assignee" in fields:
+            return "assignee_changed"
+        if iet in ("issue_resolved", "issue_closed") or "resolution" in fields:
+            return "issue_resolved"
+        if "attachment" in fields:
+            return "attachment_added"
+        if "status" in fields:
+            return "status_changed"
+        if we == "jira:issue_updated" or "updat" in we:
+            return "issue_updated"
+        return (we.replace("jira:", "").replace(":", "_") or "issue_event")[:64]
+
+    @staticmethod
+    def _status_transition(changelog):
+        if isinstance(changelog, dict):
+            for item in changelog.get("items") or []:
+                if isinstance(item, dict) and (item.get("field") or "").lower() == "status":
+                    return (item.get("fromString") or item.get("from"),
+                            item.get("toString") or item.get("to"))
+        return None
+
+    @staticmethod
+    def _attachment_refs(changelog):
+        refs = []
+        if isinstance(changelog, dict):
+            for item in changelog.get("items") or []:
+                if isinstance(item, dict) and (item.get("field") or "").lower() == "attachment":
+                    refs.append(str(item.get("toString") or item.get("to") or "attachment"))
+        return refs
+
+    @staticmethod
+    def _extract_team(fields: Dict[str, Any], integration: dict) -> Optional[str]:
+        cfg = integration.get("auth_config") or {}
+        candidates = [cfg.get("team_field"), "team", "customfield_10001"]
+        for key in candidates:
+            if not key:
+                continue
+            v = fields.get(key)
+            if isinstance(v, dict):
+                name = v.get("name") or v.get("value") or v.get("title")
+                if name:
+                    return str(name)
+            elif isinstance(v, str) and v.strip():
+                return v
+        return None
+
+    def normalize(self, payload: Dict[str, Any], integration: dict) -> CommonEvent:
+        if not isinstance(payload, dict):
+            raise AdapterError("Jira event payload must be a JSON object")
+
+        issue = payload.get("issue") if isinstance(payload.get("issue"), dict) else {}
+        fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
+        webhook_event = payload.get("webhookEvent") or payload.get("webhook_event")
+        issue_event_type = payload.get("issue_event_type_name")
+        changelog = payload.get("changelog")
+        comment = payload.get("comment") if isinstance(payload.get("comment"), dict) else {}
+
+        issue_key = issue.get("key") or _deep_find_key(payload, "key")
+        if not issue_key:
+            top = sorted(payload.keys())
+            raise AdapterError(
+                "Jira event must include issue.key (an issue-scoped webhook payload). "
+                f"Top-level keys={top}"
+            )
+
+        event_type = self._map_event_type(webhook_event, issue_event_type, changelog)
+        occurred_at = _epoch_ms_to_iso(payload.get("timestamp")) or fields.get("updated") or _now_iso()
+
+        project = fields.get("project") if isinstance(fields.get("project"), dict) else {}
+        issuetype = fields.get("issuetype") if isinstance(fields.get("issuetype"), dict) else {}
+        status_obj = fields.get("status") if isinstance(fields.get("status"), dict) else {}
+        priority_obj = fields.get("priority") if isinstance(fields.get("priority"), dict) else {}
+        labels = fields.get("labels") if isinstance(fields.get("labels"), list) else []
+
+        project_key = project.get("key")
+        project_name = project.get("name")
+        project_label = (f"{project_name} ({project_key})" if project_name and project_key
+                         else (project_name or project_key))
+        status_name = status_obj.get("name")
+        priority_name = priority_obj.get("name")
+        issue_type_name = issuetype.get("name")
+        summary = fields.get("summary")
+        labels_str = ", ".join(str(l) for l in labels) if labels else None
+        team = self._extract_team(fields, integration)
+        due_date = fields.get("duedate")
+        created = fields.get("created")
+        updated = fields.get("updated")
+        transition = self._status_transition(changelog)
+
+        event_id = (str(changelog.get("id")) if isinstance(changelog, dict) and changelog.get("id") else None) \
+            or (str(comment.get("id")) if comment.get("id") else None) \
+            or f"{issue_key}-{payload.get('timestamp') or occurred_at}"
+
+        user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+        actor_ref = user.get("accountId") or user.get("name") or user.get("displayName")
+        assignee = fields.get("assignee") if isinstance(fields.get("assignee"), dict) else {}
+        assignee_ref = assignee.get("accountId") or assignee.get("displayName")
+
+        # Signed metadata (committed via metadata_hash). Non-sensitive values in
+        # the clear + one-way hashes for everything sensitive.
+        attributes: Dict[str, Any] = {
+            "provider": "Jira",
+            "provider_category": "Issue Tracking",
+            "event_source": "Webhook",
+            "event_id": event_id,
+            "webhook_event": webhook_event,
+            "issue_event_type": issue_event_type,
+            "project_key": project_key,
+            "project_name": project_name,
+            "issue_key": issue_key,
+            "issue_type": issue_type_name,
+            "summary": summary,
+            "status": status_name,
+            "priority": priority_name,
+            "labels": labels_str,
+            "team": team,
+            "due_date": due_date,
+            "created_at": created,
+            "updated_at": updated,
+            "event_timestamp": occurred_at,
+        }
+        if transition:
+            attributes["status_from"], attributes["status_to"] = transition
+        if actor_ref:
+            attributes["actor_hash"] = _hash(actor_ref)
+        if assignee_ref:
+            attributes["assignee_hash"] = _hash(assignee_ref)
+        if comment.get("body"):
+            attributes["comment_hash"] = _hash(comment.get("body"))
+        att_refs = self._attachment_refs(changelog)
+        if att_refs:
+            attributes["attachment_hash"] = _hash("|".join(att_refs))
+        attributes = {k: v for k, v in attributes.items() if v not in (None, "")}
+
+        # Display attributes (Provider Summary; non-sensitive, never PII).
+        display = {
+            "Project": project_label,
+            "Issue Key": issue_key,
+            "Issue Type": issue_type_name,
+            "Summary": summary,
+            "Priority": priority_name,
+            "Labels": labels_str,
+            "Team": team,
+            "Due Date": due_date,
+        }
+        if transition:
+            display["Status Change"] = f"{transition[0]} → {transition[1]}"
+        display = {k: str(v)[:256] for k, v in display.items() if v not in (None, "")}
+
+        return CommonEvent(
+            event_type=event_type,
+            external_id=str(issue_key)[:256],
+            occurred_at=str(occurred_at),
+            source=integration.get("slug"),
+            actor=(str(actor_ref)[:256] if actor_ref else None),
+            subject=str(issue_key)[:256],
+            amount=0,
+            currency=(integration.get("default_currency") or "USD"),
+            attributes=attributes,
+            idempotency_key=f"{issue_key}:{event_type}:{event_id}"[:256],
+            provider="Jira",
+            provider_category="Issue Tracking",
+            event_source="Webhook",
+            status=(str(status_name)[:64] if status_name else None),
+            display_attributes=display,
+        )
+
+
 _ADAPTERS: Dict[str, EventAdapter] = {
     "generic": GenericEventAdapter(),
+    "jira": JiraEventAdapter(),
 }
 
 

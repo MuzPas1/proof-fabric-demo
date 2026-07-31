@@ -26,10 +26,11 @@ from typing import Dict, List, Optional
 class ProviderPreset:
     id: str
     label: str
-    category: str                       # payments | source-control | messaging | generic
+    category: str                       # payments | source-control | messaging | issue-tracking | generic
     description: str
     auth_provider: str
     auth_config: Dict[str, str] = field(default_factory=dict)
+    adapter: str = "generic"            # normalization adapter (generic | jira | ...)
     requires_secret: bool = False       # vendor signs with ITS own key (operator supplies)
     secret_label: Optional[str] = None
     secret_hint: Optional[str] = None
@@ -38,6 +39,8 @@ class ProviderPreset:
     replay_protection: bool = False
     docs_url: Optional[str] = None
     notes: Optional[str] = None
+    # Generic inbound-auth policy this provider supports (declared, not hard-coded).
+    supported_auth_methods: List[str] = field(default_factory=list)
 
     def to_public(self) -> dict:
         return asdict(self)
@@ -202,6 +205,37 @@ _PRESETS: List[ProviderPreset] = [
         require_timestamp=False,
         replay_protection=False,
         docs_url="https://shopify.dev/docs/apps/build/webhooks/subscribe/verify-webhooks",
+        supported_auth_methods=["hmac_sha256"],
+    ),
+    ProviderPreset(
+        id="jira",
+        label="Jira Cloud",
+        category="issue-tracking",
+        description="Jira Cloud issue lifecycle events (created, updated, assignee/status changes, "
+                    "comments, attachments, resolved). Recommended inbound auth is a shared-secret "
+                    "token that a Jira Automation 'Send web request' rule adds in the "
+                    "X-Automation-Webhook-Token header. Sensitive content (comment bodies, "
+                    "attachment contents, user emails/display names) is committed hash-only.",
+        auth_provider="api_key",
+        adapter="jira",
+        auth_config={
+            "token_header": "x-automation-webhook-token",
+            "site_url": "",
+            "cloud_id": "",
+            "project_filter": "",
+            "event_filter": "issue_created,issue_updated,assignee_changed,status_changed,"
+                            "comment_added,attachment_added,issue_resolved",
+        },
+        requires_secret=False,       # PFP mints the shared-secret token (shown once)
+        require_timestamp=False,
+        replay_protection=False,
+        notes="Manual webhook registration (initial): create a Jira Automation rule (or admin webhook) "
+              "that POSTs issue events to the inbound URL and adds header X-Automation-Webhook-Token "
+              "with the token PFP shows once at creation. Set the Jira Site URL, Cloud ID and optional "
+              "project/event filters below. Auto-provisioning via Atlassian OAuth 2.0 (3LO) is a "
+              "future enhancement layered on top of this ingestion foundation.",
+        docs_url="https://developer.atlassian.com/cloud/jira/platform/webhooks/",
+        supported_auth_methods=["api_key", "hmac_sha256", "bearer", "oauth2"],
     ),
 ]
 
