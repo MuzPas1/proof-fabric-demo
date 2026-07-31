@@ -60,7 +60,7 @@ _PROVIDERS: List[Provider] = [
     Provider("slack", "Slack", "Messaging", "Webhook", ("hmac_sha256",), "hmac_sha256"),
     Provider("shopify", "Shopify", "E-commerce", "Webhook", ("hmac_sha256",), "hmac_sha256"),
     Provider("jira", "Jira", "Issue Tracking", "Webhook",
-             ("api_key", "hmac_sha256", "bearer", "oauth2"), "api_key"),
+             ("hmac_sha256", "api_key", "bearer", "oauth2"), "hmac_sha256"),
     Provider("auth0", "Auth0", "Identity", "OAuth", ("oauth2", "bearer"), "oauth2"),
     Provider("generic", "Generic", "Event", "API", ("hmac_sha256", "api_key", "bearer"), "hmac_sha256"),
 ]

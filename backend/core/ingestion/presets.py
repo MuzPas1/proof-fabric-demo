@@ -212,30 +212,33 @@ _PRESETS: List[ProviderPreset] = [
         label="Jira Cloud",
         category="issue-tracking",
         description="Jira Cloud issue lifecycle events (created, updated, assignee/status changes, "
-                    "comments, attachments, resolved). Recommended inbound auth is a shared-secret "
-                    "token that a Jira Automation 'Send web request' rule adds in the "
-                    "X-Automation-Webhook-Token header. Sensitive content (comment bodies, "
-                    "attachment contents, user emails/display names) is committed hash-only.",
-        auth_provider="api_key",
+                    "comments, attachments, resolved). Jira Cloud signs every delivery with the "
+                    "webhook secret using HMAC-SHA256 over the raw body, sent as 'sha256=<hex>' in "
+                    "the X-Hub-Signature header. Sensitive content stays hash-only.",
+        auth_provider="hmac_sha256",
         adapter="jira",
         auth_config={
-            "token_header": "x-automation-webhook-token",
+            "signature_scheme": "plain",
+            "signature_header": "x-hub-signature",
+            "signature_prefix": "sha256=",
+            "signature_encoding": "hex",
             "site_url": "",
             "cloud_id": "",
             "project_filter": "",
             "event_filter": "issue_created,issue_updated,assignee_changed,status_changed,"
                             "comment_added,attachment_added,issue_resolved",
         },
-        requires_secret=False,       # PFP mints the shared-secret token (shown once)
-        require_timestamp=False,
-        replay_protection=False,
-        notes="Manual webhook registration (initial): create a Jira Automation rule (or admin webhook) "
-              "that POSTs issue events to the inbound URL and adds header X-Automation-Webhook-Token "
-              "with the token PFP shows once at creation. Set the Jira Site URL, Cloud ID and optional "
-              "project/event filters below. Auto-provisioning via Atlassian OAuth 2.0 (3LO) is a "
-              "future enhancement layered on top of this ingestion foundation.",
-        docs_url="https://developer.atlassian.com/cloud/jira/platform/webhooks/",
-        supported_auth_methods=["api_key", "hmac_sha256", "bearer", "oauth2"],
+        requires_secret=False,       # PFP mints a secret to paste into Jira, OR supply Jira's own
+        secret_label="Webhook Secret",
+        secret_hint="Paste the secret set on the Jira webhook, or leave blank to have PFP generate one.",
+        require_timestamp=False,     # Jira's X-Hub-Signature carries no timestamp
+        replay_protection=True,
+        notes="In Jira: System → WebHooks (or a REST/Connect webhook) → set a Secret and point the URL "
+              "at the inbound URL below. Jira signs with HMAC-SHA256 (X-Hub-Signature: sha256=<hex>) "
+              "over the raw body. Leave the secret blank here to have PFP generate one (shown once) to "
+              "paste into Jira. Auto-provisioning via Atlassian OAuth 2.0 (3LO) is a future enhancement.",
+        docs_url="https://developer.atlassian.com/cloud/jira/software/webhooks/",
+        supported_auth_methods=["hmac_sha256", "api_key", "bearer", "oauth2"],
     ),
 ]
 

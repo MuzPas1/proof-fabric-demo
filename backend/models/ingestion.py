@@ -129,6 +129,12 @@ class IntegrationConfig(BaseModel):
         # operators can confirm which credential an HMAC integration will use.
         d["has_hmac_secret"] = bool(self.hmac_secret)
         d["has_external_secret"] = bool(self.external_secret)
+        # True when ANY credential is stored (HMAC secret, external secret, API
+        # key / bearer token hash, or basic password hash) — lets the UI say
+        # "secret stored" instead of "no secret set" for token-based providers.
+        d["has_credential"] = bool(
+            self.hmac_secret or self.external_secret or self.token_hash or self.basic_password_hash
+        )
         d["signature_scheme"] = (self.auth_config or {}).get("signature_scheme") or "plain"
         return d
 

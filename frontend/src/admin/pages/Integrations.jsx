@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, Activity, Pencil, ShieldCheck, CheckCircle2, XCircle, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, Activity, Pencil, ShieldCheck, CheckCircle2, XCircle, ChevronDown, ChevronRight, KanbanSquare, CreditCard, FileSignature, GitBranch, MessageSquare, ShoppingCart, Boxes, Settings2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
@@ -35,6 +35,74 @@ const SCHEME_DEFAULTS = {
   docusign: { signature_scheme: "docusign", signature_header: "x-docusign-signature-1", signature_encoding: "base64" },
 };
 const isHmacProvider = (p) => p === "hmac" || HMAC_PROVIDERS.includes(p);
+
+// --- Simple-Mode provider presentation + dynamic connection forms -----------
+// Presentation only (icon + accent). Category/adapter/auth come from the backend
+// preset — the single source of truth — so the backend stays authoritative.
+const PROVIDER_META = {
+  jira: { Icon: KanbanSquare, tint: "text-blue-600 bg-blue-50 ring-blue-200" },
+  cashfree: { Icon: CreditCard, tint: "text-emerald-600 bg-emerald-50 ring-emerald-200" },
+  razorpay: { Icon: CreditCard, tint: "text-indigo-600 bg-indigo-50 ring-indigo-200" },
+  stripe: { Icon: CreditCard, tint: "text-violet-600 bg-violet-50 ring-violet-200" },
+  docusign: { Icon: FileSignature, tint: "text-amber-600 bg-amber-50 ring-amber-200" },
+  github: { Icon: GitBranch, tint: "text-slate-700 bg-slate-100 ring-slate-200" },
+  slack: { Icon: MessageSquare, tint: "text-fuchsia-600 bg-fuchsia-50 ring-fuchsia-200" },
+  shopify: { Icon: ShoppingCart, tint: "text-green-600 bg-green-50 ring-green-200" },
+  generic: { Icon: Boxes, tint: "text-slate-600 bg-slate-100 ring-slate-200" },
+};
+const providerMeta = (id) => PROVIDER_META[id] || { Icon: Boxes, tint: "text-slate-600 bg-slate-100 ring-slate-200" };
+
+// Friendly labels for the read-only Configuration Summary.
+const AUTH_METHOD_LABELS = {
+  hmac_sha256: "HMAC-SHA256 signature", hmac_sha1: "HMAC-SHA1 signature",
+  api_key: "API key / shared-secret header", bearer: "Bearer token", basic: "HTTP basic",
+  jwt: "JWT", oauth2: "OAuth 2.0 bearer", mtls: "Mutual TLS", custom: "Custom",
+  none: "None (unauthenticated)",
+};
+const SCHEME_LABELS = {
+  plain: "Plain (over raw body)", cashfree: "Cashfree", stripe: "Stripe",
+  slack: "Slack", docusign: "DocuSign Connect",
+};
+
+// Provider-specific connection fields shown in Simple Mode. Each maps either to
+// an ``auth_config`` key or to the top-level ``secret``. Everything else is
+// auto-configured from the preset. Unknown providers fall back to a single
+// secret field only when the preset requires one.
+const CONNECTION_FIELDS = {
+  jira: [
+    { key: "site_url", label: "Jira Site URL", placeholder: "https://your-domain.atlassian.net", target: "auth_config" },
+    { key: "cloud_id", label: "Cloud ID (optional)", placeholder: "e.g. 11223344-aaaa-…", target: "auth_config", optional: true },
+    { key: "secret", label: "Webhook Secret", type: "password", target: "secret", optional: true, full: true,
+      placeholder: "Leave blank to have PFP generate one",
+      help: "The secret you set on the Jira webhook. Jira signs each delivery with HMAC-SHA256 (X-Hub-Signature: sha256=…). Leave blank and PFP will generate a secret to paste into Jira." },
+    { key: "project_filter", label: "Project Filter (optional)", placeholder: "e.g. REL, OPS", target: "auth_config", optional: true },
+    { key: "event_filter", label: "Event Filter (optional)", placeholder: "issue_created, status_changed, …", target: "auth_config", optional: true },
+  ],
+  docusign: [{ key: "secret", label: "DocuSign Connect HMAC secret", type: "password", target: "secret", full: true, placeholder: "Settings → Connect → HMAC Security (secret key)" }],
+  stripe: [{ key: "secret", label: "Stripe webhook signing secret (whsec_…)", type: "password", target: "secret", full: true, placeholder: "whsec_…" }],
+  cashfree: [{ key: "secret", label: "Cashfree PG secret key", type: "password", target: "secret", full: true, placeholder: "Payments → Developers → Webhooks" }],
+  razorpay: [{ key: "secret", label: "Razorpay webhook secret", type: "password", target: "secret", full: true, placeholder: "Settings → Webhooks → Secret" }],
+  slack: [{ key: "secret", label: "Slack signing secret", type: "password", target: "secret", full: true, placeholder: "App → Basic Information → Signing Secret" }],
+  github: [{ key: "secret", label: "GitHub webhook secret", type: "password", target: "secret", full: true, placeholder: "Repo/Org → Settings → Webhooks → Secret" }],
+  shopify: [{ key: "secret", label: "Shopify webhook signing secret", type: "password", target: "secret", full: true, placeholder: "Settings → Notifications → Webhooks" }],
+  generic: [],
+};
+const connectionFields = (preset) => {
+  if (!preset) return [];
+  if (CONNECTION_FIELDS[preset.id]) return CONNECTION_FIELDS[preset.id];
+  return preset.requires_secret
+    ? [{ key: "secret", label: preset.secret_label || "Provider secret", type: "password", target: "secret", full: true, placeholder: preset.secret_hint || "stored redacted" }]
+    : [];
+};
+const slugify = (s) => String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63);
+
+const EMPTY_FORM = {
+  name: "", slug: "", slugTouched: false, adapter: "generic", auth_provider: "hmac_sha256",
+  default_currency: "USD", auth_config: "", secret: "", sig_scheme: "plain", provider: "",
+  requires_secret: false, secret_label: "Provider signing secret", secret_hint: "",
+  require_timestamp: false, timestamp_tolerance_seconds: 300, replay_protection: false,
+  connection: {},
+};
 
 // Renders the issued Proof Artifact for an inbound event: full FEA ID (canonical
 // proof identifier), a copy control, and an independent-verify action that opens
@@ -324,7 +392,8 @@ export default function Integrations() {
   const writable = canWrite(user?.role);
   const [items, setItems] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ name: "", slug: "", adapter: "generic", auth_provider: "hmac_sha256", default_currency: "USD", auth_config: "", secret: "", sig_scheme: "plain", provider: "generic", requires_secret: false, secret_label: "Provider signing secret", secret_hint: "", require_timestamp: false, timestamp_tolerance_seconds: 300, replay_protection: false });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [presets, setPresets] = useState([]);
   const [credential, setCredential] = useState(null);
   const [selected, setSelected] = useState(null);
@@ -350,8 +419,12 @@ export default function Integrations() {
   const applyPreset = (id) => {
     const p = presets.find((x) => x.id === id) || {};
     const cfg = p.auth_config && Object.keys(p.auth_config).length ? JSON.stringify(p.auth_config, null, 2) : "";
+    const scheme = (p.auth_config && p.auth_config.signature_scheme) || "plain";
     setForm((f) => ({
-      ...f,
+      ...EMPTY_FORM,
+      name: f.name,
+      slug: f.slugTouched ? f.slug : (f.name ? slugify(f.name) : ""),
+      slugTouched: f.slugTouched,
       provider: id,
       adapter: p.adapter || "generic",
       auth_provider: p.auth_provider || "hmac_sha256",
@@ -362,11 +435,21 @@ export default function Integrations() {
       require_timestamp: !!p.require_timestamp,
       timestamp_tolerance_seconds: p.timestamp_tolerance_seconds || 300,
       replay_protection: !!p.replay_protection,
-      secret: "",
-      sig_scheme: "plain",
+      sig_scheme: scheme,
     }));
+    setAdvancedOpen(false);
   };
   const activePreset = presets.find((x) => x.id === form.provider);
+  const connFields = connectionFields(activePreset);
+  // Signature scheme currently in effect (preset config, or the generic override).
+  const effectiveScheme = (() => {
+    try {
+      const cfg = form.auth_config.trim() ? JSON.parse(form.auth_config) : {};
+      return cfg.signature_scheme || (form.provider === "generic" ? form.sig_scheme : "plain");
+    } catch { return form.sig_scheme; }
+  })();
+
+  const setConn = (key, value) => setForm((f) => ({ ...f, connection: { ...f.connection, [key]: value } }));
 
   const create = async () => {
     setBusy(true); setCredential(null);
@@ -375,7 +458,17 @@ export default function Integrations() {
       try { auth_config = JSON.parse(form.auth_config); }
       catch { toast.error("Advanced auth config is not valid JSON"); setBusy(false); return; }
     }
-    if (HMAC_PROVIDERS.includes(form.auth_provider) && form.sig_scheme && form.sig_scheme !== "plain") {
+    // Overlay Simple-Mode connection fields onto the preset config.
+    let secret = "";
+    connFields.forEach((fld) => {
+      const v = (form.connection[fld.key] || "").trim();
+      if (!v) return;
+      if (fld.target === "secret") secret = v;
+      else auth_config[fld.key] = v;
+    });
+    if (!secret && form.secret.trim()) secret = form.secret.trim();
+    // Generic provider: apply the chosen signature scheme.
+    if (form.provider === "generic" && HMAC_PROVIDERS.includes(form.auth_provider) && form.sig_scheme && form.sig_scheme !== "plain") {
       auth_config.signature_scheme = form.sig_scheme;
     }
     const body = {
@@ -384,12 +477,12 @@ export default function Integrations() {
       require_timestamp: form.require_timestamp, replay_protection: form.replay_protection,
       timestamp_tolerance_seconds: form.timestamp_tolerance_seconds || 300,
     };
-    if (form.secret.trim()) body.secret = form.secret.trim();
+    if (secret) body.secret = secret;
     try {
       const r = await api.createIntegration(body);
-      if (r.credential) setCredential({ slug: r.slug, credential: r.credential, url: r.inbound_url });
-      toast.success(r.credential ? "Integration created" : `Integration created (${form.provider !== "generic" ? form.provider : "external"} auth)`);
-      setForm({ name: "", slug: "", adapter: "generic", auth_provider: "hmac_sha256", default_currency: "USD", auth_config: "", secret: "", sig_scheme: "plain", provider: "generic", requires_secret: false, secret_label: "Provider signing secret", secret_hint: "", require_timestamp: false, timestamp_tolerance_seconds: 300, replay_protection: false });
+      if (r.credential) setCredential({ slug: r.slug, credential: r.credential, url: r.inbound_url || `/api/ingest/${r.slug}`, provider: activePreset?.label || form.provider });
+      toast.success(r.credential ? "Integration created — secret generated" : "Integration created");
+      setForm(EMPTY_FORM); setAdvancedOpen(false);
       load();
     } catch (e) { toast.error(e?.response?.data?.detail || "Create failed"); }
     finally { setBusy(false); }
@@ -453,6 +546,7 @@ export default function Integrations() {
         timestamp_tolerance_seconds: full.timestamp_tolerance_seconds || 300,
         has_external_secret: !!full.has_external_secret,
         has_hmac_secret: !!full.has_hmac_secret,
+        has_credential: !!full.has_credential,
         auth_provider: full.auth_provider,
         signature_scheme: full.signature_scheme,
       });
@@ -498,138 +592,206 @@ export default function Integrations() {
         description="Configure external systems that submit verifiable business events for Proof Artifact generation." />
 
       {credential && (
-        <Panel title="Credential — shown once" className="mb-4">
-          <div className="p-4 space-y-2" data-testid="integration-credential">
-            <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-              Store this credential now — it cannot be retrieved again.
+        <Panel title="Webhook secret — copy it now" className="mb-4">
+          <div className="p-4 space-y-3" data-testid="integration-credential">
+            <div className="flex items-start gap-2 text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+              <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>
+                <b>Secret stored and active.</b> Shown only once — copy it now and paste it into{" "}
+                {credential.provider ? <b>{credential.provider}</b> : "your provider"}&rsquo;s webhook <b>Secret</b> field.
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <Mono>{credential.credential}</Mono>
-              <Button size="sm" variant="outline" className="h-7" onClick={() => copy(credential.credential)}><Copy className="h-3.5 w-3.5" /></Button>
+              <Button size="sm" variant="outline" className="h-7" onClick={() => copy(credential.credential)} data-testid="credential-copy-btn"><Copy className="h-3.5 w-3.5" /></Button>
             </div>
             <div className="text-xs text-slate-500">Inbound URL: <Mono>{credential.url}</Mono></div>
+            <div className="text-[11px] text-slate-400">
+              You won&rsquo;t be able to view this secret again. Use &ldquo;Rotate secret&rdquo; on the integration to generate a fresh one.
+            </div>
           </div>
         </Panel>
       )}
 
       {writable && (
-        <Panel title="New integration" className="mb-4">
-          <div className="p-4 grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <Label>Provider preset</Label>
-              <Select value={form.provider} onValueChange={applyPreset}>
-                <SelectTrigger className="mt-1" data-testid="integration-provider"><SelectValue placeholder="Select a provider" /></SelectTrigger>
-                <SelectContent>{presets.map((p) => <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>)}</SelectContent>
-              </Select>
-              {activePreset && form.provider !== "generic" && (
-                <div className="mt-1.5 text-xs text-slate-500" data-testid="integration-provider-note">
-                  {activePreset.description}
-                  {activePreset.docs_url && (
-                    <> · <a href={activePreset.docs_url} target="_blank" rel="noreferrer" className="text-blue-600 underline">Vendor signing spec</a></>
-                  )}
-                </div>
-              )}
-            </div>
+        <Panel title="Connect a provider" className="mb-4">
+          <div className="p-4 space-y-5" data-testid="integration-connect">
+            {/* Step 1 — choose the system to connect */}
             <div>
-              <Label>Name</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Acme ERP" className="mt-1" data-testid="integration-name" />
+              <Label>Choose the system you want to connect</Label>
+              <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2" data-testid="integration-provider">
+                {presets.map((p) => {
+                  const meta = providerMeta(p.id);
+                  const Icon = meta.Icon;
+                  const selected = form.provider === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => applyPreset(p.id)}
+                      data-testid={`provider-card-${p.id}`}
+                      aria-pressed={selected}
+                      className={`text-left rounded-lg border p-3 transition-colors ${selected ? "border-slate-900 ring-1 ring-slate-900 bg-slate-50" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50/60"}`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className={`inline-flex h-8 w-8 items-center justify-center rounded-md ring-1 ${meta.tint}`}>
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-slate-900 truncate">{p.label}</div>
+                          <div className="text-[11px] text-slate-500 capitalize truncate">{String(p.category || "").replace(/-/g, " ")}</div>
+                        </div>
+                        {selected && <CheckCircle2 className="ml-auto h-4 w-4 text-slate-900 shrink-0" />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {!form.provider && <div className="mt-2 text-xs text-slate-400">Pick a provider to see its recommended, ready-to-use configuration.</div>}
             </div>
-            <div>
-              <Label>Slug (used in the inbound URL)</Label>
-              <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })}
-                placeholder="acme-erp" className="mt-1" data-testid="integration-slug" />
-            </div>
-            <div>
-              <Label>Adapter</Label>
-              <Select value={form.adapter} onValueChange={(v) => setForm({ ...form, adapter: v })}>
-                <SelectTrigger className="mt-1" data-testid="integration-adapter"><SelectValue /></SelectTrigger>
-                <SelectContent>{ADAPTERS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            {form.provider === "generic" ? (<>
-            <div>
-              <Label>Auth provider</Label>
-              <Select value={form.auth_provider} onValueChange={(v) => setForm({ ...form, auth_provider: v })}>
-                <SelectTrigger className="mt-1" data-testid="integration-auth"><SelectValue /></SelectTrigger>
-                <SelectContent>{AUTH_PROVIDERS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            {HMAC_PROVIDERS.includes(form.auth_provider) && (
+
+            {activePreset && (
               <>
-                <div>
-                  <Label>Signature scheme</Label>
-                  <Select value={form.sig_scheme} onValueChange={(v) => setForm({ ...form, sig_scheme: v })}>
-                    <SelectTrigger className="mt-1" data-testid="integration-sig-scheme"><SelectValue /></SelectTrigger>
-                    <SelectContent>{SIGNATURE_SCHEMES.map((s) => <SelectItem key={s.v} value={s.v}>{s.label}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                {form.sig_scheme !== "plain" && (
-                  <div>
-                    <Label>Provider signing secret</Label>
-                    <Input type="password" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })}
-                      placeholder="e.g. Cashfree PG secret key" className="mt-1" data-testid="integration-hmac-secret" />
+                {activePreset.description && (
+                  <div className="text-xs text-slate-500" data-testid="integration-provider-note">
+                    {activePreset.description}
+                    {activePreset.docs_url && (
+                      <> · <a href={activePreset.docs_url} target="_blank" rel="noreferrer" className="text-blue-600 underline">Vendor webhook spec</a></>
+                    )}
                   </div>
                 )}
+
+                {/* Step 2 — connection details only */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Name</Label>
+                    <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value, slug: form.slugTouched ? form.slug : slugify(e.target.value) })}
+                      placeholder={`${activePreset.label} — Production`} className="mt-1" data-testid="integration-name" />
+                  </div>
+                  <div>
+                    <Label>Slug (used in the inbound URL)</Label>
+                    <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value, slugTouched: true })}
+                      placeholder="acme-jira" className="mt-1" data-testid="integration-slug" />
+                  </div>
+                  {connFields.map((fld) => (
+                    <div key={fld.key} className={fld.full || fld.help ? "col-span-2" : ""}>
+                      <Label>{fld.label}</Label>
+                      <Input type={fld.type || "text"} value={form.connection[fld.key] || ""}
+                        onChange={(e) => setConn(fld.key, e.target.value)}
+                        placeholder={fld.placeholder} className="mt-1"
+                        autoComplete={fld.type === "password" ? "new-password" : "off"}
+                        data-testid={`integration-conn-${fld.key}`} />
+                      {fld.help && <div className="text-[11px] text-slate-500 mt-1">{fld.help}</div>}
+                    </div>
+                  ))}
+                  {connFields.length === 0 && (
+                    <div className="col-span-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded px-3 py-2">
+                      No connection secret to enter — PFP will generate a signing secret and show it once after you create this integration.
+                    </div>
+                  )}
+                </div>
+
+                {/* Advanced configuration — collapsed by default */}
+                <div className="border-t border-slate-100 pt-3">
+                  <button type="button" onClick={() => setAdvancedOpen((o) => !o)} data-testid="integration-advanced-toggle"
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900">
+                    <Settings2 className="h-4 w-4" /> Advanced configuration
+                    <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  <div className="text-[11px] text-slate-400 mt-1">Recommended defaults are already applied. Only change these if you need to.</div>
+                  {advancedOpen && (
+                    <div className="mt-3 grid grid-cols-2 gap-3" data-testid="integration-advanced">
+                      <div>
+                        <Label>Adapter</Label>
+                        <Select value={form.adapter} onValueChange={(v) => setForm({ ...form, adapter: v })}>
+                          <SelectTrigger className="mt-1" data-testid="integration-adapter"><SelectValue /></SelectTrigger>
+                          <SelectContent>{ADAPTERS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Authentication provider</Label>
+                        <Select value={form.auth_provider} onValueChange={(v) => setForm({ ...form, auth_provider: v })}>
+                          <SelectTrigger className="mt-1" data-testid="integration-auth"><SelectValue /></SelectTrigger>
+                          <SelectContent>{AUTH_PROVIDERS.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                      {isHmacProvider(form.auth_provider) && (
+                        <div>
+                          <Label>Signature scheme</Label>
+                          <Select value={form.sig_scheme} onValueChange={(v) => setForm({ ...form, sig_scheme: v })}>
+                            <SelectTrigger className="mt-1" data-testid="integration-sig-scheme"><SelectValue /></SelectTrigger>
+                            <SelectContent>{SIGNATURE_SCHEMES.map((s) => <SelectItem key={s.v} value={s.v}>{s.label}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      <div>
+                        <Label>Default currency</Label>
+                        <Input value={form.default_currency} onChange={(e) => setForm({ ...form, default_currency: e.target.value.toUpperCase().slice(0, 3) })}
+                          className="mt-1" data-testid="integration-currency" />
+                      </div>
+                      <div className="col-span-2">
+                        <Label>Auth config (JSON — review &amp; override)</Label>
+                        <textarea value={form.auth_config} onChange={(e) => setForm({ ...form, auth_config: e.target.value })}
+                          rows={5} className="mt-1 w-full font-mono text-xs border border-slate-200 rounded p-2" data-testid="integration-auth-config" />
+                      </div>
+                      <div>
+                        <Label>Provider secret (optional override)</Label>
+                        <Input type="password" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })}
+                          placeholder="Overrides the connection secret above" className="mt-1" data-testid="integration-secret" autoComplete="new-password" />
+                      </div>
+                      <div className="col-span-2 flex items-center gap-6 flex-wrap">
+                        <label className="flex items-center gap-2 text-sm text-slate-600">
+                          <input type="checkbox" checked={form.require_timestamp} data-testid="integration-require-timestamp"
+                            onChange={(e) => setForm({ ...form, require_timestamp: e.target.checked })} /> Timestamp validation
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-slate-600">
+                          <input type="checkbox" checked={form.replay_protection} data-testid="integration-replay-protection"
+                            onChange={(e) => setForm({ ...form, replay_protection: e.target.checked })} /> Replay protection
+                        </label>
+                        {form.require_timestamp && (
+                          <label className="flex items-center gap-2 text-sm text-slate-600">
+                            Tolerance (s)
+                            <Input type="number" min={1} value={form.timestamp_tolerance_seconds}
+                              onChange={(e) => setForm({ ...form, timestamp_tolerance_seconds: parseInt(e.target.value || "300", 10) })}
+                              className="h-8 w-24" data-testid="integration-timestamp-tolerance" />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Configuration summary — read-only confidence check */}
+                <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3" data-testid="integration-config-summary">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Configuration summary</div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1.5 text-xs">
+                    <div><span className="text-slate-500">Provider: </span><span className="font-medium text-slate-800">{activePreset.label}</span></div>
+                    <div><span className="text-slate-500">Category: </span><span className="font-medium text-slate-800 capitalize">{String(activePreset.category || "").replace(/-/g, " ")}</span></div>
+                    <div><span className="text-slate-500">Authentication: </span><span className="font-medium text-slate-800">{AUTH_METHOD_LABELS[form.auth_provider] || form.auth_provider}</span></div>
+                    {isHmacProvider(form.auth_provider) && (
+                      <div><span className="text-slate-500">Signature scheme: </span><span className="font-medium text-slate-800">{SCHEME_LABELS[effectiveScheme] || effectiveScheme}</span></div>
+                    )}
+                    <div><span className="text-slate-500">Adapter: </span><span className="font-medium text-slate-800">{form.adapter}</span></div>
+                  </div>
+                  <div className="mt-2.5 flex items-center gap-5 text-xs border-t border-slate-200 pt-2">
+                    <span className="text-slate-500">Security</span>
+                    <span className={`inline-flex items-center gap-1 ${form.replay_protection ? "text-emerald-700" : "text-slate-400"}`} data-testid="summary-replay">
+                      {form.replay_protection ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />} Replay protection
+                    </span>
+                    <span className={`inline-flex items-center gap-1 ${form.require_timestamp ? "text-emerald-700" : "text-slate-400"}`} data-testid="summary-timestamp">
+                      {form.require_timestamp ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />} Timestamp validation
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button onClick={create} disabled={busy || !form.name.trim() || !form.slug.trim()}
+                    className="bg-slate-900 hover:bg-slate-800" data-testid="integration-create">
+                    {busy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Plus className="h-4 w-4 mr-1.5" />} Create integration
+                  </Button>
+                </div>
               </>
             )}
-            {EXTERNAL_PROVIDERS.includes(form.auth_provider) && (
-              <div className="col-span-2 grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Advanced auth config (JSON)</Label>
-                  <textarea value={form.auth_config} onChange={(e) => setForm({ ...form, auth_config: e.target.value })}
-                    rows={4} placeholder='{"jwks_url":"https://idp/.well-known/jwks.json","issuer":"...","audience":"..."}'
-                    className="mt-1 w-full font-mono text-xs border border-slate-200 rounded p-2" data-testid="integration-auth-config" />
-                </div>
-                <div>
-                  <Label>Provider secret (optional — JWT HS / OAuth client secret)</Label>
-                  <Input type="password" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })}
-                    placeholder="stored redacted" className="mt-1" data-testid="integration-secret" />
-                </div>
-              </div>
-            )}
-            </>) : (<>
-            <div>
-              <Label>Auth provider (recommended)</Label>
-              <Input value={form.auth_provider} disabled className="mt-1 font-mono text-xs" data-testid="integration-auth-readonly" />
-            </div>
-            {form.requires_secret && (
-              <div>
-                <Label>{form.secret_label}</Label>
-                <Input type="password" value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })}
-                  placeholder={form.secret_hint || "stored redacted"} className="mt-1" data-testid="integration-hmac-secret" />
-              </div>
-            )}
-            <div className="col-span-2">
-              <Label>Recommended auth config (JSON — review &amp; override)</Label>
-              <textarea value={form.auth_config} onChange={(e) => setForm({ ...form, auth_config: e.target.value })}
-                rows={5} className="mt-1 w-full font-mono text-xs border border-slate-200 rounded p-2" data-testid="integration-auth-config" />
-            </div>
-            </>)}
-            <div className="col-span-2 flex items-center gap-6">
-              <label className="flex items-center gap-2 text-sm text-slate-600">
-                <input type="checkbox" checked={form.require_timestamp} data-testid="integration-require-timestamp"
-                  onChange={(e) => setForm({ ...form, require_timestamp: e.target.checked })} /> Require timestamp
-              </label>
-              <label className="flex items-center gap-2 text-sm text-slate-600">
-                <input type="checkbox" checked={form.replay_protection} data-testid="integration-replay-protection"
-                  onChange={(e) => setForm({ ...form, replay_protection: e.target.checked })} /> Replay protection
-              </label>
-              {form.require_timestamp && (
-                <label className="flex items-center gap-2 text-sm text-slate-600">
-                  Tolerance (s)
-                  <Input type="number" min={1} value={form.timestamp_tolerance_seconds}
-                    onChange={(e) => setForm({ ...form, timestamp_tolerance_seconds: parseInt(e.target.value || "300", 10) })}
-                    className="h-8 w-24" data-testid="integration-timestamp-tolerance" />
-                </label>
-              )}
-            </div>
-            <div className="col-span-2 flex justify-end">
-              <Button onClick={create} disabled={busy || !form.name.trim() || !form.slug.trim()}
-                className="bg-slate-900 hover:bg-slate-800" data-testid="integration-create">
-                {busy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Plus className="h-4 w-4 mr-1.5" />} Create integration
-              </Button>
-            </div>
           </div>
         </Panel>
       )}
@@ -741,17 +903,24 @@ export default function Integrations() {
                   className="mt-1" data-testid="edit-description" />
               </div>
               <div>
-                <Label>
-                  Replace external secret{" "}
-                  <span className={editForm.has_external_secret ? "text-emerald-600" : "text-amber-600"}>
-                    {editForm.has_external_secret ? "(a secret is currently set)" : (editForm.has_hmac_secret ? "(uses a PFP-minted secret)" : "(no secret set)")}
-                  </span>
+                <Label className="flex items-center gap-1.5">
+                  {editForm.has_credential ? "Replace secret" : "Set secret"}{" "}
+                  {editForm.has_external_secret ? (
+                    <span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" /> Secret stored (shown only once at creation)</span>
+                  ) : editForm.has_hmac_secret ? (
+                    <span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" /> PFP-generated secret stored (shown only once)</span>
+                  ) : editForm.has_credential ? (
+                    <span className="inline-flex items-center gap-1 text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" /> Credential stored (shown only once)</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-amber-600"><XCircle className="h-3.5 w-3.5" /> No secret set</span>
+                  )}
                 </Label>
                 <Input type="password" value={editForm.secret} onChange={(e) => setEditForm({ ...editForm, secret: e.target.value })}
-                  placeholder={editForm.has_external_secret ? "Enter new secret to replace the current one" : "Enter external signing secret"}
+                  placeholder={editForm.has_credential ? "Enter a new secret to replace the current one" : "Enter a signing secret"}
                   className="mt-1" data-testid="edit-secret" autoComplete="new-password" />
                 <div className="text-xs text-slate-500 mt-1">
-                  For security the current secret is never shown. Leave blank to keep it unchanged.
+                  For security the current secret is never shown. Leave blank to keep it unchanged
+                  {editForm.has_credential ? ", or use “Rotate secret” on the integration to generate a fresh one." : "."}
                 </div>
               </div>
               {isHmacProvider(editForm.auth_provider) && (
