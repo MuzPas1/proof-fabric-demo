@@ -600,6 +600,7 @@ async def simulate_connection(db, integration_id: str, tenant_id: Optional[str])
         return {"ok": False, "steps": steps, "fea_id": None, "sample_event_type": event.event_type}
 
     await _persist_event_descriptor(db, response.fea_id, event, doc, payload)
+    await db.feas.update_one({"fea_id": response.fea_id}, {"$set": {"simulated": True}})
     await _record_event(db, integration_id, event, "test", response.fea_id, None)
     steps.append({"key": "proof", "label": "Proof generation", "status": "success", "detail": response.fea_id})
 
@@ -613,4 +614,5 @@ async def simulate_connection(db, integration_id: str, tenant_id: Optional[str])
                   "detail": "Signature verified against the key registry" if valid else "Verification failed"})
 
     return {"ok": all(s["status"] in ("success", "skipped") for s in steps),
-            "fea_id": response.fea_id, "steps": steps, "sample_event_type": event.event_type}
+            "fea_id": response.fea_id, "steps": steps, "sample_event_type": event.event_type,
+            "tenant_id": doc.get("tenant_id")}

@@ -232,9 +232,11 @@ async def simulate_integration(
     except ingestion_service.IngestionError as e:
         raise HTTPException(e.status_code, str(e))
     await audit_service.record_audit(
-        _db(), "integration.simulated", actor=user.email, tenant_id="", target=result.get("fea_id"),
+        _db(), "integration.simulated", actor=user.email, tenant_id=result.get("tenant_id") or "",
+        target=result.get("fea_id"),
         metadata={"integration_id": integration_id, "ok": result.get("ok")},
     )
+    result.pop("tenant_id", None)
     return result
 
 

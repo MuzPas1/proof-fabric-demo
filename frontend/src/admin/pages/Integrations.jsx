@@ -565,7 +565,10 @@ export default function Integrations() {
       const r = await api.simulateIntegration(it.integration_id);
       if (selected?.integration_id === it.integration_id) setSimResult(r);
       if (r.ok) toast.success("Connection validated — sample proof generated");
-      else toast.error("Validation failed — open the integration to see which step failed");
+      else {
+        const failed = (r.steps || []).find((s) => s.status === "failed");
+        toast.error(failed ? `Validation failed at ${failed.label}: ${failed.detail || ""}` : "Validation failed");
+      }
       if (selected?.integration_id === it.integration_id) loadStatsEvents(it);
     } catch (e) { toast.error(e?.response?.data?.detail || "Validation failed"); }
     finally { setSimBusy(false); }
