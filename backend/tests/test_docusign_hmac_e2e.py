@@ -20,7 +20,7 @@ import uuid
 import requests
 import pytest
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://proof-fabric-api-1.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://provider-agnostic-1.preview.emergentagent.com').rstrip('/')
 ADMIN_EMAIL = 'admin@pfprotocol.com'
 ADMIN_PASSWORD = 'PfpAdmin!6WJb8Y0_8IV3ci2jIPG23DsT'
 
