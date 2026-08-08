@@ -200,3 +200,44 @@ The live catalog is served at `GET /api/admin/tarabut/catalog`.
 - Support Saudi region (`api.sau.sandbox.tarabutgateway.io`) via the existing
   `REGIONS` map and a per-integration region selector.
 - Auto-fetch and cache the JWKS with rotation once the endpoint is confirmed.
+
+---
+
+## 10. Completing the Connect consent (manual, human-in-the-loop) + live data
+
+Retrieving real Accounts/Balances/Transactions requires an authorised bank
+consent. The Connect journey is an **interactive browser flow** (single-use,
+short-lived session) and cannot be completed headlessly — a human must authorise
+the bank. Steps:
+
+1. **Generate a Connect link** (mints an `intent_created` proof too):
+   `POST /api/admin/tarabut/connect/intent`
+   `{ "user": {"customerUserId":"<your-user-id>","email":"a@b.com","firstName":"John","lastName":"Snow"},
+      "provider_id":"BLUE", "redirect_url":"http://localhost:3000/callback" }`
+   → response `tarabut.connectUrl`.
+2. **Open `connectUrl` in a browser immediately** (the session expires quickly).
+3. On **“Choose your bank”**, pick any bank — the sandbox routes to the demo
+   **Blue Bank**.
+4. Complete the Blue Bank demo authentication and **grant** the requested
+   permissions (accounts, balances, transactions).
+5. You are redirected to the `redirect_url`. The consent is now bound to your
+   `customerUserId` on Tarabut’s side.
+6. **Retrieve + prove everything in one call** (uses the SAME `customerUserId`):
+   `POST /api/admin/tarabut/account-data { "customer_user_id":"<your-user-id>" }`
+   → returns `accounts[]`, `balances[]`, `transactions[]`, each with a `fea_id`.
+   Before consent it returns `{account_count:0, consent_required:true}`.
+7. Granular alternatives: `POST /accounts`, `POST /balances {account_id,customer_user_id}`,
+   `POST /transactions {account_id,customer_user_id,max_transactions}`.
+8. **Verify** any artifact: `GET /api/fea/public/{fea_id}` → `valid:true`. PII
+   (IBAN, masked PAN, account holder) is committed **hash-only** and never
+   appears in the artifact.
+
+### Portal configuration required
+- **Redirect URI:** register the `redirect_url` you pass (e.g.
+  `http://localhost:3000/callback`) in the Tarabut Dev Portal → App Settings.
+  (Confirmed working — Create Intent succeeds with it.)
+- **Payment callback/webhook:** for inbound payment webhooks, set the callback to
+  `https://<pfp-host>/api/ingest/<tarabut-slug>` and provide the RS256 public
+  key/JWKS via `POST /api/admin/tarabut/webhook-key` (or `auth_config`).
+- **JWKS/public key:** only needed for inbound payment-webhook verification, not
+  for outbound AIS calls.
