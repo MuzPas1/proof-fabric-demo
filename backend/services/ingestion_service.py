@@ -482,6 +482,26 @@ def _sample_payload(doc: dict) -> dict:
     """
     adapter = doc.get("adapter", "generic")
     uniq = secrets.token_hex(3)
+    if adapter == "tarabut":
+        return {
+            "tarabutEventType": "payment_completed",
+            "externalId": f"SIMPAY{uniq}",
+            "occurredAt": _sample_iso(1),
+            "status": "COMPLETED",
+            "amount": "10.95",
+            "currency": "BHD",
+            "providerId": "BLUE",
+            "eventSource": "Webhook",
+            "attributes": {
+                "Bank": "Blue Bank (Sandbox)",
+                "Merchant Reference": f"ORD-{uniq}",
+                "Customer Reference": f"CUST-{uniq}",
+            },
+            "sensitive": {
+                "payerToken": f"payer-{uniq}",
+                "destinationAccount": "BHD1",
+            },
+        }
     if adapter == "jira":
         return {
             "timestamp": int(_time.time() * 1000),

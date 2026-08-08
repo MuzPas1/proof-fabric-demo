@@ -97,10 +97,12 @@ from routes.evaluation_routes import router as evaluation_router
 from routes.ingestion_routes import router as ingestion_router
 from routes.ingestion_admin_routes import router as ingestion_admin_router
 from routes.auth0_routes import router as auth0_router
+from routes.tarabut_routes import router as tarabut_router
 
 for r in (fea_router, public_router, demo_router, auth_router, admin_router,
           webhook_router, resources_router, evaluation_router,
-          ingestion_router, ingestion_admin_router, auth0_router):
+          ingestion_router, ingestion_admin_router, auth0_router,
+          tarabut_router):
     app.include_router(r, prefix="/api")
 
 # Developer assets (docs, OpenAPI, Postman, SDKs) are served through the

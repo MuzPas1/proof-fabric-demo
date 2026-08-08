@@ -24,7 +24,7 @@ from typing import Dict, List, Optional, Tuple
 # in. The Proof Engine stays authentication-agnostic: the ingestion layer picks
 # the verifier from the integration's configured policy (see ``auth_providers``).
 INBOUND_AUTH_METHODS: List[str] = [
-    "api_key", "hmac_sha256", "hmac_sha1", "bearer", "oauth2", "basic", "mtls", "none",
+    "api_key", "hmac_sha256", "hmac_sha1", "rsa_sha256", "bearer", "oauth2", "basic", "mtls", "none",
 ]
 
 # Human-readable label for the inbound authentication mechanism actually used to
@@ -34,6 +34,7 @@ AUTH_METHOD_LABELS: Dict[str, str] = {
     "hmac": "HMAC Signature",
     "hmac_sha256": "HMAC Signature",
     "hmac_sha1": "HMAC Signature",
+    "rsa_sha256": "RSA Digital Signature (RS256)",
     "api_key": "API Key",
     "bearer": "Bearer Token",
     "jwt": "JWT Validation",
@@ -69,7 +70,7 @@ class Provider:
 
 # Ordered category list (stable for UI / documentation).
 CATEGORIES: List[str] = [
-    "Payment", "Cross-border Payment", "Document", "Identity",
+    "Payment", "Cross-border Payment", "Open Banking", "Document", "Identity",
     "Source Control", "Messaging", "E-commerce", "Issue Tracking", "Event",
 ]
 
@@ -80,6 +81,8 @@ _PROVIDERS: List[Provider] = [
     Provider("razorpay", "Razorpay", "Payment", "Webhook", ("hmac_sha256",), "hmac_sha256"),
     Provider("stripe", "Stripe", "Payment", "Webhook", ("hmac_sha256",), "hmac_sha256"),
     Provider("tazapay", "Tazapay", "Cross-border Payment", "Webhook", ("hmac_sha256",), "hmac_sha256"),
+    Provider("tarabut", "Tarabut", "Open Banking", "Webhook",
+             ("rsa_sha256", "hmac_sha256"), "rsa_sha256"),
     Provider("docusign", "DocuSign", "Document", "Webhook", ("hmac_sha256",), "hmac_sha256"),
     Provider("github", "GitHub", "Source Control", "Webhook", ("hmac_sha256",), "hmac_sha256"),
     Provider("slack", "Slack", "Messaging", "Webhook", ("hmac_sha256",), "hmac_sha256"),

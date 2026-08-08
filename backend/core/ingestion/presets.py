@@ -240,6 +240,45 @@ _PRESETS: List[ProviderPreset] = [
         docs_url="https://developer.atlassian.com/cloud/jira/software/webhooks/",
         supported_auth_methods=["hmac_sha256", "api_key", "bearer", "oauth2"],
     ),
+    ProviderPreset(
+        id="tarabut",
+        label="Tarabut Gateway (Open Banking)",
+        category="payments",
+        description="Tarabut Gateway Open Banking events (payment status changes, consent "
+                    "lifecycle, account linking, balances, transactions, regular payments, "
+                    "income verification, categorisation). Inbound payment webhooks are digitally "
+                    "signed with RS256 (SHA256withRSA): a Base64 RSA signature is sent in the "
+                    "x-signature header with the key id in x-signature-keyId, verified against "
+                    "Tarabut's public key (PEM or JWKS). Sensitive data (IBAN, PAN, account "
+                    "holder, payer token) stays hash-only.",
+        auth_provider="rsa_sha256",
+        adapter="tarabut",
+        auth_config={
+            "signature_scheme": "rsa_sha256",
+            "signature_header": "x-signature",
+            "signature_keyid_header": "x-signature-keyid",
+            "signature_encoding": "base64",
+            "jwks_url": "",
+            "accept_unverified": "false",
+            "tarabut_region": "bahrain",
+        },
+        requires_secret=False,     # RSA public key / JWKS is verification material, not a secret
+        secret_label="Tarabut RS256 public key (PEM)",
+        secret_hint="Paste Tarabut's RS256 public key (PEM) into auth_config.public_key, add a "
+                    "{kid: PEM} map in auth_config.rsa_public_keys, or set auth_config.jwks_url. "
+                    "Set accept_unverified=true to onboard before the key is available.",
+        require_timestamp=False,
+        replay_protection=True,
+        notes="Additive, isolated Open Banking provider. Inbound payment webhooks mint one Proof "
+              "Artifact per status change through the existing proof pipeline. Outbound OAuth2 API "
+              "events (Connect/Consent/Accounts/Transactions/Regular Payments/Payments/Income "
+              "Verification/Categorisation) are proved via the Tarabut service once sandbox "
+              "credentials (TARABUT_CLIENT_ID/SECRET) are configured. Region: Bahrain "
+              "(api.sandbox.tarabutgateway.io). Point the Tarabut payment callback/webhook URL at "
+              "the inbound URL below.",
+        docs_url="https://docs.tarabut.com/",
+        supported_auth_methods=["rsa_sha256", "hmac_sha256"],
+    ),
 ]
 
 _BY_ID: Dict[str, ProviderPreset] = {p.id: p for p in _PRESETS}

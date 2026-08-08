@@ -576,6 +576,139 @@ class OAuth2Provider(InboundAuthProvider):
         return AuthResult(True, replay_key=data.get("jti"), principal=data.get("client_id") or data.get("sub"))
 
 
+class RsaSha256Provider(InboundAuthProvider):
+    """RS256 (SHA256withRSA) detached-signature verification over the RAW body.
+
+    Designed for Open Banking providers (e.g. Tarabut Gateway) that digitally
+    sign webhook deliveries with public-key cryptography: a Base64 RSA signature
+    is sent in a header (default ``x-signature``) with a key identifier in
+    ``x-signature-keyId``. Verification uses the EXACT raw request bytes (never a
+    reserialized body) and RSA PKCS#1 v1.5 with SHA-256 — never PSS, never a
+    caller-controlled algorithm.
+
+    Verification material is operator-supplied and fully configurable (no code
+    change required to add/rotate keys):
+      - ``auth_config.rsa_public_keys``  : {kid: PEM} (dict or JSON string)
+      - ``auth_config.public_key``       : a single PEM (used for any/only kid)
+      - ``auth_config.jwks_url``         : remote JWKS (RSA / RS256 only)
+      - ``auth_config.signature_header`` : default ``x-signature``
+      - ``auth_config.signature_keyid_header`` : default ``x-signature-keyid``
+      - ``auth_config.accept_unverified``: when truthy AND no key is configured,
+        the event is ACCEPTED but flagged (migration mode) so onboarding can
+        proceed before the public key is available. Never accepts an INVALID
+        signature — only the "no key configured yet" case.
+    """
+
+    name = "rsa_sha256"
+    generates_credential = False
+
+    @staticmethod
+    def _truthy(v) -> bool:
+        return str(v).strip().lower() in ("1", "true", "yes", "on")
+
+    def _load_pem_keys(self, cfg: dict) -> Dict[str, str]:
+        keys: Dict[str, str] = {}
+        raw = cfg.get("rsa_public_keys")
+        if isinstance(raw, str) and raw.strip():
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                raw = None
+        if isinstance(raw, dict):
+            for k, v in raw.items():
+                if isinstance(v, str) and v.strip():
+                    keys[str(k)] = v
+        single = cfg.get("public_key")
+        if isinstance(single, str) and single.strip() and "BEGIN" in single:
+            keys.setdefault("__default__", single)
+        return keys
+
+    def _resolve_key(self, kid: str, pem_keys: Dict[str, str], jwks_url: Optional[str]):
+        from cryptography.hazmat.primitives import serialization
+        if kid and kid in pem_keys:
+            return serialization.load_pem_public_key(pem_keys[kid].encode("utf-8"))
+        if "__default__" in pem_keys:
+            return serialization.load_pem_public_key(pem_keys["__default__"].encode("utf-8"))
+        if len(pem_keys) == 1:
+            only = next(iter(pem_keys.values()))
+            return serialization.load_pem_public_key(only.encode("utf-8"))
+        if jwks_url:
+            return self._resolve_jwks_key(kid, jwks_url)
+        return None
+
+    def _resolve_jwks_key(self, kid: str, jwks_url: str):
+        import httpx
+        from jwt.algorithms import RSAAlgorithm
+        try:
+            resp = httpx.get(jwks_url, timeout=_HTTP_TIMEOUT)
+            resp.raise_for_status()
+            jwks = resp.json().get("keys", [])
+        except Exception:
+            return None
+        for jwk in jwks:
+            if kid and jwk.get("kid") != kid:
+                continue
+            if jwk.get("kty") != "RSA" or jwk.get("alg", "RS256") != "RS256":
+                continue
+            try:
+                return RSAAlgorithm.from_jwk(json.dumps(jwk))
+            except Exception:
+                return None
+        return None
+
+    def verify(self, integration, headers, raw_body) -> AuthResult:
+        from cryptography.exceptions import InvalidSignature
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding, rsa
+
+        cfg = _cfg(integration)
+        sig_header = (cfg.get("signature_header") or "x-signature").lower()
+        kid_header = (cfg.get("signature_keyid_header") or "x-signature-keyid").lower()
+        provided = (headers.get(sig_header) or "").strip()
+        kid = (headers.get(kid_header) or "").strip()
+
+        pem_keys = self._load_pem_keys(cfg)
+        jwks_url = cfg.get("jwks_url") or None
+
+        if not pem_keys and not jwks_url:
+            # No verification material configured yet. Optionally accept-and-flag
+            # (migration mode) so onboarding can proceed; otherwise fail closed.
+            if self._truthy(cfg.get("accept_unverified")):
+                replay = provided or hashlib.sha256(raw_body).hexdigest()
+                logger.warning(
+                    "rsa_sha256 accept-unverified (no key configured): integration=%r kid=%s",
+                    integration.get("slug"), kid or "(none)",
+                )
+                return AuthResult(True, reason="accepted_unverified: no RSA public key configured",
+                                  replay_key=replay, principal=kid or None)
+            return AuthResult(False, "rsa_sha256: no public key or jwks_url configured "
+                                     "(set auth_config.public_key / rsa_public_keys / jwks_url, "
+                                     "or accept_unverified=true to onboard first)")
+
+        if not provided:
+            return AuthResult(False, f"rsa_sha256: missing signature header '{sig_header}' "
+                                     f"[headers_seen={sorted(headers.keys())}]")
+
+        try:
+            pubkey = self._resolve_key(kid, pem_keys, jwks_url)
+        except Exception as e:
+            return AuthResult(False, f"rsa_sha256: failed to load public key ({type(e).__name__})")
+        if not isinstance(pubkey, rsa.RSAPublicKey):
+            return AuthResult(False, f"rsa_sha256: no RSA key for kid={kid or '(none)'}")
+
+        try:
+            signature = base64.b64decode(provided, validate=True)
+        except Exception:
+            return AuthResult(False, "rsa_sha256: signature is not valid base64")
+        try:
+            pubkey.verify(signature, raw_body, padding.PKCS1v15(), hashes.SHA256())
+        except InvalidSignature:
+            return AuthResult(False, f"rsa_sha256: invalid signature [kid={kid or '(none)'}]")
+        except Exception as e:
+            return AuthResult(False, f"rsa_sha256: verification error ({type(e).__name__})")
+        return AuthResult(True, replay_key=provided, principal=kid or None)
+
+
 class MtlsProvider(InboundAuthProvider):
     """Application-layer mTLS assertion via ingress-forwarded client-cert
     headers. Trust these headers ONLY when the edge/ingress terminates TLS and
@@ -636,6 +769,7 @@ _PROVIDERS: Dict[str, InboundAuthProvider] = {
     "hmac": HmacProvider("sha256"),         # backward-compatible alias
     "hmac_sha256": HmacProvider("sha256"),
     "hmac_sha1": HmacProvider("sha1"),
+    "rsa_sha256": RsaSha256Provider(),
     "api_key": ApiKeyProvider(),
     "bearer": BearerProvider(),
     "basic": BasicProvider(),

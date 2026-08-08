@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, field_validator
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 AUTH_PROVIDERS = {
-    "none", "hmac", "hmac_sha256", "hmac_sha1", "api_key", "bearer",
+    "none", "hmac", "hmac_sha256", "hmac_sha1", "rsa_sha256", "api_key", "bearer",
     "basic", "jwt", "oauth2", "mtls", "custom",
 }
 # Providers for which PFP mints a shared secret/token (others are externally configured)
@@ -40,8 +40,11 @@ ALLOWED_AUTH_CONFIG_KEYS = {
     "custom_handler",
     # Workflow / issue-tracking provider config (non-secret; e.g. Jira Cloud)
     "site_url", "cloud_id", "project_filter", "event_filter", "team_field",
+    # Open Banking provider config (non-secret; e.g. Tarabut Gateway). RSA public
+    # keys / JWKS are verification material, NOT secrets — safe to expose.
+    "signature_keyid_header", "rsa_public_keys", "accept_unverified", "tarabut_region",
 }
-ADAPTERS = {"generic", "jira"}
+ADAPTERS = {"generic", "jira", "tarabut"}
 
 
 # ---------------------------------------------------------------------------

@@ -8,12 +8,12 @@ import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, Activity, Pencil, ShieldCheck, CheckCircle2, XCircle, ChevronDown, ChevronRight, KanbanSquare, CreditCard, FileSignature, GitBranch, MessageSquare, ShoppingCart, Boxes, Settings2 } from "lucide-react";
+import { Plus, Trash2, Power, PowerOff, RefreshCw, FlaskConical, Copy, Loader2, Activity, Pencil, ShieldCheck, CheckCircle2, XCircle, ChevronDown, ChevronRight, KanbanSquare, CreditCard, FileSignature, GitBranch, MessageSquare, ShoppingCart, Boxes, Settings2, Landmark } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
-const ADAPTERS = ["generic", "jira"];
-const AUTH_PROVIDERS = ["hmac_sha256", "hmac_sha1", "api_key", "bearer", "basic", "jwt", "oauth2", "mtls", "custom", "none"];
+const ADAPTERS = ["generic", "jira", "tarabut"];
+const AUTH_PROVIDERS = ["hmac_sha256", "hmac_sha1", "rsa_sha256", "api_key", "bearer", "basic", "jwt", "oauth2", "mtls", "custom", "none"];
 const EXTERNAL_PROVIDERS = ["jwt", "oauth2", "mtls", "custom"]; // externally configured (no PFP-minted credential)
 const HMAC_PROVIDERS = ["hmac_sha256", "hmac_sha1"];
 const SIGNATURE_SCHEMES = [
@@ -48,6 +48,7 @@ const PROVIDER_META = {
   github: { Icon: GitBranch, tint: "text-slate-700 bg-slate-100 ring-slate-200" },
   slack: { Icon: MessageSquare, tint: "text-fuchsia-600 bg-fuchsia-50 ring-fuchsia-200" },
   shopify: { Icon: ShoppingCart, tint: "text-green-600 bg-green-50 ring-green-200" },
+  tarabut: { Icon: Landmark, tint: "text-cyan-700 bg-cyan-50 ring-cyan-200" },
   generic: { Icon: Boxes, tint: "text-slate-600 bg-slate-100 ring-slate-200" },
 };
 const providerMeta = (id) => PROVIDER_META[id] || { Icon: Boxes, tint: "text-slate-600 bg-slate-100 ring-slate-200" };
@@ -57,6 +58,7 @@ const AUTH_METHOD_LABELS = {
   hmac_sha256: "HMAC-SHA256 signature", hmac_sha1: "HMAC-SHA1 signature",
   api_key: "API key / shared-secret header", bearer: "Bearer token", basic: "HTTP basic",
   jwt: "JWT", oauth2: "OAuth 2.0 bearer", mtls: "Mutual TLS", custom: "Custom",
+  rsa_sha256: "RSA digital signature (RS256)",
   none: "None (unauthenticated)",
 };
 const SCHEME_LABELS = {
@@ -85,6 +87,13 @@ const CONNECTION_FIELDS = {
   slack: [{ key: "secret", label: "Slack signing secret", type: "password", target: "secret", full: true, placeholder: "App → Basic Information → Signing Secret" }],
   github: [{ key: "secret", label: "GitHub webhook secret", type: "password", target: "secret", full: true, placeholder: "Repo/Org → Settings → Webhooks → Secret" }],
   shopify: [{ key: "secret", label: "Shopify webhook signing secret", type: "password", target: "secret", full: true, placeholder: "Settings → Notifications → Webhooks" }],
+  tarabut: [
+    { key: "jwks_url", label: "Webhook JWKS URL (optional)", target: "auth_config", optional: true, full: true,
+      placeholder: "Tarabut RS256 public-keys / JWKS endpoint",
+      help: "URL to Tarabut's RS256 public keys. Alternatively paste a PEM public key into auth_config.public_key via Advanced. Leave blank and set accept_unverified=true to onboard before the key is available." },
+    { key: "tarabut_region", label: "Region", target: "auth_config", optional: true,
+      placeholder: "bahrain" },
+  ],
   generic: [],
 };
 const connectionFields = (preset) => {

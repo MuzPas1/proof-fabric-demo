@@ -458,9 +458,266 @@ class JiraEventAdapter(EventAdapter):
         )
 
 
+class TarabutEventAdapter(EventAdapter):
+    """Normalize Tarabut Gateway (Open Banking) events into the vendor-neutral
+    CommonEvent. Reference adapter for Open Banking / account-information +
+    payment-initiation platforms.
+
+    Handles three input shapes:
+      1. **Service envelope** — emitted by ``services.tarabut_service`` for
+         outbound OAuth2 API events. Carries ``tarabutEventType``/``externalId``/
+         ``occurredAt`` plus display-safe ``attributes`` and a ``sensitive`` map
+         that is committed hash-only.
+      2. **Payment status webhook** — Tarabut's signed payment notification
+         (``paymentId``/``status``/``amount``/``payerToken``…).
+      3. **Consent / account / transaction objects** — raw Open Banking resources
+         detected by their identifiers.
+
+    Privacy: personal / account-identifying data (IBAN, masked PAN, account
+    holder name, payer token, customer id, email, names, destination account) is
+    reduced to one-way hashes so it never enters the descriptor or the signed
+    payload in the clear. Only non-personal workflow metadata (event type,
+    status, provider/bank, amount, currency, reference ids, timestamps) is
+    surfaced for display. The Proof Engine is untouched.
+    """
+
+    name = "tarabut"
+
+    # Keys whose VALUES are personal / account-identifying and must be hashed.
+    _SENSITIVE_KEYS = (
+        "payerToken", "destinationAccount", "iban", "IBAN", "pan", "maskedPAN",
+        "accountNumber", "accountId", "accountHolderName", "email", "firstName",
+        "lastName", "customerUserId", "userIdentifier",
+    )
+
+    _STATUS_EVENT = {
+        "ACTIVE": "consent_granted",
+        "REVOKED": "consent_revoked",
+        "EXPIRED": "consent_expired",
+    }
+
+    def _region(self, integration: dict) -> str:
+        return ((integration.get("auth_config") or {}).get("tarabut_region") or "bahrain")
+
+    def _currency(self, payload: dict, integration: dict) -> str:
+        cur = payload.get("currency") or (payload.get("amount") or {}).get("currency") \
+            if isinstance(payload.get("amount"), dict) else payload.get("currency")
+        return str(cur or integration.get("default_currency") or "BHD")[:3]
+
+    def normalize(self, payload: Dict[str, Any], integration: dict) -> CommonEvent:
+        if not isinstance(payload, dict):
+            raise AdapterError("Tarabut event payload must be a JSON object")
+
+        if payload.get("tarabutEventType") or payload.get("tarabut_event_type"):
+            return self._from_envelope(payload, integration)
+        if payload.get("paymentId") or str(payload.get("type") or "").upper() == "PAYMENT_STATUS_CHANGE":
+            return self._from_payment(payload, integration)
+        if payload.get("consentId") or (payload.get("id") and payload.get("providerId") and payload.get("status")):
+            return self._from_consent(payload, integration)
+        return self._from_generic_resource(payload, integration)
+
+    # -- shape 1: outbound service envelope ---------------------------------
+    def _from_envelope(self, payload: dict, integration: dict) -> CommonEvent:
+        event_type = str(payload.get("tarabutEventType") or payload.get("tarabut_event_type") or "tarabut_event")[:128]
+        external_id = payload.get("externalId") or payload.get("external_id")
+        if not external_id:
+            raise AdapterError("Tarabut envelope must include externalId")
+        occurred_at = payload.get("occurredAt") or payload.get("occurred_at") or _now_iso()
+        status = payload.get("status")
+        amount = _to_minor_units(payload.get("amount"))
+        currency = str(payload.get("currency") or integration.get("default_currency") or "BHD")[:3]
+        event_source = str(payload.get("eventSource") or "API")[:32]
+
+        display = {str(k)[:64]: str(v)[:256] for k, v in (payload.get("attributes") or {}).items() if v not in (None, "")}
+        attributes: Dict[str, Any] = {
+            "provider": "Tarabut", "provider_category": "Open Banking",
+            "event_source": event_source, "event_type": event_type,
+            "provider_id": payload.get("providerId"), "status": status,
+        }
+        attributes.update(display)
+        for k, v in (payload.get("sensitive") or {}).items():
+            if v not in (None, ""):
+                attributes[f"{k}_hash"] = _hash(v)
+        attributes = {k: v for k, v in attributes.items() if v not in (None, "")}
+
+        return CommonEvent(
+            event_type=event_type, external_id=str(external_id)[:256], occurred_at=str(occurred_at),
+            source=integration.get("slug"),
+            actor=(str(payload.get("providerId"))[:256] if payload.get("providerId") else None),
+            subject=str(external_id)[:256], amount=amount, currency=currency,
+            attributes=attributes,
+            idempotency_key=f"{event_type}:{external_id}:{occurred_at}"[:256],
+            provider="Tarabut", provider_category="Open Banking", event_source=event_source,
+            status=(str(status)[:64] if status else None), display_attributes=display,
+        )
+
+    # -- shape 2: payment status webhook ------------------------------------
+    def _from_payment(self, payload: dict, integration: dict) -> CommonEvent:
+        payment_id = payload.get("paymentId") or payload.get("id")
+        if not payment_id:
+            raise AdapterError("Tarabut payment event must include paymentId")
+        status = payload.get("status")
+        event_type = (f"payment_{str(status).lower()}" if status else "payment_status_change")[:128]
+        amt_raw = payload.get("amount")
+        if isinstance(amt_raw, dict):
+            amt_raw = amt_raw.get("value")
+        amount = _to_minor_units(amt_raw)
+        currency = str(payload.get("currency") or integration.get("default_currency") or "BHD")[:3]
+        occurred_at = (_epoch_ms_to_iso(payload.get("timestamp"))
+                       or payload.get("creationTimestamp") or _now_iso())
+
+        display = {
+            "Payment ID": payment_id, "Status": status,
+            "Amount": (f"{amt_raw} {currency}" if amt_raw not in (None, "") else None),
+            "Bank": payload.get("bankName") or payload.get("bank"),
+            "Merchant Reference": payload.get("merchantReference"),
+            "Customer Reference": payload.get("customerReference"),
+        }
+        if payload.get("merchant"):
+            display["Merchant"] = payload.get("merchant")
+        display = {k: str(v)[:256] for k, v in display.items() if v not in (None, "")}
+
+        attributes: Dict[str, Any] = {
+            "provider": "Tarabut", "provider_category": "Open Banking",
+            "event_source": "Webhook", "event_type": event_type, "status": status,
+            "bank": payload.get("bankName") or payload.get("bank"),
+            "merchant_reference": payload.get("merchantReference"),
+            "customer_reference": payload.get("customerReference"),
+            "event_timestamp": occurred_at,
+        }
+        for k in ("payerToken", "destinationAccount"):
+            if payload.get(k):
+                attributes[f"{k}_hash"] = _hash(payload.get(k))
+        attributes = {k: v for k, v in attributes.items() if v not in (None, "")}
+
+        return CommonEvent(
+            event_type=event_type, external_id=str(payment_id)[:256], occurred_at=str(occurred_at),
+            source=integration.get("slug"),
+            actor=(str(payload.get("merchant"))[:256] if payload.get("merchant") else None),
+            subject=str(payment_id)[:256], amount=amount, currency=currency,
+            attributes=attributes,
+            idempotency_key=f"payment:{payment_id}:{status or occurred_at}"[:256],
+            provider="Tarabut", provider_category="Open Banking", event_source="Webhook",
+            status=(str(status)[:64] if status else None), display_attributes=display,
+        )
+
+    # -- shape 3a: consent object -------------------------------------------
+    def _from_consent(self, payload: dict, integration: dict) -> CommonEvent:
+        consent_id = payload.get("consentId") or payload.get("id")
+        status = str(payload.get("status") or "").upper()
+        event_type = self._STATUS_EVENT.get(status, "consent_updated")
+        provider_id = payload.get("providerId")
+        occurred_at = (payload.get("revokeDate") or payload.get("startDate")
+                       or payload.get("expiryDate") or _now_iso())
+        connected = payload.get("connectedAccounts") or []
+        display = {
+            "Consent ID": consent_id, "Status": payload.get("status"),
+            "Provider": provider_id, "Start Date": payload.get("startDate"),
+            "Expiry Date": payload.get("expiryDate"),
+        }
+        if connected:
+            display["Connected Accounts"] = str(len(connected))
+        display = {k: str(v)[:256] for k, v in display.items() if v not in (None, "")}
+
+        attributes: Dict[str, Any] = {
+            "provider": "Tarabut", "provider_category": "Open Banking",
+            "event_source": "API", "event_type": event_type, "status": payload.get("status"),
+            "provider_id": provider_id, "start_date": payload.get("startDate"),
+            "expiry_date": payload.get("expiryDate"),
+        }
+        # Hash every connected-account identifier so no IBAN/PAN is stored clear.
+        acct_ids = _deep_collect_ids(connected)
+        if acct_ids:
+            attributes["accounts_hash"] = _hash("|".join(acct_ids))
+        attributes = {k: v for k, v in attributes.items() if v not in (None, "")}
+
+        return CommonEvent(
+            event_type=event_type, external_id=str(consent_id)[:256], occurred_at=str(occurred_at),
+            source=integration.get("slug"),
+            actor=(str(provider_id)[:256] if provider_id else None),
+            subject=str(consent_id)[:256], amount=0,
+            currency=str(integration.get("default_currency") or "BHD")[:3],
+            attributes=attributes,
+            idempotency_key=f"consent:{consent_id}:{status or occurred_at}"[:256],
+            provider="Tarabut", provider_category="Open Banking", event_source="API",
+            status=(str(payload.get("status"))[:64] if payload.get("status") else None),
+            display_attributes=display,
+        )
+
+    # -- shape 3b: generic Open Banking resource (intent/account/transaction) --
+    def _from_generic_resource(self, payload: dict, integration: dict) -> CommonEvent:
+        mapping = [
+            ("intentId", "intent_created", "Intent ID"),
+            ("transactionId", "transaction_retrieved", "Transaction ID"),
+            ("accountId", "account_retrieved", "Account ID"),
+        ]
+        external_id = None
+        event_type = "tarabut_event"
+        id_label = "Reference"
+        for key, et, label in mapping:
+            v = payload.get(key) or _deep_find_key(payload, key)
+            if v not in (None, ""):
+                external_id, event_type, id_label = v, et, label
+                break
+        if not external_id:
+            top = sorted(payload.keys())
+            raise AdapterError(
+                "Tarabut event must include a recognizable identifier "
+                "(tarabutEventType, paymentId, consent id, intentId, accountId or transactionId). "
+                f"Top-level keys={top}"
+            )
+        occurred_at = (payload.get("occurredAt") or payload.get("expiry")
+                       or payload.get("bookingDateTime") or _now_iso())
+        provider_id = payload.get("providerId")
+        display = {id_label: external_id, "Provider": provider_id, "Status": payload.get("status")}
+        display = {k: str(v)[:256] for k, v in display.items() if v not in (None, "")}
+        attributes: Dict[str, Any] = {
+            "provider": "Tarabut", "provider_category": "Open Banking",
+            "event_source": "API", "event_type": event_type,
+            "provider_id": provider_id, "status": payload.get("status"),
+        }
+        ids = _deep_collect_ids(payload)
+        if ids:
+            attributes["identifiers_hash"] = _hash("|".join(ids))
+        attributes = {k: v for k, v in attributes.items() if v not in (None, "")}
+        return CommonEvent(
+            event_type=str(event_type)[:128], external_id=str(external_id)[:256],
+            occurred_at=str(occurred_at), source=integration.get("slug"),
+            actor=(str(provider_id)[:256] if provider_id else None),
+            subject=str(external_id)[:256], amount=0,
+            currency=str(integration.get("default_currency") or "BHD")[:3],
+            attributes=attributes,
+            idempotency_key=f"{event_type}:{external_id}:{occurred_at}"[:256],
+            provider="Tarabut", provider_category="Open Banking", event_source="API",
+            status=(str(payload.get("status"))[:64] if payload.get("status") else None),
+            display_attributes=display,
+        )
+
+
+def _deep_collect_ids(obj: Any, depth: int = 0) -> list:
+    """Collect account-identifying values (IBAN/PAN/account ids) from a nested
+    Open Banking structure so they can be committed hash-only (never in clear)."""
+    out: list = []
+    if depth > 6:
+        return out
+    if isinstance(obj, dict):
+        if obj.get("type") in ("IBAN", "maskedPAN", "PAN") and obj.get("value"):
+            out.append(f"{obj.get('type')}:{obj.get('value')}")
+        for k, v in obj.items():
+            if k in ("id", "accountId") and isinstance(v, str):
+                out.append(str(v))
+            else:
+                out.extend(_deep_collect_ids(v, depth + 1))
+    elif isinstance(obj, list):
+        for v in obj:
+            out.extend(_deep_collect_ids(v, depth + 1))
+    return [x for x in dict.fromkeys(out) if x]
+
+
 _ADAPTERS: Dict[str, EventAdapter] = {
     "generic": GenericEventAdapter(),
     "jira": JiraEventAdapter(),
+    "tarabut": TarabutEventAdapter(),
 }
 
 

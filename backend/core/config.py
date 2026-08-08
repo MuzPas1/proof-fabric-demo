@@ -55,6 +55,17 @@ class Settings:
     # --- Inbound Event Ingestion framework (default OFF; additive module) ---
     ENABLE_EVENT_INGESTION: bool = os.environ.get("ENABLE_EVENT_INGESTION", "false").lower() == "true"
 
+    # --- Tarabut Gateway (Open Banking) provider (additive; isolated) ---
+    # Sandbox base URLs default to Bahrain and are overridable per-environment.
+    # Secrets are operator-supplied via env only (never hardcoded / never logged).
+    TARABUT_REGION: str = os.environ.get("TARABUT_REGION", "bahrain").lower()
+    TARABUT_CLIENT_ID: str = os.environ.get("TARABUT_CLIENT_ID", "")
+    TARABUT_CLIENT_SECRET: str = os.environ.get("TARABUT_CLIENT_SECRET", "")
+    TARABUT_REDIRECT_URI: str = os.environ.get("TARABUT_REDIRECT_URI", "")
+    TARABUT_PAYMENT_CLIENT_ID: str = os.environ.get("TARABUT_PAYMENT_CLIENT_ID", "")
+    TARABUT_PAYMENT_CLIENT_SECRET: str = os.environ.get("TARABUT_PAYMENT_CLIENT_SECRET", "")
+    TARABUT_WEBHOOK_JWKS_URL: str = os.environ.get("TARABUT_WEBHOOK_JWKS_URL", "")
+
     # --- Auth0 Identity provider (OAuth 2.0 / OIDC) ---
     AUTH0_DOMAIN: str = os.environ.get("AUTH0_DOMAIN", "")
     AUTH0_CLIENT_ID: str = os.environ.get("AUTH0_CLIENT_ID", "")
