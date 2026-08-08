@@ -87,14 +87,19 @@ class TarabutClient:
         self.oauth_base = (oauth_base or defaults["oauth_base"]).rstrip("/")
         self.api_base = (api_base or defaults["api_base"]).rstrip("/")
         self.payments_base = (payments_base or defaults["payments_base"]).rstrip("/")
-        self._ais_token: Optional[_CachedToken] = None
+        self._ais_tokens: Dict[str, _CachedToken] = {}
         self._pay_token: Optional[_CachedToken] = None
 
     # -- authentication -----------------------------------------------------
-    async def _access_token(self, client: httpx.AsyncClient) -> str:
+    async def _access_token(self, client: httpx.AsyncClient, customer_user_id: str = "") -> str:
+        """Client-credentials access token. Tarabut binds a user context into the
+        token via the ``X-TG-CustomerUserId`` header ON THE TOKEN REQUEST, so
+        tokens are cached per customer id (empty string = no user context)."""
+        key = customer_user_id or ""
         now = time.time()
-        if self._ais_token and now < self._ais_token.expires_at - _TOKEN_SKEW_SECONDS:
-            return self._ais_token.value
+        cached = self._ais_tokens.get(key)
+        if cached and now < cached.expires_at - _TOKEN_SKEW_SECONDS:
+            return cached.value
         body: Dict[str, Any] = {
             "clientId": self.client_id,
             "clientSecret": self.client_secret,
@@ -102,13 +107,16 @@ class TarabutClient:
         }
         if self.redirect_uri:
             body["redirect_uri"] = self.redirect_uri
-        resp = await client.post(f"{self.oauth_base}/token", json=body)
+        headers = {"Content-Type": "application/json"}
+        if customer_user_id:
+            headers["X-TG-CustomerUserId"] = customer_user_id
+        resp = await client.post(f"{self.oauth_base}/token", json=body, headers=headers)
         if resp.status_code >= 400:
             raise TarabutError(f"Tarabut token request failed (HTTP {resp.status_code})", resp.status_code)
         data = resp.json()
         ttl = int(data.get("expiresIn", 900))
-        self._ais_token = _CachedToken(data["accessToken"], time.time() + ttl)
-        return self._ais_token.value
+        self._ais_tokens[key] = _CachedToken(data["accessToken"], time.time() + ttl)
+        return self._ais_tokens[key].value
 
     async def _payment_token(self, client: httpx.AsyncClient) -> str:
         if not (self.payment_client_id and self.payment_client_secret):
@@ -136,7 +144,7 @@ class TarabutClient:
     async def _ais_request(self, method: str, path: str, *, customer_user_id: Optional[str] = None,
                            json: Optional[dict] = None, params: Optional[dict] = None) -> Any:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            token = await self._access_token(client)
+            token = await self._access_token(client, customer_user_id or "")
             headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
             if customer_user_id:
                 headers["X-TG-CustomerUserId"] = customer_user_id
@@ -144,6 +152,12 @@ class TarabutClient:
             if resp.status_code >= 400:
                 raise TarabutError(f"Tarabut API {method} {path} failed (HTTP {resp.status_code})", resp.status_code)
             return resp.json() if resp.content else {}
+
+    async def get_token(self, customer_user_id: str = "") -> str:
+        """Public helper: obtain (and cache) an access token. Used for a live
+        connectivity check without issuing a business call."""
+        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+            return await self._access_token(client, customer_user_id)
 
     async def _pay_request(self, method: str, path: str, *, json: Optional[dict] = None,
                            idempotency_key: Optional[str] = None) -> Any:

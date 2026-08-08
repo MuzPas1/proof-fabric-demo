@@ -41,8 +41,11 @@ ALLOWED_AUTH_CONFIG_KEYS = {
     # Workflow / issue-tracking provider config (non-secret; e.g. Jira Cloud)
     "site_url", "cloud_id", "project_filter", "event_filter", "team_field",
     # Open Banking provider config (non-secret; e.g. Tarabut Gateway). RSA public
-    # keys / JWKS are verification material, NOT secrets — safe to expose.
+    # keys / JWKS are verification material, NOT secrets — safe to expose. OAuth
+    # client id + redirect are non-secret identifiers; the OAuth client SECRET is
+    # stored in external_secret (never returned).
     "signature_keyid_header", "rsa_public_keys", "accept_unverified", "tarabut_region",
+    "redirect_uri", "payment_client_id",
 }
 ADAPTERS = {"generic", "jira", "tarabut"}
 

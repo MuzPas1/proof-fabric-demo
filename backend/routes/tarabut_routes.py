@@ -46,6 +46,15 @@ class WebhookKeyRequest(BaseModel):
     accept_unverified: Optional[bool] = None
 
 
+class OAuthConfigRequest(BaseModel):
+    integration_id: str
+    client_id: Optional[str] = Field(None, description="Tarabut OAuth Client ID (non-secret)")
+    client_secret: Optional[str] = Field(None, description="Tarabut OAuth Client Secret (stored redacted)")
+    redirect_uri: Optional[str] = None
+    region: Optional[str] = None
+    payment_client_id: Optional[str] = None
+
+
 class IntentRequest(BaseModel):
     user: Dict[str, Any]
     provider_id: str = "BLUE"
@@ -150,6 +159,69 @@ async def configure_webhook_key(
         tenant_id=updated["tenant_id"], target=body.integration_id,
     )
     return {"integration_id": body.integration_id, "auth_config": updated.get("auth_config")}
+
+
+@router.post("/oauth-config")
+async def configure_oauth(
+    body: OAuthConfigRequest,
+    user: User = Depends(require_permission(Permission.INTEGRATIONS_MANAGE)),
+    tenant_id: str = Query(None),
+):
+    """Securely configure Tarabut OAuth credentials on the Tarabut integration
+    (Client ID + Redirect URI in non-secret auth_config; Client Secret stored in
+    the integration's redacted secret slot — never returned). Follows the
+    existing provider-configuration pattern; no hardcoding."""
+    _guard()
+    scope = resolve_tenant_scope(user, tenant_id)
+    try:
+        current = await ingestion_service.get_integration(_db(), body.integration_id, scope)
+    except ingestion_service.IngestionError as e:
+        raise HTTPException(e.status_code, str(e))
+    if current.get("adapter") != "tarabut":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "integration is not a Tarabut provider")
+
+    auth_config = dict(current.get("auth_config") or {})
+    if body.client_id is not None:
+        auth_config["oauth_client_id"] = body.client_id
+    if body.redirect_uri is not None:
+        auth_config["redirect_uri"] = body.redirect_uri
+    if body.region is not None:
+        auth_config["tarabut_region"] = body.region
+    if body.payment_client_id is not None:
+        auth_config["payment_client_id"] = body.payment_client_id
+
+    updates: dict = {"auth_config": auth_config}
+    if body.client_secret:  # maps to external_secret (stored redacted, never returned)
+        updates["secret"] = body.client_secret
+    try:
+        updated = await ingestion_service.update_integration(_db(), body.integration_id, scope, updates)
+    except ingestion_service.IngestionError as e:
+        raise HTTPException(e.status_code, str(e))
+    await audit_service.record_audit(
+        _db(), "tarabut.oauth_configured", actor=user.email,
+        tenant_id=updated["tenant_id"], target=body.integration_id,
+    )
+    return {
+        "integration_id": body.integration_id,
+        "oauth_client_id": (updated.get("auth_config") or {}).get("oauth_client_id"),
+        "redirect_uri": (updated.get("auth_config") or {}).get("redirect_uri"),
+        "region": (updated.get("auth_config") or {}).get("tarabut_region"),
+        "client_secret_stored": bool(updated.get("has_external_secret")),
+    }
+
+
+@router.post("/connectivity")
+async def connectivity(
+    tenant_id: str = Query(None),
+    user: User = Depends(require_permission(Permission.INTEGRATIONS_MANAGE)),
+):
+    """Live sandbox connectivity check — acquires an access token (never returned)."""
+    _guard()
+    scope = resolve_tenant_scope(user, tenant_id)
+    try:
+        return await tarabut_service.check_connectivity(_db(), tenant_id=scope)
+    except TarabutError as e:
+        raise HTTPException(getattr(e, "status_code", None) or status.HTTP_400_BAD_REQUEST, str(e))
 
 
 # --- Outbound API triggers (active once sandbox credentials are configured) ---
