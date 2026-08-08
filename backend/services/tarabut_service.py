@@ -238,6 +238,42 @@ async def _load(db, tenant_id: Optional[str]):
     return integration, build_client(integration), resolved
 
 
+def _account_envelope(acct: dict) -> dict:
+    return _envelope("account_retrieved", acct.get("accountId", "account"),
+                     status=(acct.get("consents") or [{}])[0].get("status"),
+                     provider_id=acct.get("providerId"),
+                     attributes={"Account Product Type": acct.get("accountProductType"),
+                                 "Last Updated": acct.get("lastUpdatedDateTime")},
+                     sensitive={"account": acct.get("accountId"),
+                                "accountHolderName": acct.get("accountHolderName"),
+                                "identifiers": (acct.get("identifiers") or {}).get("value")})
+
+
+def _balance_envelope(account_id: str, bal: dict) -> dict:
+    amt = bal.get("amount") or {}
+    disp = {"Balance Type": bal.get("type")}
+    if amt.get("value") not in (None, ""):
+        disp["Amount"] = f"{amt.get('value')} {amt.get('currency') or ''}".strip()
+    return _envelope("balance_retrieved", f"{account_id}:{bal.get('type', 'balance')}",
+                     status=bal.get("type"), amount=amt.get("value"), currency=amt.get("currency"),
+                     attributes=disp, sensitive={"account": account_id})
+
+
+def _transaction_envelope(txn: dict) -> dict:
+    amt = txn.get("amount") or {}
+    cat = txn.get("category") or {}
+    disp = {"Description": txn.get("transactionDescription"),
+            "Category": cat.get("name"),
+            "Credit/Debit": txn.get("creditDebitIndicator"),
+            "Booking Date": txn.get("bookingDateTime")}
+    if amt.get("value") not in (None, ""):
+        disp["Amount"] = f"{amt.get('value')} {amt.get('currency') or ''}".strip()
+    return _envelope("transaction_retrieved", txn.get("transactionId", "transaction"),
+                     amount=amt.get("value"), currency=amt.get("currency"),
+                     provider_id=txn.get("providerId"), attributes=disp,
+                     sensitive={"account": txn.get("accountId")})
+
+
 async def prove_create_intent(db, *, user: dict, provider_id: str, tenant_id: Optional[str] = None,
                               redirect_url: Optional[str] = None, language: Optional[str] = None,
                               purpose_statement: Optional[str] = None,
@@ -256,18 +292,62 @@ async def prove_create_intent(db, *, user: dict, provider_id: str, tenant_id: Op
 async def prove_get_accounts(db, *, customer_user_id: str, tenant_id: Optional[str] = None) -> dict:
     integration, client, resolved = await _load(db, tenant_id)
     result = await client.get_accounts(customer_user_id)
-    proofs = []
-    for acct in (result.get("accounts") or []):
-        env = _envelope("account_retrieved", acct.get("accountId", "account"),
-                        status=(acct.get("consents") or [{}])[0].get("status"),
-                        provider_id=acct.get("providerId"),
-                        attributes={"Account Product Type": acct.get("accountProductType"),
-                                    "Last Updated": acct.get("lastUpdatedDateTime")},
-                        sensitive={"account": acct.get("accountId"),
-                                   "accountHolderName": acct.get("accountHolderName"),
-                                   "identifiers": (acct.get("identifiers") or {}).get("value")})
-        proofs.append(await record_event_proof(db, env, integration=integration, tenant_id=resolved))
+    proofs = [await record_event_proof(db, _account_envelope(a), integration=integration, tenant_id=resolved)
+              for a in (result.get("accounts") or [])]
     return {"tarabut": result, "account_count": len(result.get("accounts") or []), "proofs": proofs}
+
+
+async def prove_account_balances(db, *, account_id: str, customer_user_id: str,
+                                 tenant_id: Optional[str] = None) -> dict:
+    integration, client, resolved = await _load(db, tenant_id)
+    result = await client.get_account_balances(account_id, customer_user_id)
+    proofs = [await record_event_proof(db, _balance_envelope(account_id, b), integration=integration, tenant_id=resolved)
+              for b in (result.get("balances") or [])]
+    return {"tarabut": result, "proofs": proofs}
+
+
+async def prove_account_transactions(db, *, account_id: str, customer_user_id: str,
+                                     tenant_id: Optional[str] = None, max_transactions: int = 25) -> dict:
+    integration, client, resolved = await _load(db, tenant_id)
+    result = await client.get_account_transactions(account_id, customer_user_id)
+    txns = (result.get("transactions") or [])[:max_transactions]
+    proofs = [await record_event_proof(db, _transaction_envelope(t), integration=integration, tenant_id=resolved)
+              for t in txns]
+    return {"tarabut": result, "transaction_count": len(result.get("transactions") or []), "proofs": proofs}
+
+
+async def prove_account_data(db, *, customer_user_id: str, tenant_id: Optional[str] = None,
+                             max_transactions: int = 25) -> dict:
+    """One-shot: retrieve Accounts, and for each account its Balances and
+    Transactions, minting a verifiable Proof Artifact for every event. Requires a
+    completed Connect consent for ``customer_user_id`` (else accounts is empty)."""
+    integration, client, resolved = await _load(db, tenant_id)
+    accounts = await client.get_accounts(customer_user_id)
+    out: Dict[str, Any] = {"account_count": 0, "accounts": [], "balances": [], "transactions": [],
+                           "consent_required": False}
+    acct_list = accounts.get("accounts") or []
+    if not acct_list:
+        out["consent_required"] = True
+        out["detail"] = ("No linked accounts for this customer. Complete the Connect consent journey "
+                         "(open the connectUrl, authorise the bank) then retry.")
+        return out
+    for acct in acct_list:
+        aid = acct.get("accountId")
+        out["account_count"] += 1
+        out["accounts"].append(await record_event_proof(db, _account_envelope(acct), integration=integration, tenant_id=resolved))
+        try:
+            bals = await client.get_account_balances(aid, customer_user_id)
+            for b in (bals.get("balances") or []):
+                out["balances"].append(await record_event_proof(db, _balance_envelope(aid, b), integration=integration, tenant_id=resolved))
+        except TarabutError as e:
+            logger.warning("balances fetch failed for %s: %s", aid, e)
+        try:
+            txns = await client.get_account_transactions(aid, customer_user_id)
+            for t in (txns.get("transactions") or [])[:max_transactions]:
+                out["transactions"].append(await record_event_proof(db, _transaction_envelope(t), integration=integration, tenant_id=resolved))
+        except TarabutError as e:
+            logger.warning("transactions fetch failed for %s: %s", aid, e)
+    return out
 
 
 async def prove_revoke_consent(db, *, consent_id: str, customer_user_id: str,

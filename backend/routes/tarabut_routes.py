@@ -70,6 +70,13 @@ class AccountsRequest(BaseModel):
     tenant_id: Optional[str] = None
 
 
+class AccountDataRequest(BaseModel):
+    customer_user_id: str
+    account_id: Optional[str] = None
+    max_transactions: int = 25
+    tenant_id: Optional[str] = None
+
+
 class RevokeConsentRequest(BaseModel):
     consent_id: str
     customer_user_id: str
@@ -248,6 +255,48 @@ async def get_accounts(body: AccountsRequest, user: User = Depends(require_permi
     tenant_id = resolve_tenant_scope(user, body.tenant_id)
     try:
         return await tarabut_service.prove_get_accounts(_db(), customer_user_id=body.customer_user_id, tenant_id=tenant_id)
+    except TarabutError as e:
+        raise HTTPException(getattr(e, "status_code", None) or status.HTTP_400_BAD_REQUEST, str(e))
+
+
+@router.post("/balances")
+async def get_balances(body: AccountDataRequest, user: User = Depends(require_permission(Permission.INTEGRATIONS_MANAGE))):
+    _guard()
+    if not body.account_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "account_id is required")
+    tenant_id = resolve_tenant_scope(user, body.tenant_id)
+    try:
+        return await tarabut_service.prove_account_balances(
+            _db(), account_id=body.account_id, customer_user_id=body.customer_user_id, tenant_id=tenant_id)
+    except TarabutError as e:
+        raise HTTPException(getattr(e, "status_code", None) or status.HTTP_400_BAD_REQUEST, str(e))
+
+
+@router.post("/transactions")
+async def get_transactions(body: AccountDataRequest, user: User = Depends(require_permission(Permission.INTEGRATIONS_MANAGE))):
+    _guard()
+    if not body.account_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "account_id is required")
+    tenant_id = resolve_tenant_scope(user, body.tenant_id)
+    try:
+        return await tarabut_service.prove_account_transactions(
+            _db(), account_id=body.account_id, customer_user_id=body.customer_user_id,
+            tenant_id=tenant_id, max_transactions=body.max_transactions)
+    except TarabutError as e:
+        raise HTTPException(getattr(e, "status_code", None) or status.HTTP_400_BAD_REQUEST, str(e))
+
+
+@router.post("/account-data")
+async def account_data(body: AccountDataRequest, user: User = Depends(require_permission(Permission.INTEGRATIONS_MANAGE))):
+    """One-shot: Accounts + Balances + Transactions for a consented customer,
+    minting a verifiable Proof Artifact per event. Returns consent_required=true
+    when no accounts are linked yet."""
+    _guard()
+    tenant_id = resolve_tenant_scope(user, body.tenant_id)
+    try:
+        return await tarabut_service.prove_account_data(
+            _db(), customer_user_id=body.customer_user_id, tenant_id=tenant_id,
+            max_transactions=body.max_transactions)
     except TarabutError as e:
         raise HTTPException(getattr(e, "status_code", None) or status.HTTP_400_BAD_REQUEST, str(e))
 
